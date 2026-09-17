@@ -38,6 +38,16 @@ describe('describeAiChatError', () => {
     }
   });
 
+  it('missing_api_key 的文案可行動（指出環境變數與設定檔），且不依賴伺服器的 message', () => {
+    // 自架自用情境：使用者本人就是管理員，文案必須指出下一步。
+    // 即使伺服器沒有帶 message，映射表也要能獨立產出可行動的說明。
+    const text = describeAiChatError(503, { error: 'missing_api_key' });
+
+    expect(text).toContain('NVIDIA_NIM_API_KEY');
+    expect(text).toContain('.env.local');
+    expect(text).not.toContain('missing_api_key');
+  });
+
   it('message_too_long 的 limit 由 body 動態帶入，不是寫死', () => {
     expect(describeAiChatError(400, { error: 'message_too_long', limit: 4000 })).toContain('4000');
     expect(describeAiChatError(400, { error: 'message_too_long', limit: 8000 })).toContain('8000');

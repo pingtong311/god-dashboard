@@ -41,7 +41,8 @@ const STATIC_TEXT: Record<
   Exclude<AiChatErrorCode, 'message_too_long' | 'rate_limited'>,
   string
 > = {
-  missing_api_key: '伺服器尚未設定 AI 金鑰，請聯絡管理員。',
+  // 這個 dashboard 是自架自用，使用者本人就是管理員，因此文案要直接指向可執行的下一步。
+  missing_api_key: '伺服器尚未設定 NVIDIA_NIM_API_KEY，請於 .env.local 補上後重新啟動。',
   invalid_json: '送出內容格式不正確，請重新輸入。',
   invalid_messages: '送出內容格式不正確，請重新輸入。',
   forbidden_mutation: '此操作僅限站內使用，請重新整理頁面後再試。',
