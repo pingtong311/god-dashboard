@@ -1,0 +1,462 @@
+/* ============================================================================
+ * 股市大佬 TradeBoss — 個股盤後研究頁 /s/[ticker] 樣式
+ * 參考：blackstockai.com/s/2330/ 實站結構
+ * 設計語彙：src/styles/theme.css (CSS 變數)
+ * ========================================================================== */
+
+.page {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-noto);
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--header-bg);
+  backdrop-filter: blur(var(--blur-glass));
+  -webkit-backdrop-filter: blur(var(--blur-glass));
+  border-bottom: 1px solid var(--header-line);
+  padding: 12px 16px;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.breadcrumb a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  color: var(--accent);
+}
+
+.breadcrumb span:last-child {
+  color: var(--ink);
+}
+
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stockName {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.stockCode {
+  font-family: var(--font-tech);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.sectorTag {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  background: var(--surface-2);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.metaRow {
+  margin-top: 8px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.disclaimer {
+  color: var(--signal);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metricLabel {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metricValue {
+  font-family: var(--font-tech);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.metricValue.up {
+  color: var(--up);
+}
+
+.metricValue.down {
+  color: var(--down);
+}
+
+.scoreSection {
+  padding: 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.scoreHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.scoreTitle {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.scoreValue {
+  font-family: var(--font-tech);
+  font-size: var(--text-4xl);
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.scoreTotal {
+  font-size: var(--text-base);
+  color: var(--muted);
+}
+
+.scoreDesc {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  line-height: var(--leading-relaxed);
+}
+
+.factors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.factor {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-panel);
+  border-left: 4px solid var(--line);
+}
+
+.factorColorGreen {
+  border-left-color: var(--down);
+}
+
+.factorColorRed {
+  border-left-color: var(--up);
+}
+
+.factorColorPurple {
+  border-left-color: var(--violet);
+}
+
+.factorColorBlue {
+  border-left-color: var(--accent);
+}
+
+.factorInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.factorLabel {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.factorLabel .weight {
+  font-family: var(--font-tech);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.factorFact {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  line-height: var(--leading-relaxed);
+}
+
+.factorScore {
+  font-family: var(--font-tech);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.factorScore.missing {
+  color: var(--muted);
+}
+
+.institutionalSection {
+  padding: 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.sectionTitle {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 12px;
+}
+
+.institutionalTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.institutionalTable th,
+.institutionalTable td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.institutionalTable th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.institutionalTable td {
+  color: var(--ink);
+}
+
+.institutionalTable tr:last-child td {
+  border-bottom: none;
+}
+
+.institutionalTable .name {
+  font-weight: 500;
+}
+
+.institutionalTable .netLots.up {
+  color: var(--up);
+}
+
+.institutionalTable .netLots.down {
+  color: var(--down);
+}
+
+.ctaSection {
+  padding: 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.ctaCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, var(--accent-soft) 0%, var(--surface) 100%);
+  border: 1px solid var(--gold-line);
+  border-radius: var(--radius-panel);
+}
+
+.ctaText {
+  flex: 1;
+}
+
+.ctaTitle {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.ctaDesc {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.ctaButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border-radius: var(--radius-control);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: opacity 0.2s var(--ease-premium);
+}
+
+.ctaButton:hover {
+  opacity: 0.9;
+}
+
+.glossarySection {
+  padding: 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.glossaryItem {
+  margin-bottom: 16px;
+}
+
+.glossaryItem:last-child {
+  margin-bottom: 0;
+}
+
+.glossaryTerm {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.glossaryDef {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  line-height: var(--leading-relaxed);
+}
+
+.glossaryLink {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.glossaryLink:hover {
+  text-decoration: underline;
+}
+
+.footer {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: var(--leading-relaxed);
+  background: var(--bg);
+}
+
+.footer a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  color: var(--accent);
+}
+
+/* Loading / Error / Empty states */
+.loading,
+.error,
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  padding: 24px;
+  text-align: center;
+  gap: 16px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.errorTitle,
+.emptyTitle {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.errorDesc,
+.emptyDesc {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.retryButton {
+  margin-top: 8px;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: opacity 0.2s var(--ease-premium);
+}
+
+.retryButton:hover {
+  opacity: 0.9;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .metrics {
+    gap: 8px;
+    padding: 12px;
+  }
+  .metricValue {
+    font-size: var(--text-lg);
+  }
+  .scoreValue {
+    font-size: var(--text-3xl);
+  }
+  .factor {
+    padding: 10px;
+  }
+}
