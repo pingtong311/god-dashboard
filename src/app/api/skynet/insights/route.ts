@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 
-export const runtime = 'edge';
 
 const N8N_BASE = process.env.SKYNET_N8N_BASE_URL || 'https://skynet-cmd.duckdns.org';
 const DASHBOARD_WEBHOOK = `${N8N_BASE}/webhook/skynet-dashboard`;

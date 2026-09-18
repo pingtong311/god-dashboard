@@ -6,7 +6,6 @@
  * 降級：MOPS 無法存取時回傳 { announcements: [], error: 'mops_unavailable' }
  */
 
-export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
 

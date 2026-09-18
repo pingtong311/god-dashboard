@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { guardMutation } from '@/lib/apiGuard';
 
-export const runtime = 'edge';
 
 // Flowise 已停用，改為直接呼叫天網-03 → Omni
 const N8N_BASE = process.env.SKYNET_N8N_BASE_URL || 'https://skynet-cmd.duckdns.org';

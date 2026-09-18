@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { guardMutation } from '@/lib/apiGuard';
 
-export const runtime = 'edge';
 
 const N8N_BASE = process.env.SKYNET_N8N_BASE_URL || 'https://skynet-cmd.duckdns.org';
 const TERMINAL_WEBHOOK = `${N8N_BASE}/webhook/skynet-terminal-sync-v1`;

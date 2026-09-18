@@ -10,6 +10,9 @@ export interface IndexQuote {
   change: number;
   changePercent: number;
   isTrading: boolean;
+  timestamp?: string;
+  tradeDate?: string;
+  source?: 'twse-mis-live' | 'twse-openapi-fallback';
 }
 
 function safeFixed(value: unknown, digits: number) {
@@ -43,6 +46,14 @@ function QuoteCard({ quote }: { quote: IndexQuote }) {
           {quote.change > 0 ? '+' : ''}{safeFixed(quote.change, 2)}
           {' '}({quote.changePercent > 0 ? '+' : ''}{safeFixed(quote.changePercent, 2)}%)
         </span>
+      </div>
+      <div className="index-quote-meta">
+        <span className={quote.source === 'twse-mis-live' ? 'live' : 'stale'}>
+          {quote.source === 'twse-mis-live' ? 'LIVE' : '日資料'}
+        </span>
+        {(quote.tradeDate || quote.timestamp) && (
+          <small>{[quote.tradeDate, quote.timestamp].filter(Boolean).join(' ')}</small>
+        )}
       </div>
     </div>
   );

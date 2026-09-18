@@ -290,7 +290,13 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ error: 'upstream_error' }));
-        setError(getErrorMessage(errData.error ?? 'upstream_error', t));
+        // 分K 需要 Fugle 付費方案（免費方案不含 intraday/candles），失敗時給明確提示，
+        // 避免沿用 upstream_error 的一般文案而誤導使用者以為是代號打錯。
+        if (!errData?.error || errData.error === 'upstream_error') {
+          setError('分K 資料暫不可用（目前方案未提供盤中分K），請改用日K。');
+        } else {
+          setError(getErrorMessage(errData.error, t));
+        }
         return;
       }
 

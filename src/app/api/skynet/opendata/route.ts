@@ -7,7 +7,6 @@
  * type=revenue       → 月營收（指定 tickers）
  */
 
-export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
 

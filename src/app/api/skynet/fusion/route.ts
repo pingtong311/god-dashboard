@@ -1,4 +1,3 @@
-export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
 import {
@@ -41,7 +40,7 @@ type FusionPayload = {
     sourceHealth: SourceHealth[];
     n8n: {
       battle_reports: boolean;
-      positions: boolean;
+      positions: false;
       snipers: boolean;
     };
     database?: {
@@ -51,7 +50,7 @@ type FusionPayload = {
     warnings: string[];
   };
   reports: BattleReport[];
-  positions: Position[];
+  positions: Position[]; // 降級保留相容欄位；永遠不作候選來源。
   snipers: Sniper[];
   liaoCandidates: LiaoCandidate[];
   fusionStocks: FusionStock[];
@@ -237,32 +236,37 @@ function cleanTicker(value: string | null): string | null {
   return null;
 }
 
-function isEtfLikeTickerName(ticker: string, name?: string, type?: string): boolean {
-  const normalizedTicker = String(ticker || '').trim().toUpperCase();
-  const text = `${name || ''} ${type || ''}`.trim();
-  return (
-    /^00\d{3}[A-Z]?$/.test(normalizedTicker) ||
-    /ETF|ETN|指數|高股息|主動|反1|正2|期貨|債|永續|ESG|半導體/.test(text)
-  );
+function isDecisionAction(value: unknown): value is 'BUY' | 'WAIT' | 'SELL' {
+  return value === 'BUY' || value === 'WAIT' || value === 'SELL';
 }
 
-function sortPositionsByTypeThenTicker(positions: Position[]): Position[] {
-  return [...positions].sort((a, b) => {
-    const aTicker = String(a.ticker || '').trim().toUpperCase();
-    const bTicker = String(b.ticker || '').trim().toUpperCase();
-    const aIsEtf = isEtfLikeTickerName(aTicker, a.name, a.type);
-    const bIsEtf = isEtfLikeTickerName(bTicker, b.name, b.type);
-    if (aIsEtf !== bIsEtf) return aIsEtf ? -1 : 1;
-    return aTicker.localeCompare(bTicker, 'en', { sensitivity: 'base' });
-  });
+function isTradableTicker(value: unknown): boolean {
+  return cleanTicker(String(value || '')) !== null;
 }
 
-function pickFocusTickerFromPositions(positions: Position[]): string | null {
-  const candidate = positions.find((position) =>
-    Number(position.shares || 0) >= 200 &&
-    !isEtfLikeTickerName(position.ticker, position.name, position.type)
-  );
-  return candidate ? String(candidate.ticker).trim() : null;
+function normalizeBattleReports(rows: BattleReport[]): { tradableReports: BattleReport[]; nonTradableCount: number } {
+  const tradableReports = rows.filter((report) => isTradableTicker(report.ticker) && isDecisionAction(report.action));
+  return {
+    tradableReports,
+    nonTradableCount: Math.max(0, rows.length - tradableReports.length),
+  };
+}
+
+function normalizeSnipers(rows: Sniper[]): Sniper[] {
+  return rows.filter((sniper) => isTradableTicker(sniper.ticker));
+}
+
+function pickFocusTickerFromSignals(reports: BattleReport[], snipers: Sniper[]): string | null {
+  const buyReport = reports
+    .filter((report) => report.action === 'BUY')
+    .sort((a, b) => (Number(b.confidence) || 0) - (Number(a.confidence) || 0))[0];
+  const reportTicker = cleanTicker(buyReport?.ticker || null);
+  if (reportTicker) return reportTicker;
+
+  const sniperTicker = cleanTicker(snipers.find((sniper) => String(sniper.status || '').includes('待'))?.ticker || null);
+  if (sniperTicker) return sniperTicker;
+
+  return cleanTicker(reports[0]?.ticker || null);
 }
 
 function toYahooSymbol(ticker: string): string {
@@ -910,6 +914,51 @@ function cacheAgeSeconds(payload: FusionPayload | null): number {
   return Math.max(0, Math.round((Date.now() - generatedAt) / 1000));
 }
 
+function buildCachedReplayPayload(payload: FusionPayload, reason: string): FusionPayload {
+  const { tradableReports } = normalizeBattleReports(payload.reports || []);
+  const fusionStocks = (payload.fusionStocks || []).filter((stock) =>
+    isTradableTicker(stock.ticker) &&
+    !stock.source.some((source) => /交易紀錄|持倉|持股|自選|watchlist|position/i.test(source))
+  );
+  const hasUsableCandidates = tradableReports.length > 0 || fusionStocks.length > 0;
+  const staleWarnings = (payload.core.warnings || []).filter((warning) =>
+    !/position|持倉|持股|自選|watchlist|fusion_no_non_etf_position_focus/i.test(warning)
+  );
+  const sourceHealth: SourceHealth[] = [
+    {
+      id: 'fusion_cache_replay',
+      label: 'Fusion 快照回放',
+      status: hasUsableCandidates ? 'online' : 'degraded',
+      rows: fusionStocks.length,
+      latencyMs: 0,
+    },
+    ...(payload.core.sourceHealth || []).filter((source) => source.id !== 'n8n_positions'),
+  ];
+
+  return {
+    ...payload,
+    reports: tradableReports,
+    positions: [],
+    fusionStocks,
+    core: {
+      ...payload.core,
+      status: hasUsableCandidates ? 'ok' : 'degraded',
+      healthScore: hasUsableCandidates ? Math.max(payload.core.healthScore || 0, 72) : Math.min(payload.core.healthScore || 0, 65),
+      cache: {
+        mode: 'stale-replay',
+        restoredFromCache: true,
+        ageSeconds: cacheAgeSeconds(payload),
+      },
+      sourceHealth,
+      n8n: {
+        ...payload.core.n8n,
+        positions: false,
+      },
+      warnings: hasUsableCandidates ? [reason] : Array.from(new Set([...staleWarnings, reason])),
+    },
+  };
+}
+
 function daysBetweenDates(previousDate: string, currentDate: string): number {
   const prev = Date.parse(`${previousDate}T00:00:00Z`);
   const curr = Date.parse(`${currentDate}T00:00:00Z`);
@@ -1023,30 +1072,50 @@ export async function GET(request: NextRequest) {
   const strategy = searchParams.get('strategy') || 'buy_red_tail';
   const period = searchParams.get('period') || '日';
   const requestedTicker = cleanTicker(searchParams.get('ticker'));
+  const cacheOnly = searchParams.get('mode') === 'cache';
   const replayTest = searchParams.get('replayTest') === '1' && canRunReplayTest(request);
 
-  const [reportsResult, positionsResult, snipersResult] = replayTest
+  if (cacheOnly) {
+    const cachedPayload = await readCachedPayload();
+    if (cachedPayload) {
+      return NextResponse.json(buildCachedReplayPayload(cachedPayload, 'fusion_cache_fast_path'));
+    }
+
+    return NextResponse.json(
+      {
+        error: 'fusion_cache_miss',
+        core: {
+          status: 'degraded',
+          cache: { mode: 'stale-replay', restoredFromCache: false, ageSeconds: 0 },
+          warnings: ['fusion_cache_miss'],
+        },
+      },
+      { status: 404 }
+    );
+  }
+
+  const [reportsResult, snipersResult] = replayTest
     ? [
         { data: { reports: [] }, ok: false, latencyMs: 0, error: 'fusion_replay_test_battle_reports' },
-        { data: { positions: [] }, ok: false, latencyMs: 0, error: 'fusion_replay_test_positions' },
         { data: { snipers: [] }, ok: false, latencyMs: 0, error: 'fusion_replay_test_snipers' },
       ]
     : await Promise.all([
         fetchN8nType<{ reports?: BattleReport[] }>('battle_reports', { reports: [] }),
-        fetchN8nType<{ positions?: Position[] }>('positions', { positions: [] }),
         fetchN8nType<{ snipers?: Sniper[] }>('snipers', { snipers: [] }),
       ]);
 
-  const reports = Array.isArray(reportsResult.data.reports) ? reportsResult.data.reports : [];
-  const positions = Array.isArray(positionsResult.data.positions) ? sortPositionsByTypeThenTicker(positionsResult.data.positions) : [];
-  const snipers = Array.isArray(snipersResult.data.snipers) ? snipersResult.data.snipers : [];
+  const rawReports = Array.isArray(reportsResult.data.reports) ? reportsResult.data.reports : [];
+  const { tradableReports: reports, nonTradableCount } = normalizeBattleReports(rawReports);
+  const positions: Position[] = [];
+  const rawSnipers = Array.isArray(snipersResult.data.snipers) ? snipersResult.data.snipers : [];
+  const snipers = normalizeSnipers(rawSnipers);
   const generatedAt = new Date().toISOString();
   const syntheticFusionEnabled = process.env.SKYNET_ALLOW_SYNTHETIC_FUSION === '1';
-  const focusTicker = requestedTicker ?? pickFocusTickerFromPositions(positions);
+  const focusTicker = requestedTicker ?? pickFocusTickerFromSignals(reports, snipers);
   const noFocusTickerResult = {
     ok: false,
     latencyMs: 0,
-    error: positionsResult.ok ? 'fusion_no_non_etf_position_focus' : 'fusion_no_focus_ticker_n8n_degraded',
+    error: 'fusion_no_candidate_focus',
   };
   const [quoteResult, klineResult] = replayTest || !focusTicker
     ? [
@@ -1076,7 +1145,7 @@ export async function GET(request: NextRequest) {
     // 沒有真實日K時，不再用合成候選充數。
     // 讓上游可以清楚看見資料缺口，而不是把樣本當盤面。
   }
-  const baseFusionStocks = buildFusionStocks({ reports, positions, snipers, liaoCandidates });
+  const baseFusionStocks = buildFusionStocks({ reports, positions: [], snipers, liaoCandidates });
   if (realCandidate) {
     for (const stock of baseFusionStocks) {
       if (stock.ticker !== focusTicker) continue;
@@ -1125,11 +1194,11 @@ export async function GET(request: NextRequest) {
       latencyMs: reportsResult.latencyMs,
     },
     {
-      id: 'n8n_positions',
-      label: '持倉來源',
-      status: positionsResult.ok ? 'online' : 'degraded',
-      rows: positions.length,
-      latencyMs: positionsResult.latencyMs,
+      id: 'n8n_report_text_filter',
+      label: '非股票戰報過濾',
+      status: 'online',
+      rows: nonTradableCount,
+      latencyMs: 0,
     },
     {
       id: 'n8n_snipers',
@@ -1169,43 +1238,34 @@ export async function GET(request: NextRequest) {
   ];
   const onlineSources = sourceHealth.filter((source) => source.status === 'online').length;
   const healthScore = Math.round((onlineSources / sourceHealth.length) * 100);
-  const warnings = [
+  const warnings = Array.from(new Set([
     reportsResult.error,
-    positionsResult.error,
-    snipersResult.error,
-    quoteResult.error,
-    klineResult.error,
-    !realCandidate && !syntheticFusionEnabled ? 'embedded_liao_synthetic_disabled' : null,
+    rawReports.length > 0 && reports.length === 0 ? 'battle_reports_no_tradable_candidates' : null,
+    rawSnipers.length > 0 && snipers.length === 0 ? 'snipers_no_tradable_candidates' : null,
+    reports.length === 0 ? snipersResult.error : null,
+    reports.length === 0 && !realCandidate ? quoteResult.error : null,
+    reports.length === 0 && !realCandidate ? klineResult.error : null,
     !focusTicker ? noFocusTickerResult.error : null,
-  ].filter((warning): warning is string => Boolean(warning));
+  ].filter((warning): warning is string => Boolean(warning))));
   const cachedPayload = await readCachedPayload();
   const shouldReplayCache =
     reports.length === 0 &&
-    positions.length === 0 &&
     snipers.length === 0 &&
     warnings.length > 0 &&
     !quote &&
     cachedPayload !== null;
 
   if (shouldReplayCache) {
-    return NextResponse.json({
-      ...cachedPayload,
-      core: {
-        ...cachedPayload.core,
-        status: 'degraded',
-        healthScore,
-        cache: {
-          mode: 'stale-replay',
-          restoredFromCache: true,
-          ageSeconds: cacheAgeSeconds(cachedPayload),
-        },
-        sourceHealth,
-        warnings: [...warnings, 'fusion_cache_replay_active'],
-      },
-    } satisfies FusionPayload);
+    const replayPayload = buildCachedReplayPayload(cachedPayload, 'fusion_cache_replay_active');
+    if (replayPayload.reports.length === 0 && replayPayload.fusionStocks.length === 0) {
+      replayPayload.core.healthScore = healthScore;
+      replayPayload.core.sourceHealth = sourceHealth;
+      replayPayload.core.warnings = Array.from(new Set([...warnings, 'fusion_cache_replay_active']));
+    }
+    return NextResponse.json(replayPayload);
   }
 
-  const keyN8nOnline = reportsResult.ok || positionsResult.ok || snipersResult.ok;
+  const keyN8nOnline = reportsResult.ok || snipersResult.ok;
   const payload: FusionPayload = {
     date: generatedAt.slice(0, 10),
     generatedAt,
@@ -1222,7 +1282,7 @@ export async function GET(request: NextRequest) {
       sourceHealth,
       n8n: {
         battle_reports: reportsResult.ok,
-        positions: positionsResult.ok,
+        positions: false,
         snipers: snipersResult.ok,
       },
       warnings,

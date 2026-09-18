@@ -8,6 +8,10 @@ export type BattleReport = {
   stopLoss?: string;
   strategyType?: string;
   reason?: string;
+  fairValue?: number | string;
+  fairValueConfidence?: string;
+  fairValueModelCount?: number | string;
+  fairValueSource?: string;
 };
 
 export type Position = {
@@ -77,6 +81,14 @@ export type FusionStock = {
   changePct?: number;
   chiefNet?: number;
   price?: number | string;
+  fairValue?: number | string;
+  fairValueUpsidePct?: number;
+  fairValueDistancePct?: number;
+  fairValueSignal?: 'UNAVAILABLE' | 'UNDERVALUED' | 'SLIGHT_UNDERVALUE' | 'NEAR_FAIR' | 'SLIGHT_OVERVALUE' | 'OVERVALUED';
+  fairValueConfidence?: 'UNKNOWN' | 'LOW' | 'MEDIUM' | 'HIGH';
+  fairValueNote?: string;
+  fairValueModelCount?: number;
+  fairValueSource?: string;
   targetPrice?: number | string;
   targetBasis?: string;
   stopLoss?: number | string;
@@ -84,6 +96,11 @@ export type FusionStock = {
   status?: string;
   dataQuality: number;
   tradable?: boolean;
+  calibratedConfidence?: number;
+  executionScore?: number;
+  riskLevel?: 'low' | 'medium' | 'high';
+  decisionLabel?: '可執行' | '觀察等觸發' | '防守優先';
+  decisionNote?: string;
   riskReward?: number;
   qualityWarnings?: string[];
   tracking?: {
@@ -324,6 +341,14 @@ function toNumber(value: unknown): number | null {
   return Number.isFinite(num) && num > 0 ? num : null;
 }
 
+function isTradableTaiwanTicker(value: unknown): boolean {
+  return /^\d{4,6}[A-Za-z]?$/.test(String(value || '').trim());
+}
+
+function isDecisionAction(value: unknown): value is 'BUY' | 'WAIT' | 'SELL' {
+  return value === 'BUY' || value === 'WAIT' || value === 'SELL';
+}
+
 function addPct(price: number, pct: number): number {
   return round(price * (1 + pct / 100));
 }
@@ -335,6 +360,178 @@ function calculateTargetPct(stock: FusionStock): number {
   const volumeBoost = stock.volumeRatio !== undefined ? Math.max(-0.7, Math.min(1.1, (stock.volumeRatio - 1) * 1.2)) : 0;
   const trendBoost = stock.changePct !== undefined ? Math.max(-0.8, Math.min(0.9, stock.changePct * 0.15)) : 0;
   return Math.max(stock.skynetAction === 'SELL' ? -8 : 1.2, Math.min(8, base + confidenceBoost + liaoBoost + volumeBoost + trendBoost));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function fairValueConfidenceFor(value: unknown, modelCount = 0): NonNullable<FusionStock['fairValueConfidence']> {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'high' || raw === '高' || raw === '高信心') return 'HIGH';
+  if (raw === 'medium' || raw === 'mid' || raw === '中' || raw === '中等') return 'MEDIUM';
+  if (raw === 'low' || raw === '低' || raw === '低信心') return 'LOW';
+  if (modelCount >= 10) return 'MEDIUM';
+  if (modelCount >= 5) return 'LOW';
+  return 'UNKNOWN';
+}
+
+function evaluateFairValueForStock(stock: FusionStock, price: number | null) {
+  const fairValue = toNumber(stock.fairValue);
+  const modelCount = toNumber(stock.fairValueModelCount) ?? 0;
+  const confidence = fairValueConfidenceFor(stock.fairValueConfidence, modelCount);
+  const weakEvidence = confidence === 'UNKNOWN' || confidence === 'LOW' || (modelCount > 0 && modelCount < 5);
+
+  if (!price || !fairValue) {
+    return {
+      available: false,
+      signal: 'UNAVAILABLE' as const,
+      confidence,
+      modelCount,
+      scoreDelta: 0,
+      risk: 'UNKNOWN' as const,
+      warnings: ['fair_value_unavailable'],
+      note: '公允值資料不足，不能用估值支撐買賣結論。',
+    };
+  }
+
+  const upsidePct = round(((fairValue - price) / price) * 100);
+  const distancePct = round(((price - fairValue) / fairValue) * 100);
+  const warnings: string[] = [];
+  if (weakEvidence) warnings.push('fair_value_low_confidence');
+
+  if (upsidePct >= 20) {
+    return {
+      available: true,
+      fairValue,
+      upsidePct,
+      distancePct,
+      signal: 'UNDERVALUED' as const,
+      confidence,
+      modelCount,
+      scoreDelta: weakEvidence ? 4 : 8,
+      risk: weakEvidence ? 'medium' as const : 'low' as const,
+      warnings,
+      note: '公允值有安全邊際，但仍需技術與籌碼確認。',
+    };
+  }
+
+  if (upsidePct >= 8) {
+    return {
+      available: true,
+      fairValue,
+      upsidePct,
+      distancePct,
+      signal: 'SLIGHT_UNDERVALUE' as const,
+      confidence,
+      modelCount,
+      scoreDelta: weakEvidence ? 2 : 4,
+      risk: 'medium' as const,
+      warnings,
+      note: '現價略低於公允值，等待進場觸發。',
+    };
+  }
+
+  if (upsidePct <= -25) {
+    return {
+      available: true,
+      fairValue,
+      upsidePct,
+      distancePct,
+      signal: 'OVERVALUED' as const,
+      confidence,
+      modelCount,
+      scoreDelta: weakEvidence ? -6 : -14,
+      risk: 'high' as const,
+      warnings: [...warnings, 'fair_value_overvalued'],
+      note: '現價明顯高於公允值，正式 BUY 應降權。',
+    };
+  }
+
+  if (upsidePct <= -10) {
+    return {
+      available: true,
+      fairValue,
+      upsidePct,
+      distancePct,
+      signal: 'SLIGHT_OVERVALUE' as const,
+      confidence,
+      modelCount,
+      scoreDelta: weakEvidence ? -3 : -7,
+      risk: 'medium' as const,
+      warnings: [...warnings, 'fair_value_premium'],
+      note: '現價高於公允值，追價風險升高。',
+    };
+  }
+
+  return {
+    available: true,
+    fairValue,
+    upsidePct,
+    distancePct,
+    signal: 'NEAR_FAIR' as const,
+    confidence,
+    modelCount,
+    scoreDelta: 0,
+    risk: 'medium' as const,
+    warnings,
+    note: '現價接近公允值，估值不支持追價，也不支持恐慌砍倉。',
+  };
+}
+
+function calibratedConfidenceFor(stock: FusionStock, dataQuality: number, warnings: string[]): number {
+  const base = clamp(stock.confidence ?? (stock.skynetAction === 'BUY' ? 58 : stock.skynetAction === 'SELL' ? 54 : 48), 0, 100);
+  const sourceBoost = Math.min(10, Math.max(0, stock.source.length - 1) * 5);
+  const technicalBoost = stock.liaoPoints !== undefined
+    ? stock.liaoPoints >= 18 ? 8 : stock.liaoPoints >= 11 ? 5 : 1
+    : 0;
+  const volumeBoost = stock.volumeRatio !== undefined ? clamp((stock.volumeRatio - 1) * 8, -5, 8) : -2;
+  const qualityAdjustment = clamp((dataQuality - 60) * 0.22, -12, 9);
+  const warningPenalty = warnings.length * 6;
+  const actionPenalty = stock.skynetAction === 'WAIT' ? 10 : stock.skynetAction === 'SELL' ? 6 : 0;
+  return Math.round(clamp(base + sourceBoost + technicalBoost + volumeBoost + qualityAdjustment - warningPenalty - actionPenalty, 5, 92));
+}
+
+function executionScoreFor(stock: FusionStock, dataQuality: number, calibratedConfidence: number, riskReward?: number, fairValueScoreDelta = 0): number {
+  const actionBase = stock.skynetAction === 'BUY' ? 28 : stock.skynetAction === 'SELL' ? 14 : 8;
+  const sourceScore = Math.min(18, stock.source.length * 6);
+  const technicalScore = stock.liaoPoints !== undefined
+    ? stock.liaoPoints >= 18 ? 18 : stock.liaoPoints >= 11 ? 12 : 5
+    : 0;
+  const volumeScore = stock.volumeRatio !== undefined ? clamp((stock.volumeRatio - 0.8) * 12, -5, 12) : -3;
+  const riskRewardScore = riskReward !== undefined ? clamp((riskReward - 1) * 12, -8, 16) : -8;
+  const qualityScore = clamp((dataQuality - 45) * 0.45, -12, 18);
+  const confidenceScore = clamp((calibratedConfidence - 50) * 0.35, -10, 14);
+  return Math.round(clamp(actionBase + sourceScore + technicalScore + volumeScore + riskRewardScore + qualityScore + confidenceScore + fairValueScoreDelta, 0, 100));
+}
+
+function riskLevelFor(stock: FusionStock, dataQuality: number, riskReward?: number, warnings: string[] = [], fairValueRisk?: 'UNKNOWN' | 'low' | 'medium' | 'high'): NonNullable<FusionStock['riskLevel']> {
+  if (fairValueRisk === 'high' && stock.skynetAction === 'BUY') return 'high';
+  if (stock.skynetAction === 'SELL' || dataQuality < 50 || warnings.length >= 2) return 'high';
+  if (riskReward !== undefined && riskReward < 1.2) return 'high';
+  if (dataQuality >= 72 && stock.source.length >= 2 && (riskReward ?? 0) >= 1.6 && warnings.length === 0) return 'low';
+  return 'medium';
+}
+
+function decisionLabelFor(stock: FusionStock, executionScore: number, riskLevel: NonNullable<FusionStock['riskLevel']>): NonNullable<FusionStock['decisionLabel']> {
+  if (stock.skynetAction === 'SELL') return '防守優先';
+  if (stock.qualityWarnings?.includes('fair_value_overvalued')) return '防守優先';
+  if (stock.qualityWarnings?.includes('fair_value_premium')) return '觀察等觸發';
+  if (riskLevel === 'high') return stock.skynetAction === 'BUY' ? '防守優先' : '觀察等觸發';
+  if (stock.skynetAction === 'BUY' && executionScore >= 68 && stock.tradable) return '可執行';
+  return '觀察等觸發';
+}
+
+function decisionNoteFor(stock: FusionStock, riskLevel: NonNullable<FusionStock['riskLevel']>, warnings: string[]): string {
+  if (stock.skynetAction === 'SELL') return '撤退或降曝險訊號優先，不做進攻解讀。';
+  if (warnings.includes('fair_value_overvalued')) return '公允值顯示明顯溢價，暫不把動能訊號放大成可執行 BUY。';
+  if (warnings.includes('fair_value_premium')) return '現價高於公允值，先不追，等待回落或基本面上修。';
+  if (warnings.includes('single_source_signal')) return '只有單一來源，不足以直接放大成高勝率進場。';
+  if (warnings.includes('missing_technical_confirm')) return '缺少量價或技術確認，需等待盤中觸發。';
+  if (warnings.includes('low_data_quality')) return '資料品質不足，信心已自動降權。';
+  if (riskLevel === 'high') return '風險報酬或資料條件不足，先控風險。';
+  if (stock.skynetAction === 'BUY' && stock.tradable) return '來源、技術與風控條件較完整，仍需人工確認觸發價。';
+  return '目前適合追蹤，不宜把觀察訊號包裝成進場。';
 }
 
 function enrichFusionStock(stock: FusionStock): FusionStock {
@@ -364,6 +561,14 @@ function enrichFusionStock(stock: FusionStock): FusionStock {
     warnings.push('high_price_without_cross_check');
   }
 
+  const fairValue = evaluateFairValueForStock(stock, price);
+  for (const warning of fairValue.warnings) {
+    if (!warnings.includes(warning) && warning !== 'fair_value_unavailable') warnings.push(warning);
+  }
+  if (stock.skynetAction === 'BUY' && fairValue.signal === 'OVERVALUED') fusionScore *= 0.72;
+  if (stock.skynetAction === 'BUY' && fairValue.signal === 'SLIGHT_OVERVALUE') fusionScore *= 0.86;
+  if (fairValue.signal === 'UNDERVALUED' && hasTechnical) fusionScore += fairValue.scoreDelta;
+
   const targetPct = price ? calculateTargetPct(stock) : 0;
   const targetPrice = price ? addPct(price, targetPct) : stock.targetPrice;
   const fallbackStop = price
@@ -375,18 +580,37 @@ function enrichFusionStock(stock: FusionStock): FusionStock {
     : undefined;
 
   const tradable = stock.skynetAction === 'BUY'
-    ? dataQuality >= 55 && (hasCrossSource || hasTechnical) && price !== null
+    ? dataQuality >= 55 && (hasCrossSource || hasTechnical) && price !== null && fairValue.signal !== 'OVERVALUED'
     : dataQuality >= 45;
+  const normalizedDataQuality = Math.max(0, Math.min(100, Math.round(dataQuality)));
+  const calibratedConfidence = calibratedConfidenceFor(stock, normalizedDataQuality, warnings);
+  const executionScore = executionScoreFor(stock, normalizedDataQuality, calibratedConfidence, riskReward, fairValue.scoreDelta);
+  const riskLevel = riskLevelFor(stock, normalizedDataQuality, riskReward, warnings, fairValue.risk);
+  const stockWithTradable = { ...stock, tradable, qualityWarnings: warnings };
+  const decisionLabel = decisionLabelFor(stockWithTradable, executionScore, riskLevel);
 
   return {
     ...stock,
-    dataQuality: Math.max(0, Math.min(100, Math.round(dataQuality))),
+    dataQuality: normalizedDataQuality,
     fusionScore: round(Math.max(-20, fusionScore), 2),
+    fairValue: fairValue.available ? fairValue.fairValue : stock.fairValue,
+    fairValueUpsidePct: fairValue.available ? fairValue.upsidePct : undefined,
+    fairValueDistancePct: fairValue.available ? fairValue.distancePct : undefined,
+    fairValueSignal: fairValue.signal,
+    fairValueConfidence: fairValue.confidence,
+    fairValueNote: fairValue.note,
+    fairValueModelCount: fairValue.modelCount || undefined,
+    fairValueSource: stock.fairValueSource,
     targetPrice,
     targetBasis: price ? `品質${Math.round(dataQuality)}・來源${stock.source.length}・目標${round(targetPct, 2)}%` : undefined,
     stopLoss: resolvedStop,
     riskReward: riskReward !== undefined ? round(riskReward, 2) : undefined,
     tradable,
+    calibratedConfidence,
+    executionScore,
+    riskLevel,
+    decisionLabel,
+    decisionNote: decisionNoteFor(stock, riskLevel, warnings),
     qualityWarnings: warnings,
   };
 }
@@ -401,7 +625,7 @@ export function buildFusionStocks(input: {
 
   for (const report of input.reports) {
     const ticker = String(report.ticker || '').trim();
-    if (!ticker) continue;
+    if (!isTradableTaiwanTicker(ticker) || !isDecisionAction(report.action)) continue;
     map.set(ticker, {
       ticker,
       name: report.name || ticker,
@@ -410,6 +634,10 @@ export function buildFusionStocks(input: {
       skynetAction: report.action,
       confidence: report.confidence,
       price: report.price,
+      fairValue: report.fairValue,
+      fairValueConfidence: fairValueConfidenceFor(report.fairValueConfidence, toNumber(report.fairValueModelCount) ?? 0),
+      fairValueModelCount: toNumber(report.fairValueModelCount) ?? undefined,
+      fairValueSource: report.fairValueSource,
       stopLoss: report.stopLoss,
       targetPrice: report.target,
       dataQuality: 34,
@@ -419,7 +647,7 @@ export function buildFusionStocks(input: {
 
   for (const sniper of input.snipers) {
     const ticker = String(sniper.ticker || '').trim();
-    if (!ticker) continue;
+    if (!isTradableTaiwanTicker(ticker)) continue;
     const prev = map.get(ticker);
     map.set(ticker, {
       ticker,
@@ -429,6 +657,10 @@ export function buildFusionStocks(input: {
       skynetAction: prev?.skynetAction,
       confidence: prev?.confidence,
       price: prev?.price,
+      fairValue: prev?.fairValue,
+      fairValueConfidence: prev?.fairValueConfidence,
+      fairValueModelCount: prev?.fairValueModelCount,
+      fairValueSource: prev?.fairValueSource,
       triggerPrice: sniper.triggerPrice,
       stopLoss: prev?.stopLoss || sniper.stopPrice,
       status: sniper.status,
@@ -437,30 +669,11 @@ export function buildFusionStocks(input: {
     });
   }
 
-  for (const position of input.positions) {
-    const ticker = String(position.ticker || '').trim();
-    if (!ticker) continue;
-    if (isEtfLikePosition(position)) continue;
-    const prev = map.get(ticker);
-    map.set(ticker, {
-      ticker,
-      name: prev?.name || position.name || ticker,
-      source: Array.from(new Set([...(prev?.source || []), '持倉'])),
-      signalTags: Array.from(new Set([...(prev?.signalTags || []), '持倉風控'])),
-      skynetAction: prev?.skynetAction,
-      confidence: prev?.confidence,
-      price: prev?.price || position.currentPrice || position.avgCost,
-      triggerPrice: prev?.triggerPrice,
-      stopLoss: prev?.stopLoss || position.stopPrice,
-      status: prev?.status,
-      dataQuality: Math.min(100, (prev?.dataQuality || 0) + 12),
-      fusionScore: (prev?.fusionScore || 0) + 10,
-    });
-  }
+  // 持倉/自選/交易紀錄已從主候選排行移除：它們只能做風險提示，不能創建或加權飆股候選。
 
   for (const candidate of input.liaoCandidates) {
     const ticker = String(candidate.symbol || '').trim();
-    if (!ticker) continue;
+    if (!isTradableTaiwanTicker(ticker)) continue;
     const prev = map.get(ticker);
     map.set(ticker, {
       ticker,
@@ -475,6 +688,10 @@ export function buildFusionStocks(input: {
       skynetAction: prev?.skynetAction,
       confidence: prev?.confidence,
       price: prev?.price || candidate.price,
+      fairValue: prev?.fairValue,
+      fairValueConfidence: prev?.fairValueConfidence,
+      fairValueModelCount: prev?.fairValueModelCount,
+      fairValueSource: prev?.fairValueSource,
       triggerPrice: prev?.triggerPrice,
       liaoPoints: candidate.points,
       liaoDiff: candidate.diff,
@@ -490,6 +707,6 @@ export function buildFusionStocks(input: {
 
   return Array.from(map.values())
     .map(enrichFusionStock)
-    .sort((a, b) => b.fusionScore - a.fusionScore)
+    .sort((a, b) => (b.executionScore ?? 0) - (a.executionScore ?? 0) || b.fusionScore - a.fusionScore)
     .slice(0, 24);
 }

@@ -1,6 +1,6 @@
 /**
  * n8n Webhook 代理
- * GET  /api/skynet/n8n-proxy?type=alpha|positions|p1_triggers|snipers|battle_reports|personal_performance|daily_performance
+ * GET  /api/skynet/n8n-proxy?type=alpha|positions|p1_triggers|snipers|battle_reports|personal_performance|daily_performance|decision_reviews
  * POST /api/skynet/n8n-proxy  → 轉發 body 至 n8n webhook
  *
  * 統一錯誤處理：
@@ -9,7 +9,6 @@
  *   其他 → HTTP 500
  */
 
-export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { guardMutation, sanitizeUpstreamError } from '@/lib/apiGuard';
@@ -26,6 +25,7 @@ const VALID_GET_TYPES = new Set([
   'battle_reports',
   'personal_performance',
   'daily_performance',
+  'decision_reviews',
 ]);
 
 export async function GET(req: NextRequest) {
@@ -110,9 +110,6 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const guard = guardMutation(req, { endpoint: 'skynet:n8n-proxy', maxRequests: 18 });
-  if (guard) return guard;
-
   let body: unknown;
   try {
     body = await req.json();
@@ -130,6 +127,13 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
+
+  const guard = guardMutation(req, {
+    endpoint: `skynet:n8n-proxy:${actionType}`,
+    maxRequests: actionType === 'review_notification' ? 30 : 18,
+    allowSameOrigin: actionType === 'review_notification',
+  });
+  if (guard) return guard;
 
   async function postUpstream() {
     const controller = new AbortController();

@@ -11,7 +11,6 @@
  * - 統一錯誤處理
  */
 
-export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
 

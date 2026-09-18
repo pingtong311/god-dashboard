@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { guardMutation } from '@/lib/apiGuard';
 
-export const runtime = 'edge';
 
 export async function POST(request: Request) {
   const guard = guardMutation(request, { endpoint: 'skynet:day-trade-webhook', maxRequests: 60 });

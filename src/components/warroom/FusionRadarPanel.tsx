@@ -15,7 +15,6 @@ import type {
   ExtremeResponse,
   FusionStock,
   LiaoCandidate,
-  Position,
   Sniper,
 } from '@/lib/fusionCore';
 
@@ -52,7 +51,6 @@ type FusionResponse = {
     warnings?: string[];
   };
   reports?: BattleReport[];
-  positions?: Position[];
   snipers?: Sniper[];
   liaoCandidates?: LiaoCandidate[];
   fusionStocks?: FusionStock[];
@@ -87,6 +85,13 @@ function safeFixed(value: unknown, digits: number) {
 function formatSourceLabel(label: string) {
   const trimmed = label.replace(/^n8n\s*/i, '').trim();
   return trimmed || '資料來源';
+}
+
+function formatRiskLevel(level?: FusionStock['riskLevel']) {
+  if (level === 'low') return '低';
+  if (level === 'medium') return '中';
+  if (level === 'high') return '高';
+  return '--';
 }
 
 export default function FusionRadarPanel({
@@ -134,14 +139,14 @@ export default function FusionRadarPanel({
     || null;
   const topFusion = fusionStocks[0] || null;
   const resonanceCount = fusionStocks.filter((stock) => stock.source.length >= 2).length;
-  const buyCount = data?.reports?.filter((report) => report.action === 'BUY').length || 0;
+  const executableCount = fusionStocks.filter((stock) => stock.decisionLabel === '可執行').length;
   const pendingSnipers = data?.snipers?.filter((sniper) => sniper.status === '待觸發').length || 0;
   const recentSeries = (data?.intradaySeries || []).slice(-4).reverse();
 
   const metrics = [
-    { label: '融合候選', value: fusionStocks.length },
+    { label: '天網候選', value: fusionStocks.length },
+    { label: '可執行', value: executableCount },
     { label: '雙重共振', value: resonanceCount },
-    { label: 'BUY 戰報', value: buyCount },
     { label: '待觸發', value: pendingSnipers },
     { label: '健康度', value: core?.healthScore != null ? `${core.healthScore}%` : '--' },
     { label: '快取', value: core?.cache?.mode === 'stale-replay' ? `${core.cache.ageSeconds || 0}s` : 'LIVE' },
@@ -152,7 +157,7 @@ export default function FusionRadarPanel({
       <div className="panel-subhead">
         <div>
           <p>融合雷達</p>
-          <h3>廖兄戰法 x SkyNet 決策融合</h3>
+          <h3>SkyNet 飆股候選雷達</h3>
         </div>
         <div className="fusion-head-actions">
           <span className={`fusion-status ${core?.status === 'ok' ? 'good' : core?.status === 'degraded' ? 'warn' : 'muted'}`}>
@@ -171,8 +176,8 @@ export default function FusionRadarPanel({
 
       <p className="fusion-summary">
         {marketLabel === '台股'
-          ? '把戰報、持倉、狙擊與廖兄 21 點候選合成同一張雷達圖。'
-          : '目前 Fusion Core 主要針對台股資料，其他市場以查詢工作台為主。'}
+          ? '只保留天網候選、狙擊觸發、真實量價與可執行風控；自選、持倉與戰報流水不進排行。'
+          : '目前候選雷達主攻台股飆股篩選，其他市場只保留查詢用途。'}
       </p>
 
       {loading && <div className="warroom-panel-loading">載入融合資料中...</div>}
@@ -209,7 +214,7 @@ export default function FusionRadarPanel({
                       <th>標的</th>
                       <th>來源</th>
                       <th>決策</th>
-                      <th>分數</th>
+                      <th>執行</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -230,7 +235,10 @@ export default function FusionRadarPanel({
                             {stock.skynetAction || 'WATCH'}
                           </span>
                         </td>
-                        <td>{formatNumber(stock.fusionScore, 1)}</td>
+                        <td>
+                          <strong>{stock.executionScore ?? '--'}</strong>
+                          <span>{stock.decisionLabel || '觀察等觸發'}</span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -244,12 +252,20 @@ export default function FusionRadarPanel({
                       <p>焦點資料卡</p>
                       <h3>{selected.ticker} / {selected.name}</h3>
                     </div>
-                    <span>{selected.source.length} sources</span>
+                    <span>{selected.source.length} signals</span>
                   </div>
                   <div className="fusion-dossier-grid">
                     <div>
                       <span>融合分數</span>
                       <strong>{formatNumber(selected.fusionScore, 1)}</strong>
+                    </div>
+                    <div>
+                      <span>可執行度</span>
+                      <strong>{selected.executionScore ?? '--'}/100</strong>
+                    </div>
+                    <div>
+                      <span>校準信心</span>
+                      <strong>{selected.calibratedConfidence ?? selected.confidence ?? '--'}%</strong>
                     </div>
                     <div>
                       <span>天網建議</span>
@@ -268,13 +284,25 @@ export default function FusionRadarPanel({
                       <strong>{selected.dataQuality != null ? `${selected.dataQuality}/100` : '--'}</strong>
                     </div>
                     <div>
+                      <span>風險等級</span>
+                      <strong className={`fusion-risk fusion-risk-${selected.riskLevel || 'unknown'}`}>{formatRiskLevel(selected.riskLevel)}</strong>
+                    </div>
+                    <div>
+                      <span>風報比</span>
+                      <strong>{selected.riskReward != null ? `${safeFixed(selected.riskReward, 2)}x` : '--'}</strong>
+                    </div>
+                    <div>
                       <span>防守 / 觸發</span>
                       <strong>{selected.triggerPrice || formatNumber(Number(selected.stopLoss), 2)}</strong>
                     </div>
                   </div>
+                  <p className="fusion-decision-note">{selected.decisionNote || '等待更多資料確認。'}</p>
                   <div className="fusion-tags">
-                    {selected.signalTags?.slice(0, 6).map((tag) => (
+                    {selected.signalTags?.slice(0, 5).map((tag) => (
                       <span key={tag}>{tag}</span>
+                    ))}
+                    {selected.qualityWarnings?.slice(0, 3).map((warning) => (
+                      <span key={warning} className="fusion-warning-tag">{warning}</span>
                     ))}
                   </div>
                 </div>
@@ -286,7 +314,7 @@ export default function FusionRadarPanel({
                 <div className="panel-subhead">
                   <div>
                     <p>來源健康</p>
-                    <h3>Fusion Core 供應鏈</h3>
+                    <h3>候選資料供應鏈</h3>
                   </div>
                   <span>{sourceHealth.length}</span>
                 </div>
@@ -339,7 +367,7 @@ export default function FusionRadarPanel({
                   {core?.warnings?.length
                     ? core.warnings[0]
                     : topFusion
-                      ? `目前最高融合分標的是 ${topFusion.ticker}，可以先把它帶去 AI 查詢或 K 線複核。`
+                      ? `目前最高分候選是 ${topFusion.ticker}，先看觸發價、防守價與資料品質。`
                       : '暫無可用融合候選，請先刷新或切回台股查驗。'}
                 </p>
                 <div className="fusion-capsule-actions">
@@ -352,7 +380,7 @@ export default function FusionRadarPanel({
 
           <div className="fusion-footnote">
             <ShieldCheck size={14} />
-            <span>此模組將廖兄戰法、Omni 戰報、持倉與狙擊訊號放在同一層，方便快速查驗與人工複核。</span>
+            <span>此模組只把可交易候選、觸發/防守、量價與資料品質放進主排行；持倉、自選與 REPORT_TEXT 已降級為非候選資料。</span>
           </div>
         </>
       )}

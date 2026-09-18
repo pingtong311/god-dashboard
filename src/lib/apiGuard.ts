@@ -4,6 +4,7 @@ type GuardOptions = {
   endpoint: string;
   windowMs?: number;
   maxRequests?: number;
+  allowSameOrigin?: boolean;
 };
 
 type RateBucket = {
@@ -14,7 +15,7 @@ type RateBucket = {
 const rateBuckets = new Map<string, RateBucket>();
 
 function requestHost(request: Request): string {
-  return request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
+  return request.headers.get('x-skynet-proxied-from') || request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
 }
 
 function requestIp(request: Request): string {
@@ -70,7 +71,7 @@ export function guardMutation(request: Request, options: GuardOptions): NextResp
     sameHostUrl(request.headers.get('origin'), host) ||
     sameHostUrl(request.headers.get('referer'), host);
 
-  if (sameOrigin && !configuredToken) {
+  if (sameOrigin && (!configuredToken || options.allowSameOrigin)) {
     return null;
   }
 

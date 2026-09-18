@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 
-export const runtime = 'edge';
 
 // 讀取 Google Sheets 的天網數據
 // 透過 n8n 天網-API 工作流取得資料（已有 webhook 端點）

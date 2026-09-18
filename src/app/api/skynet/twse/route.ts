@@ -8,12 +8,12 @@
  * 上櫃股票：otc_{代號}.tw
  */
 
-export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
 
-const TWSE_MIS_BASE = 'https://mis.twse.com.tw/stock/api/getStockInfo.asp';
+const TWSE_MIS_BASE = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp';
 const TWSE_OPENAPI_BASE = 'https://openapi.twse.com.tw/v1/exchangeReport';
+const TWSE_LIVE_PROXY_BASE = process.env.SKYNET_TWSE_LIVE_PROXY_BASE || 'https://skynet-dashboard-vert.vercel.app';
 
 export interface TWSEMISItem {
   symbol: string;       // 代號（去除 tse_/otc_ 前綴）
@@ -27,6 +27,8 @@ export interface TWSEMISItem {
   prevClose: number;    // y 欄位
   volume: number;       // v 欄位（張）
   timestamp: string;    // t 欄位
+  tradeDate?: string;   // d 欄位（YYYYMMDD）
+  source?: 'twse-mis-live' | 'twse-openapi-fallback';
 }
 
 export interface TWSEMISResponse {
@@ -36,13 +38,16 @@ export interface TWSEMISResponse {
 
 /**
  * 將 ticker 代號轉換為 TWSE MIS 格式
- * t99 → tse_t99.tw（加權指數）
+ * t99 → tse_t00.tw（外部保留 t99 別名；TWSE MIS 實際加權指數代號為 t00）
  * 0050 → tse_0050.tw（上市）
  * 上櫃股票需在 ticker 前加 otc: 前綴，例如 otc:6488
  */
 function toExCh(ticker: string): string {
   if (ticker.startsWith('otc:')) {
     return `otc_${ticker.slice(4)}.tw`;
+  }
+  if (ticker.toLowerCase() === 't99' || ticker.toLowerCase() === 't00') {
+    return 'tse_t00.tw';
   }
   return `tse_${ticker}.tw`;
 }
@@ -53,10 +58,32 @@ function parseNumber(val: string | undefined): number {
   return isNaN(n) ? 0 : n;
 }
 
+function parseFirstPrice(value: string | undefined): number {
+  if (!value) return 0;
+  const first = value.split('_').find(Boolean);
+  return parseNumber(first);
+}
+
+function parseLivePrice(item: Record<string, string>): number {
+  const tradedPrice = parseNumber(item.z);
+  if (tradedPrice > 0) return tradedPrice;
+  const previousTrade = parseNumber(item.pz);
+  if (previousTrade > 0) return previousTrade;
+  const bestBid = parseFirstPrice(item.b);
+  const bestAsk = parseFirstPrice(item.a);
+  if (bestBid > 0 && bestAsk > 0) return Number(((bestBid + bestAsk) / 2).toFixed(4));
+  return bestBid || bestAsk || 0;
+}
+
 function formatTwseOpenDate(value: string | undefined): string {
   if (!value || !/^\d{7}$/.test(value)) return '';
   const year = Number(value.slice(0, 3)) + 1911;
   return `${year}-${value.slice(3, 5)}-${value.slice(5, 7)}`;
+}
+
+function formatTwseTradeDate(value: string | undefined): string {
+  if (!value || !/^\d{8}$/.test(value)) return '';
+  return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
 }
 
 async function fetchJsonWithTimeout<T>(url: string, timeoutMs: number): Promise<T | null> {
@@ -110,6 +137,8 @@ async function fetchOpenApiFallback(tickers: string[]): Promise<TWSEMISResponse 
         prevClose,
         volume: 0,
         timestamp: formatTwseOpenDate(row['日期']),
+        tradeDate: formatTwseOpenDate(row['日期']),
+        source: 'twse-openapi-fallback',
       });
     }
   }
@@ -132,6 +161,8 @@ async function fetchOpenApiFallback(tickers: string[]): Promise<TWSEMISResponse 
         prevClose: price,
         volume: 0,
         timestamp: formatTwseOpenDate(row.Date),
+        tradeDate: formatTwseOpenDate(row.Date),
+        source: 'twse-openapi-fallback',
       });
     }
   }
@@ -143,8 +174,25 @@ async function fetchOpenApiFallback(tickers: string[]): Promise<TWSEMISResponse 
   };
 }
 
+async function fetchLiveProxyFallback(tickers: string[], requestHost: string): Promise<TWSEMISResponse | null> {
+  if (!TWSE_LIVE_PROXY_BASE) return null;
+  const proxy = new URL(TWSE_LIVE_PROXY_BASE);
+  if (proxy.host === requestHost) return null;
+  proxy.pathname = '/api/skynet/twse';
+  proxy.search = new URLSearchParams({
+    tickers: tickers.join(','),
+    _ts: String(Date.now()),
+  }).toString();
+
+  const data = await fetchJsonWithTimeout<TWSEMISResponse>(proxy.toString(), 8_000);
+  if (!data || !Array.isArray(data.items) || data.items.length === 0) return null;
+  const hasLiveItems = data.items.some((item) => item.source === 'twse-mis-live');
+  return hasLiveItems ? data : null;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
+  const requestHost = req.nextUrl.host;
   const tickersParam = searchParams.get('tickers');
 
   if (!tickersParam) {
@@ -157,7 +205,7 @@ export async function GET(req: NextRequest) {
   }
 
   const exCh = tickers.map(toExCh).join('|');
-  const url = `${TWSE_MIS_BASE}?ex_ch=${encodeURIComponent(exCh)}&json=1&delay=0`;
+  const url = `${TWSE_MIS_BASE}?ex_ch=${encodeURIComponent(exCh)}&json=1&delay=0&_=${Date.now()}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5_000);
@@ -166,20 +214,32 @@ export async function GET(req: NextRequest) {
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'Accept': 'application/json',
-        'Referer': 'https://mis.twse.com.tw/',
+        'Accept': 'application/json,text/javascript,*/*;q=0.01',
+        'Referer': 'https://mis.twse.com.tw/stock/index.jsp',
+        'User-Agent': 'Mozilla/5.0',
       },
       
     });
     clearTimeout(timer);
 
     if (!res.ok) {
+      const liveProxy = await fetchLiveProxyFallback(tickers, requestHost);
+      if (liveProxy) {
+        return NextResponse.json(liveProxy, {
+          status: 200,
+          headers: {
+            'Cache-Control': 'no-store, max-age=0',
+            'X-Skynet-Data-Source': 'twse-live-proxy',
+            'X-Skynet-Upstream-Status': String(res.status),
+          },
+        });
+      }
       const fallback = await fetchOpenApiFallback(tickers);
       if (fallback) {
         return NextResponse.json(fallback, {
           status: 200,
           headers: {
-            'Cache-Control': 'public, max-age=300, stale-while-revalidate=120',
+            'Cache-Control': 'no-store, max-age=0',
             'X-Skynet-Data-Source': 'twse-openapi-fallback',
             'X-Skynet-Upstream-Status': String(res.status),
           },
@@ -192,10 +252,11 @@ export async function GET(req: NextRequest) {
     // TWSE MIS 回應格式：{ msgArray: [...], queryTime: {...} }
     const msgArray: Record<string, string>[] = raw?.msgArray ?? [];
 
-    const items: TWSEMISItem[] = msgArray.map((item) => {
-      const symbol = (item.c || '').replace(/^(tse_|otc_)/, '').replace(/\.tw$/, '');
+    const items: TWSEMISItem[] = msgArray.map((item): TWSEMISItem => {
+      const rawSymbol = (item.c || '').replace(/^(tse_|otc_)/, '').replace(/\.tw$/, '');
+      const symbol = rawSymbol === 't00' ? 't99' : rawSymbol;
       const prevClose = parseNumber(item.y);
-      const price = parseNumber(item.z);
+      const price = parseLivePrice(item);
       const change = prevClose > 0 && price > 0 ? price - prevClose : 0;
       const changePercent = prevClose > 0 && price > 0 ? (change / prevClose) * 100 : 0;
 
@@ -211,8 +272,10 @@ export async function GET(req: NextRequest) {
         prevClose,
         volume: parseNumber(item.v),
         timestamp: item.t || '',
+        tradeDate: formatTwseTradeDate(item.d),
+        source: 'twse-mis-live' as const,
       };
-    });
+    }).filter((item) => item.symbol && item.price > 0);
 
     const response: TWSEMISResponse = {
       items,
@@ -222,17 +285,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(response, {
       status: 200,
       headers: {
-        'Cache-Control': 'public, max-age=25, stale-while-revalidate=10',
+        'Cache-Control': 'no-store, max-age=0',
+        'X-Skynet-Data-Source': 'twse-mis-live',
       },
     });
   } catch (err) {
     clearTimeout(timer);
+    const liveProxy = await fetchLiveProxyFallback(tickers, requestHost);
+    if (liveProxy) {
+      return NextResponse.json(liveProxy, {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, max-age=0',
+          'X-Skynet-Data-Source': 'twse-live-proxy',
+        },
+      });
+    }
     const fallback = await fetchOpenApiFallback(tickers);
     if (fallback) {
       return NextResponse.json(fallback, {
         status: 200,
         headers: {
-          'Cache-Control': 'public, max-age=300, stale-while-revalidate=120',
+          'Cache-Control': 'no-store, max-age=0',
           'X-Skynet-Data-Source': 'twse-openapi-fallback',
         },
       });

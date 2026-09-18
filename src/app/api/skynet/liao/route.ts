@@ -4,7 +4,6 @@
  * This route keeps the browser pointed at one SkyNet origin while allowing the
  * new combined war room to call the local/remote NovaCore FastAPI service.
  */
-export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
 

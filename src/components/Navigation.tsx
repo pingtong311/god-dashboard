@@ -12,7 +12,8 @@ export default function Navigation() {
     setMountedPath(pathname);
   }, [pathname]);
 
-  if (pathname === '/review') {
+  // /diary、/review、/chart、/ai 四頁改由底部功能列（AppTabBar）接手導覽，故不顯示頂部導覽。
+  if (pathname === '/review' || pathname === '/diary' || pathname === '/chart' || pathname === '/ai') {
     return null;
   }
 

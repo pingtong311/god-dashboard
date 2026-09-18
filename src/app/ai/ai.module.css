@@ -12,20 +12,21 @@
   /* ── 原版配色（整段替換即可切換主題）────────────────────────────── */
   --bs-bg: #0a1128;             /* 品牌深藍（頁面底色） */
   --bs-shell: #0b0f14;          /* 外殼底色（更深） */
-  --bs-gold: #c5a059;           /* 金色強調（按鈕／焦點） */
+  --bs-gold: var(--gold);           /* 金色強調（按鈕／焦點） */
   --bs-gold-soft: rgba(197, 160, 89, 0.16);
   --bs-gold-line: rgba(197, 160, 89, 0.42);
   --bs-border: #3a4a5e;         /* 邊框 */
-  --bs-text: #d7e0ea;           /* 主要文字 */
-  --bs-text-dim: #8b9aae;       /* 次要文字 */
+  --bs-text: var(--ink);           /* 主要文字 */
+  --bs-text-dim: var(--muted);       /* 次要文字 */
   --bs-ai-bubble: #101b36;      /* AI 氣泡（深藍系） */
-  --bs-error: #ff7b7b;          /* 錯誤提示 */
+  --bs-error: var(--up);          /* 錯誤提示 */
   /* ────────────────────────────────────────────────────────────────── */
 
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  min-height: calc(100vh - 64px);
+  /* 頂部導覽在 /ai 已隱藏（改由底部功能列接手），故不需再扣掉 64px。 */
+  min-height: 100vh;
   overflow-x: hidden;
   background:
     radial-gradient(circle at 50% -12%, rgba(197, 160, 89, 0.1), transparent 55%),
@@ -41,7 +42,8 @@
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
-  padding: 16px 14px 22px;
+  /* 底部內距須讓開固定式底部功能列（AppTabBar）+ iOS 安全區域 */
+  padding: 16px 14px calc(88px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -449,7 +451,8 @@
 
 @media (max-width: 420px) {
   .shell {
-    padding: 12px 10px 18px;
+    /* 行動版同樣讓開底部功能列 + iOS 安全區域 */
+    padding: 12px 10px calc(88px + env(safe-area-inset-bottom));
   }
 
   .topBar {
