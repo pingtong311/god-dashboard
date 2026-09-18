@@ -1,0 +1,241 @@
+/* ============================================================================
+ * 股市大佬 TradeBoss — 設計語彙（Design Tokens）
+ * ----------------------------------------------------------------------------
+ * 來源：https://blackstockai.com 公開 CSS（4 個 chunk，584,994 bytes）
+ *       抓取日：2026-09-17；抽取檔：extracted/blackstock-tokens.css
+ * 用途：複刻博主 App／網頁的「顏色、圓角、間距、字級、動效」之唯一權威基準。
+ * 說明：此檔由 globals.css 以 @import 全域載入；命名保持原樣以便逐項比對。
+ *
+ * 主題切換由 <html> 屬性驅動（＝App「設定」裡的選項）：
+ *   data-theme="dark|light"
+ *   data-density="comfortable|compact"
+ *   data-font-size="standard|large|xlarge|huge"
+ * ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+ * 1. 深色主題（App 主體；網站 :root 預設值）
+ * ------------------------------------------------------------------------- */
+:root {
+  /* 表面層級 */
+  --bg: #0a1128;          /* 主背景：深藍黑 */
+  --surface: #111a33;     /* 卡片面 */
+  --surface-2: #1c2541;   /* 次級面 */
+  --elevated: #232e52;    /* 浮起面 */
+
+  /* 文字 */
+  --ink: #f3efe6;         /* 主文字：暖白 */
+  --muted: #b7c0d4;       /* 次要文字：藍灰 */
+
+  /* 線條 */
+  --line: #3a3558;
+
+  /* 強調色：金 */
+  --accent: #c5a059;
+  --accent-soft: #c5a05929;
+  --gold: #c5a059;
+  --gold-soft: #c5a05929;
+  --gold-line: #c5a0598f;
+
+  /* 輔色 */
+  --violet: #8d7bb8;
+  --signal: #ff3131;
+
+  /* 漲跌（台股慣例：紅漲綠跌） */
+  --up: #ff4d5a;
+  --down: #2fd39a;
+
+  /* 極光背景光斑 */
+  --au-base: #0a1128;
+  --au-blob-1: #c5a059;
+  --au-blob-2: #1c2541;
+  --au-blob-3: #ff3131;
+  --au-blob-4: #8d7bb8;
+  --au-blob-5: #111a33;
+  --au-card: #111a33d1;
+  --au-border: #c5a0594d;
+  --au-accent-glow: #e8c57a;
+
+  /* 玻璃擬態 */
+  --blur-glass: 14px;
+  --blur-sm: 8px;
+  --blur-md: 12px;
+  --blur-xl: 24px;
+  --blur-3xl: 64px;
+  --shadow-glass: 0 12px 36px #0306106b;
+
+  /* 圓角 */
+  --radius-sm: .25rem;
+  --radius-md: .375rem;
+  --radius-lg: .5rem;
+  --radius-xl: .75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  --radius-panel: 1rem;
+  --radius-control: .7rem;
+
+  /* 頁首 */
+  --header-bg: #0a1128eb;
+  --header-line: #c5a05938;
+
+  /* 動效 */
+  --ease-premium: cubic-bezier(.22, 1, .36, 1);
+
+  /* 圖層 */
+  --z-aurora: -1;
+  --z-grain: 1;
+
+  /* 字型
+   * --font-noto / --font-tech 由 next/font 於 <html> 注入的
+   * --font-noto-src / --font-tech-src 帶入實際字族；若載入失敗則退回字串名稱。
+   * （next/font 的變數掛在 <html>，與本 :root 同元素，故可被 var() 解析。） */
+  --font-noto: var(--font-noto-src, "Noto Sans TC"), "Noto Sans TC Fallback", "Microsoft JhengHei", sans-serif;
+  --font-tech: var(--font-tech-src, "Rajdhani"), "Rajdhani Fallback", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --default-font-family: var(--font-noto), "Microsoft JhengHei", sans-serif;
+
+  /* 字級（Tailwind 尺度） */
+  --text-xs: .75rem;
+  --text-sm: .875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  --text-5xl: 3rem;
+
+  /* 字重 */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-black: 900;
+
+  /* 行高／字距 */
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-relaxed: 1.625;
+  --tracking-tight: -.025em;
+  --tracking-wide: .025em;
+  --tracking-wider: .05em;
+  --tracking-widest: .1em;
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. 淺色主題（文章／官網；html[data-theme=light]）
+ * ------------------------------------------------------------------------- */
+html[data-theme=light] {
+  --bg: #ece8e2;          /* 暖米白 */
+  --surface: #f6f3ee;
+  --surface-2: #ddd6cc;
+  --elevated: #fffdf9;
+
+  --ink: #171410;         /* 近黑 */
+  --muted: #5b544c;
+  --line: #c9bba6;
+
+  --accent: #8d6a22;      /* 暗金 */
+  --accent-soft: #8d6a221f;
+  --gold: #8d6a22;
+  --gold-soft: #8d6a221f;
+  --gold-line: #8d6a2261;
+
+  --violet: #5c4a86;
+  --signal: #d51d2a;
+
+  /* 淺色下仍為紅漲綠跌，但色值較深以維持對比 */
+  --up: #c9182c;
+  --down: #067a54;
+
+  --au-base: #ece8e2;
+  --au-blob-1: #e8c57a;
+  --au-blob-2: #d51d2a;
+  --au-blob-3: #c5a059;
+  --au-blob-4: #ddd6cc;
+  --au-blob-5: #f6f3ee;
+  --au-card: #ffffffd1;
+  --au-border: #785a2829;
+  --shadow-glass: 0 10px 24px #281c0c14;
+
+  --header-bg: #f6f3eeeb;
+  --header-line: #785a282e;
+}
+
+/* ---------------------------------------------------------------------------
+ * 3. 密度（html[data-density=...]）— App「設定」中的資訊密度切換
+ * ------------------------------------------------------------------------- */
+:root[data-density=compact] {
+  --spacing-row: 8px;
+  --spacing-card: 12px;
+  --min-height-row: 44px;
+}
+:root[data-density=comfortable] {
+  --spacing-row: 12px;
+  --spacing-card: 16px;
+  --min-height-row: 56px;
+}
+
+/* ---------------------------------------------------------------------------
+ * 4. 字級縮放（html[data-font-size=...]）— App「設定」中的字級切換
+ * ------------------------------------------------------------------------- */
+:root[data-font-size=standard] {
+  --font-size-base: 16px;
+  --font-size-sm: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+}
+:root[data-font-size=large] {
+  --font-size-base: 18px;
+  --font-size-sm: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 21px;
+}
+:root[data-font-size=xlarge] {
+  --font-size-base: 20px;
+  --font-size-sm: 18px;
+  --font-size-lg: 20px;
+  --font-size-xl: 24px;
+}
+:root[data-font-size=huge] {
+  --font-size-base: 22px;
+  --font-size-sm: 20px;
+  --font-size-lg: 23px;
+  --font-size-xl: 27px;
+}
+
+/* ---------------------------------------------------------------------------
+ * 5. 全域字型套用（正文 Noto Sans TC；數字／代號／指數／價格／漲跌 Rajdhani）
+ * ------------------------------------------------------------------------- */
+body {
+  font-family: var(--default-font-family);
+}
+
+/* 科技字（Rajdhani）：數字、代號、指數、價格、漲跌幅等。
+ * 新頁面可直接掛 .font-tech / .num；既有數值類別在此集中套用。 */
+.font-tech,
+.num,
+.ticker,
+.stock-code,
+.index-value,
+.index-quote,
+.perf-value,
+.metric-value,
+.stat-value,
+.quote-value,
+.history-price,
+.history-ticker,
+.price,
+.change,
+.pct,
+.delta {
+  font-family: var(--font-tech);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ---------------------------------------------------------------------------
+ * 6. 備援色票（博主 Tailwind 主題中另有 4 組漲跌色，供不同對比情境）
+ *    深色亮版：--up:#ff4d5a / --down:#2fd39a   （= :root 主用）
+ *    淺色深版：--up:#c9182c / --down:#067a54   （= light 主用）
+ *    其餘兩組：--up:#078a5e / --down:#d81f39、--up:#3eeba4 / --down:#ff6b78
+ * ------------------------------------------------------------------------- */

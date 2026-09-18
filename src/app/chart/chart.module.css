@@ -1,0 +1,174 @@
+/* ============================================================================
+ * chart.module.css — K 線圖頁（/chart）
+ *
+ * 【配色集中管理】
+ * 沿用「股市大佬」視覺語彙（深藍 + 古銅金），與 diary.module.css 同源。
+ * 刻意不動 globals.css，避免波及 /review 與 /ai。
+ *
+ * 注意：圖表元件（KLinePanel / CandlestickChart）本身使用 globals.css 既有的
+ * `.kline-*` 全域樣式，本檔不重寫圖表樣式，只負責頁面外框。
+ *
+ * 【iOS 安全區域】
+ * 底部功能列（AppTabBar）為 position: fixed，故底部內距必須讓開：
+ * calc(88px + env(safe-area-inset-bottom))。
+ * ========================================================================== */
+
+.chartRoot {
+  /* ── 原版配色 ─────────────────────────────────────────────────── */
+  --bs-bg: #0a1128;             /* 品牌深藍（頁面底色） */
+  --bs-gold: var(--gold);           /* 金色強調 */
+  --bs-gold-soft: rgba(197, 160, 89, 0.16);
+  --bs-gold-line: rgba(197, 160, 89, 0.42);
+  --bs-border: #3a4a5e;         /* 邊框 */
+  --bs-text: var(--ink);           /* 主要文字 */
+  --bs-text-dim: var(--muted);       /* 次要文字 */
+  /* ─────────────────────────────────────────────────────────────── */
+
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+  /* 底部內距須讓開固定式底部功能列（AppTabBar）+ iOS 安全區域 */
+  padding: 20px 16px calc(88px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(circle at 50% -12%, rgba(197, 160, 89, 0.1), transparent 55%),
+    var(--bs-bg);
+  color: var(--bs-text);
+}
+
+.chartRoot * {
+  box-sizing: border-box;
+}
+
+.shell {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+}
+
+/* ── 頁首 ─────────────────────────────────────────────── */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandMark {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--bs-gold-soft);
+  border: 1px solid var(--bs-gold-line);
+  color: var(--bs-gold);
+}
+
+.brand div {
+  display: grid;
+  gap: 2px;
+}
+
+.brand strong {
+  font-size: 20px;
+  line-height: 1.1;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+}
+
+.brand span {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--bs-gold);
+}
+
+/* ── 代號搜尋 ─────────────────────────────────────────── */
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 14px;
+  border: 1px solid var(--bs-border);
+  border-radius: 999px;
+  background: rgba(16, 27, 54, 0.6);
+  color: var(--bs-text-dim);
+  min-width: min(340px, 100%);
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--bs-text);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.searchInput::placeholder {
+  color: var(--bs-text-dim);
+}
+
+.searchButton {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 16px;
+  border: 1px solid var(--bs-gold);
+  border-radius: 999px;
+  background: var(--bs-gold);
+  color: #1a1204;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.searchButton:hover {
+  opacity: 0.9;
+}
+
+/* ── 內容 ─────────────────────────────────────────────── */
+
+.content {
+  display: grid;
+  gap: 18px;
+}
+
+.placeholder,
+.loading {
+  min-height: 46vh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  color: var(--bs-text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.placeholder svg {
+  color: var(--bs-gold-line);
+}
+
+/* ── 響應式 ───────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .chartRoot {
+    padding: 16px 12px calc(88px + env(safe-area-inset-bottom));
+  }
+  .search {
+    min-width: 100%;
+  }
+}

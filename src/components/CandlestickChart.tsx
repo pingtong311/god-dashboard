@@ -351,14 +351,14 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss 
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.08)" />
             <XAxis
               dataKey={xKey}
-              tick={{ fill: '#64748b', fontSize: 10 }}
+              tick={{ fill: 'var(--muted)', fontSize: 10 }}
               tickLine={false}
               axisLine={{ stroke: 'rgba(148,163,184,0.15)' }}
               interval="preserveStartEnd"
             />
             <YAxis
               domain={yDomain}
-              tick={{ fill: '#64748b', fontSize: 10 }}
+              tick={{ fill: 'var(--muted)', fontSize: 10 }}
               tickLine={false}
               axisLine={false}
               width={56}
@@ -494,7 +494,7 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss 
             />
               <YAxis
                 domain={[0, maxVolume * 1.1]}
-                tick={{ fill: '#64748b', fontSize: 9 }}
+                tick={{ fill: 'var(--muted)', fontSize: 9 }}
                 tickLine={false}
                 axisLine={false}
                 width={56}
@@ -537,7 +537,7 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss 
             />
               <YAxis
               domain={[macdMin - macdPad, macdMax + macdPad]}
-              tick={{ fill: '#64748b', fontSize: 9 }}
+              tick={{ fill: 'var(--muted)', fontSize: 9 }}
               tickLine={false}
               axisLine={false}
               width={56}
@@ -598,7 +598,7 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss 
             />
             <YAxis
               domain={[0, 100]}
-              tick={{ fill: '#64748b', fontSize: 9 }}
+              tick={{ fill: 'var(--muted)', fontSize: 9 }}
               tickLine={false}
               axisLine={false}
               width={56}

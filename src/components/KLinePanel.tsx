@@ -166,7 +166,7 @@ export function QuoteBar({ ticker, quote, loading }: QuoteBarProps) {
   const displayChangePercent = Number.isFinite(changePercent)
     ? `${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`
     : '--';
-  const changeColor = Number.isFinite(changePercent) ? getChangeColor(changePercent) : '#94a3b8';
+  const changeColor = Number.isFinite(changePercent) ? getChangeColor(changePercent) : 'var(--muted)';
 
   return (
     <div className="kline-quote-bar">
@@ -178,7 +178,7 @@ export function QuoteBar({ ticker, quote, loading }: QuoteBarProps) {
       </div>
       <div className="kline-quote-right">
         {loading ? (
-          <Loader2 size={14} className="animate-spin" style={{ color: '#64748b' }} />
+          <Loader2 size={14} className="animate-spin" style={{ color: 'var(--muted)' }} />
         ) : (
           <>
             <span className="kline-quote-price" style={{ color: changeColor }}>

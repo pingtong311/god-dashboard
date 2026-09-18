@@ -357,7 +357,7 @@ export default function AIPage() {
             <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(31,102,209,0.08),_transparent_30%),linear-gradient(180deg,_#f8fbff_0%,_#eef4fb_48%,_#eef2f7_100%)] px-4 py-10 text-slate-900">
               <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
                 <header className="rounded-3xl border border-slate-200 bg-white px-6 py-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
-                  <p className="text-[10px] font-black tracking-[0.3em] text-[#1f66d1] uppercase">
+                  <p className="text-[10px] font-black tracking-[0.3em] text-[var(--accent)] uppercase">
                     AI INSIGHT STREAM
                   </p>
                   <div className="mt-2 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -394,7 +394,7 @@ export default function AIPage() {
                   <div className="h-[620px] overflow-y-auto px-6 py-6">
                     {isLoadingLogs ? (
                       <div className="flex h-full min-h-[320px] flex-col items-center justify-center gap-3 text-slate-500">
-                        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#1f66d1] border-t-transparent" />
+                        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent" />
                         <p className="text-[10px] font-black tracking-[0.3em] uppercase">
                           Connecting to Skynet Neural Link...
                         </p>
@@ -409,7 +409,7 @@ export default function AIPage() {
                           <article
                             key={`${log.time}-${index}`}
                             className={`rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-4 ${
-                              log.isAlert ? 'border-[#1f66d1]/20 bg-[#1f66d1]/5' : ''
+                              log.isAlert ? 'border-[var(--accent)]/20 bg-[var(--accent)]/5' : ''
                             }`}
                           >
                             <div className="flex items-start gap-4">

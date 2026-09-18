@@ -1,0 +1,10 @@
+# 本專案的部署目標是 Vercel，以下為 Cloudflare 建置產物與本機快取，不應上傳。
+# 加上這個檔案可讓每次部署少上傳約 33MB，並避免 Next.js 檔案追蹤範圍被這些目錄膨脹。
+.open-next/
+.wrangler/
+cloudflare-pages-proxy/
+.skynet-cache/
+
+# 測試與版控產物
+coverage/
+*.tsbuildinfo
