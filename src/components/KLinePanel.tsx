@@ -14,10 +14,10 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Loader2, AlertTriangle, TrendingUp, Clock } from 'lucide-react';
+import { X, Loader2, AlertTriangle, TrendingUp, Clock, BarChart2 } from 'lucide-react';
 import CandlestickChart from './CandlestickChart';
 import { calculateSMA } from '@/lib/sma';
-import { calculateMACD, calculateKD, calculateBollingerBands } from '@/lib/indicators';
+import { calculateMACD, calculateKD, calculateBollingerBands, calculateRSI, calculateBIAS } from '@/lib/indicators';
 import {
   isCacheValid,
   sliceCandles,
@@ -133,6 +133,8 @@ function injectIndicators(candles: ChartCandle[]): ChartCandle[] {
   const macd = calculateMACD(closes);
   const kd = calculateKD(highs, lows, closes);
   const bb = calculateBollingerBands(closes);
+  const rsi = calculateRSI(closes);
+  const bias = calculateBIAS(closes);
 
   return candles.map((c, i) => ({
     ...c,
@@ -144,6 +146,10 @@ function injectIndicators(candles: ChartCandle[]): ChartCandle[] {
     bbUpper: bb.upper[i],
     bbMiddle: bb.middle[i],
     bbLower: bb.lower[i],
+    rsi: rsi.rsi[i],
+    bias6: bias.bias6[i],
+    bias12: bias.bias12[i],
+    bias24: bias.bias24[i],
   }));
 }
 
@@ -217,6 +223,8 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, setQuoteError] = useState(false);
+  // 技術指標面板開關
+  const [showIndicators, setShowIndicators] = useState(false);
 
   // 快取（Daily K，TTL 5 分鐘）
   const dailyCache = useRef<Map<string, CacheEntry>>(new Map());
@@ -443,6 +451,17 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
           </button>
         </div>
 
+        {/* 技術指標面板開關 */}
+        <button
+          className={`kline-indicator-toggle ${showIndicators ? 'active' : ''}`}
+          onClick={() => setShowIndicators(!showIndicators)}
+          aria-pressed={showIndicators}
+          aria-label="切換技術指標面板"
+        >
+          <BarChart2 size={16} />
+          <span>指標</span>
+        </button>
+
         {/* 日期範圍切換（#9，僅日K 顯示） */}
         {timeframe === 'daily' && (
           <div className="kline-daterange-toggle">
@@ -508,7 +527,222 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
             <p>無法取得 {ticker} 的{timeframe === 'daily' ? '日K' : '盤中'}資料</p>
           </div>
         )}
+
+        {/* 技術指標面板 */}
+        {showIndicators && displayCandles && displayCandles.length > 0 && (
+          <TechnicalIndicatorsPanel candles={displayCandles} timeframe={timeframe} />
+        )}
       </div>
     </motion.div>
+  );
+}
+
+// ── 技術指標面板子元件 ──────────────────────────────────
+
+interface TechnicalIndicatorsPanelProps {
+  candles: ChartCandle[];
+  timeframe: 'daily' | 'intraday';
+}
+
+function TechnicalIndicatorsPanel({ candles, timeframe }: TechnicalIndicatorsPanelProps) {
+  const xKey = timeframe === 'daily' ? 'date' : 'time';
+
+  // 取得最後一根有效數據
+  const lastCandle = candles[candles.length - 1];
+  const prevCandle = candles[candles.length - 2];
+
+  return (
+    <div className="kline-indicators-panel">
+      <div className="kline-indicators-header">
+        <h3>技術指標</h3>
+        <div className="kline-indicators-summary">
+          {lastCandle?.rsi != null && (
+            <span className="indicator-badge rsi">
+              RSI(14): {lastCandle.rsi.toFixed(1)}
+              {lastCandle.rsi > 70 ? ' 🔴' : lastCandle.rsi < 30 ? ' 🟢' : ''}
+            </span>
+          )}
+          {lastCandle?.bias6 != null && (
+            <span className="indicator-badge bias">
+              BIAS6: {lastCandle.bias6 >= 0 ? '+' : ''}{lastCandle.bias6.toFixed(2)}%
+            </span>
+          )}
+          {lastCandle?.k != null && lastCandle?.d != null && (
+            <span className="indicator-badge kd">
+              KD: K={lastCandle.k.toFixed(1)} D={lastCandle.d.toFixed(1)}
+            </span>
+          )}
+          {lastCandle?.dif != null && lastCandle?.signal != null && (
+            <span className="indicator-badge macd">
+              MACD: {lastCandle.dif >= lastCandle.signal ? '🟢' : '🔴'}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="kline-indicators-grid">
+        {/* RSI */}
+        <div className="indicator-card">
+          <h4>RSI (14)</h4>
+          <div className="indicator-value">
+            {lastCandle?.rsi != null ? lastCandle.rsi.toFixed(1) : '--'}
+          </div>
+          <div className="indicator-status">
+            {lastCandle?.rsi != null
+              ? lastCandle.rsi > 70
+                ? '超買'
+                : lastCandle.rsi < 30
+                ? '超賣'
+                : '中性'
+              : '—'}
+          </div>
+          <div className="indicator-mini-chart" aria-hidden="true">
+            {candles.slice(-30).map((c, i) => (
+              <div
+                key={i}
+                className="mini-bar rsi-bar"
+                style={{
+                  height: `${c.rsi != null ? Math.max(2, c.rsi) : 2}%`,
+                  background: c.rsi != null ? (c.rsi > 70 ? '#ef4444' : c.rsi < 30 ? '#22c55e' : '#00f0ff') : 'transparent',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* KD */}
+        <div className="indicator-card">
+          <h4>KD (9,3,3)</h4>
+          <div className="indicator-value-kd">
+            K: {lastCandle?.k != null ? lastCandle.k.toFixed(1) : '--'} /
+            D: {lastCandle?.d != null ? lastCandle.d.toFixed(1) : '--'}
+          </div>
+          <div className="indicator-status">
+            {lastCandle?.k != null && lastCandle?.d != null
+              ? lastCandle.k > 80 && lastCandle.d > 80
+                ? '超買'
+                : lastCandle.k < 20 && lastCandle.d < 20
+                ? '超賣'
+                : lastCandle.k > lastCandle.d
+                ? '黃金交叉'
+                : '死亡交叉'
+              : '—'}
+          </div>
+          <div className="indicator-mini-chart" aria-hidden="true">
+            {candles.slice(-30).map((c, i) => (
+              <div
+                key={`kd-${i}`}
+                className="mini-bar kd-bar"
+                style={{
+                  height: `${c.k != null ? Math.max(2, c.k) : 2}%`,
+                  background: c.k != null && c.d != null && c.k > c.d ? '#eab308' : '#f97316',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* MACD */}
+        <div className="indicator-card">
+          <h4>MACD (12,26,9)</h4>
+          <div className="indicator-value-macd">
+            DIF: {lastCandle?.dif != null ? lastCandle.dif.toFixed(2) : '--'} |
+            SIG: {lastCandle?.signal != null ? lastCandle.signal.toFixed(2) : '--'} |
+            HIST: {lastCandle?.hist != null ? lastCandle.hist.toFixed(2) : '--'}
+          </div>
+          <div className="indicator-status">
+            {lastCandle?.dif != null && lastCandle?.signal != null
+              ? lastCandle.dif > lastCandle.signal
+                ? '多頭'
+                : '空頭'
+              : '—'}
+          </div>
+          <div className="indicator-mini-chart" aria-hidden="true">
+            {candles.slice(-30).map((c, i) => (
+              <div
+                key={`macd-${i}`}
+                className="mini-bar macd-bar"
+                style={{
+                  height: `${c.hist != null ? Math.max(2, Math.min(100, Math.abs(c.hist) * 10 + 50)) : 2}%`,
+                  background: c.hist != null && c.hist >= 0 ? '#ef4444' : '#22c55e',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* BIAS */}
+        <div className="indicator-card">
+          <h4>BIAS 乖離率</h4>
+          <div className="indicator-value-bias">
+            6: {lastCandle?.bias6 != null ? (lastCandle.bias6 >= 0 ? '+' : '') + lastCandle.bias6.toFixed(2) + '%' : '--'} |
+            12: {lastCandle?.bias12 != null ? (lastCandle.bias12 >= 0 ? '+' : '') + lastCandle.bias12.toFixed(2) + '%' : '--'} |
+            24: {lastCandle?.bias24 != null ? (lastCandle.bias24 >= 0 ? '+' : '') + lastCandle.bias24.toFixed(2) + '%' : '--'}
+          </div>
+          <div className="indicator-status">
+            {lastCandle?.bias6 != null
+              ? lastCandle.bias6 > 5
+                ? '嚴重偏離'
+                : lastCandle.bias6 > 2
+                ? '偏多'
+                : lastCandle.bias6 < -5
+                ? '嚴重偏離'
+                : lastCandle.bias6 < -2
+                ? '偏空'
+                : '貼合'
+              : '—'}
+          </div>
+          <div className="indicator-mini-chart" aria-hidden="true">
+            {candles.slice(-30).map((c, i) => (
+              <div
+                key={`bias-${i}`}
+                className="mini-bar bias-bar"
+                style={{
+                  height: `${c.bias6 != null ? Math.max(2, Math.min(100, c.bias6 * 5 + 50)) : 2}%`,
+                  background: c.bias6 != null && c.bias6 >= 0 ? '#ef4444' : '#22c55e',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 詳細數值表格 */}
+      <div className="kline-indicators-table">
+        <h4>最近 5 根 K 棒數值</h4>
+        <table>
+          <thead>
+            <tr>
+              <th>日期/時間</th>
+              <th>RSI</th>
+              <th>K</th>
+              <th>D</th>
+              <th>DIF</th>
+              <th>SIG</th>
+              <th>HIST</th>
+              <th>BIAS6</th>
+              <th>BIAS12</th>
+              <th>BIAS24</th>
+            </tr>
+          </thead>
+          <tbody>
+            {candles.slice(-5).reverse().map((c, i) => (
+              <tr key={i}>
+                <td>{c[xKey] || c.dateRaw}</td>
+                <td>{c.rsi != null ? c.rsi.toFixed(1) : '--'}</td>
+                <td>{c.k != null ? c.k.toFixed(1) : '--'}</td>
+                <td>{c.d != null ? c.d.toFixed(1) : '--'}</td>
+                <td>{c.dif != null ? c.dif.toFixed(2) : '--'}</td>
+                <td>{c.signal != null ? c.signal.toFixed(2) : '--'}</td>
+                <td>{c.hist != null ? c.hist.toFixed(2) : '--'}</td>
+                <td>{c.bias6 != null ? (c.bias6 >= 0 ? '+' : '') + c.bias6.toFixed(2) + '%' : '--'}</td>
+                <td>{c.bias12 != null ? (c.bias12 >= 0 ? '+' : '') + c.bias12.toFixed(2) + '%' : '--'}</td>
+                <td>{c.bias24 != null ? (c.bias24 >= 0 ? '+' : '') + c.bias24.toFixed(2) + '%' : '--'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

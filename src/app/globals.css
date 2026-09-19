@@ -7825,3 +7825,249 @@ body.review-mode .rail-card {
     text-align: left;
   }
 }
+
+/* ── 技術指標面板樣式 ──────────────────────────────────── */
+
+.kline-indicator-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid rgba(183, 192, 212, 0.2);
+  color: var(--muted);
+  background: rgba(3, 6, 16, 0.6);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.kline-indicator-toggle:hover,
+.kline-indicator-toggle.active {
+  border-color: rgba(197, 160, 89, 0.4);
+  color: var(--accent-cyan);
+  background: rgba(197, 160, 89, 0.08);
+}
+
+.kline-indicators-panel {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid rgba(183, 192, 212, 0.1);
+  border-radius: 10px;
+  background: rgba(3, 6, 16, 0.7);
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.kline-indicators-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(183, 192, 212, 0.1);
+  flex-wrap: wrap;
+}
+
+.kline-indicators-header h3 {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+
+.kline-indicators-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.indicator-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  font-family: var(--font-mono);
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(183, 192, 212, 0.15);
+  color: var(--muted);
+}
+
+.indicator-badge.rsi { border-color: rgba(0, 240, 255, 0.3); color: #00f0ff; }
+.indicator-badge.kd { border-color: rgba(234, 179, 8, 0.3); color: #eab308; }
+.indicator-badge.macd { border-color: rgba(249, 115, 22, 0.3); color: #f97316; }
+.indicator-badge.bias { border-color: rgba(239, 68, 68, 0.3); color: #ef4444; }
+
+.kline-indicators-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 1100px) {
+  .kline-indicators-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .kline-indicators-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.indicator-card {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(183, 192, 212, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.indicator-card h4 {
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin: 0;
+}
+
+.indicator-value {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.indicator-value-kd,
+.indicator-value-macd,
+.indicator-value-bias {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.indicator-status {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  display: inline-block;
+  width: fit-content;
+}
+
+.indicator-status.bullish,
+.indicator-status:has-text('超買'),
+.indicator-status:has-text('多頭'),
+.indicator-status:has-text('嚴重偏離'),
+.indicator-status:has-text('偏多') {
+  color: var(--up);
+  background: rgba(255, 77, 90, 0.12);
+  border: 1px solid rgba(255, 77, 90, 0.2);
+}
+
+.indicator-status.bearish,
+.indicator-status:has-text('超賣'),
+.indicator-status:has-text('空頭'),
+.indicator-status:has-text('偏空') {
+  color: var(--down);
+  background: rgba(47, 211, 154, 0.12);
+  border: 1px solid rgba(47, 211, 154, 0.2);
+}
+
+.indicator-status.neutral,
+.indicator-status:has-text('中性'),
+.indicator-status:has-text('貼合'),
+.indicator-status:has-text('黃金交叉'),
+.indicator-status:has-text('死亡交叉') {
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.indicator-mini-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 40px;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.mini-bar {
+  flex: 1;
+  min-width: 2px;
+  border-radius: 1px 1px 0 0;
+  transition: height 0.2s ease;
+}
+
+.kline-indicators-table {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(183, 192, 212, 0.1);
+  overflow-x: auto;
+}
+
+.kline-indicators-table h4 {
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.kline-indicators-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.kline-indicators-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  background: rgba(30, 41, 59, 0.5);
+  position: sticky;
+  top: 0;
+}
+
+.kline-indicators-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(183, 192, 212, 0.08);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.kline-indicators-table tr:last-child td {
+  border-bottom: none;
+}
+
+.kline-indicators-table tr:hover td {
+  background: rgba(197, 160, 89, 0.03);
+}
+
+.kline-indicators-table td:first-child {
+  color: var(--muted);
+  font-weight: 700;
+}

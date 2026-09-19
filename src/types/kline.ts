@@ -54,6 +54,14 @@ export interface ChartCandle {
   bbUpper?: number | null;
   bbMiddle?: number | null;
   bbLower?: number | null;
+
+  // RSI（由 KLinePanel 計算後注入）
+  rsi?: number | null;
+
+  // BIAS（由 KLinePanel 計算後注入）
+  bias6?: number | null;
+  bias12?: number | null;
+  bias24?: number | null;
 }
 
 // ── API 回應格式 ───────────────────────────────────────

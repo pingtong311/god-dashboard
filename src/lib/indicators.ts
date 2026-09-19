@@ -231,3 +231,129 @@ export function calculateBollingerBands(
 
   return { upper, middle, lower };
 }
+
+// ─── RSI ───────────────────────────────────────────────────────────────────────
+
+export interface RSIResult {
+  rsi: (number | null)[];
+}
+
+/**
+ * 計算相對強弱指標（Relative Strength Index, RSI）
+ *
+ * RS(t) = 平均上漲幅度 / 平均下跌幅度（過去 period 根 K 棒）
+ * RSI(t) = 100 - 100 / (1 + RS)
+ *
+ * 使用 Wilder's Smoothing（等同 EMA with alpha = 1/period）
+ * 初始種子值：前 period 根的平均漲跌幅
+ *
+ * @param closes    收盤價陣列
+ * @param period    週期（預設 14）
+ * @returns         RSI 陣列（0-100），長度與 data 相同
+ */
+export function calculateRSI(
+  closes: number[],
+  period = 14
+): RSIResult {
+  const len = closes.length;
+  const empty: RSIResult = { rsi: new Array(len).fill(null) };
+
+  if (len === 0 || period <= 0) return empty;
+
+  const rsi: (number | null)[] = new Array(len).fill(null);
+
+  if (len < period + 1) return { rsi };
+
+  // 計算價格變化
+  const changes: number[] = [];
+  for (let i = 1; i < len; i++) {
+    changes.push(closes[i] - closes[i - 1]);
+  }
+
+  // 種子值：前 period 個變化的平均上漲/下跌
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 0; i < period; i++) {
+    const change = changes[i];
+    if (change >= 0) avgGain += change;
+    else avgLoss -= change;
+  }
+  avgGain /= period;
+  avgLoss /= period;
+
+  // 第一個有效 RSI 位於 index = period
+  if (avgLoss === 0) {
+    rsi[period] = 100;
+  } else {
+    const rs = avgGain / avgLoss;
+    rsi[period] = 100 - 100 / (1 + rs);
+  }
+
+  // Wilder's Smoothing 遞推：alpha = 1/period
+  const alpha = 1 / period;
+  for (let i = period + 1; i < len; i++) {
+    const change = changes[i - 1];
+    const gain = change >= 0 ? change : 0;
+    const loss = change < 0 ? -change : 0;
+
+    avgGain = avgGain * (1 - alpha) + gain * alpha;
+    avgLoss = avgLoss * (1 - alpha) + loss * alpha;
+
+    if (avgLoss === 0) {
+      rsi[i] = 100;
+    } else {
+      const rs = avgGain / avgLoss;
+      rsi[i] = 100 - 100 / (1 + rs);
+    }
+  }
+
+  return { rsi };
+}
+
+// ─── BIAS ──────────────────────────────────────────────────────────────────────
+
+export interface BIASResult {
+  bias6: (number | null)[];
+  bias12: (number | null)[];
+  bias24: (number | null)[];
+}
+
+/**
+ * 計算乖離率（BIAS）
+ *
+ * BIAS(n) = (Close - MA(n)) / MA(n) × 100
+ *
+ * @param closes  收盤價陣列
+ * @returns       BIAS6, BIAS12, BIAS24 陣列
+ */
+export function calculateBIAS(closes: number[]): BIASResult {
+  const len = closes.length;
+  const empty: BIASResult = {
+    bias6: new Array(len).fill(null),
+    bias12: new Array(len).fill(null),
+    bias24: new Array(len).fill(null),
+  };
+
+  if (len === 0) return empty;
+
+  const periods = [6, 12, 24];
+  const results: { [key: number]: (number | null)[] } = {};
+
+  for (const p of periods) {
+    const arr: (number | null)[] = new Array(len).fill(null);
+    for (let i = p - 1; i < len; i++) {
+      const slice = closes.slice(i - p + 1, i + 1);
+      const ma = slice.reduce((acc, v) => acc + v, 0) / p;
+      if (ma !== 0) {
+        arr[i] = ((closes[i] - ma) / ma) * 100;
+      }
+    }
+    results[p] = arr;
+  }
+
+  return {
+    bias6: results[6],
+    bias12: results[12],
+    bias24: results[24],
+  };
+}
