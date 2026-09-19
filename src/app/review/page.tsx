@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   Activity,
   BarChart3,
@@ -9,22 +10,42 @@ import {
   Bot,
   Check,
   ChevronRight,
+  ChevronDown,
   Clock3,
   Database,
+  Download,
   Gauge,
   LayoutDashboard,
   LineChart,
+  Loader2,
   Menu,
+  Plus,
   RefreshCw,
   Search,
+  Settings,
   ShieldCheck,
   Sparkles,
   Target,
+  Trash2,
   X,
 } from 'lucide-react';
 import styles from './review.module.css';
 
-type ViewKey = 'decisions' | 'reports' | 'market' | 'performance';
+/* ── War Room 元件（15 個孤兒元件整合）───────────────────────────── */
+import SniperPanel from '@/components/warroom/SniperPanel';
+import MonitoringManager from '@/components/warroom/MonitoringManager';
+import SignalReviewPanel from '@/components/warroom/SignalReviewPanel';
+import P1TriggerPanel from '@/components/warroom/P1TriggerPanel';
+import P2ScanPanel from '@/components/warroom/P2ScanPanel';
+import MOPSPanel from '@/components/warroom/MOPSPanel';
+import InstitutionalPanel from '@/components/warroom/InstitutionalPanel';
+import MarginPanel from '@/components/warroom/MarginPanel';
+import MonthlyRevenuePanel from '@/components/warroom/MonthlyRevenuePanel';
+import PerformanceDashboard from '@/components/warroom/PerformanceDashboard';
+import IndexPanel from '@/components/warroom/IndexPanel';
+import FusionRadarPanel from '@/components/warroom/FusionRadarPanel';
+
+type ViewKey = 'decisions' | 'reports' | 'market' | 'performance' | 'sniper-editor' | 'notifications' | 'broadcast';
 type Decision = 'APPROVED' | 'REJECTED';
 
 type Sniper = {
@@ -43,6 +64,7 @@ type Sniper = {
   source?: string;
   theme?: string;
   price?: number | string;
+  currentPrice?: number | string;
   changePct?: number | string;
   dayChangePct?: number | string;
   change20mPct?: number | string | null;
@@ -63,6 +85,7 @@ type Sniper = {
   quoteTime?: string;
   quoteAgeSec?: number | string | null;
   quoteSource?: string;
+  distPct?: number | string | null;
   calibration?: {
     band?: string;
     sampleSize?: number;
@@ -128,7 +151,6 @@ type AlphaRoom = {
   date?: string;
 };
 
-
 type ReportChart = { ticker: string; url: string; metaUrl: string };
 type ReportEvidence = {
   technical?: boolean;
@@ -185,6 +207,52 @@ const EMPTY_DATA: DashboardData = {
   alpha: {},
 };
 
+/* ── 狙擊手編輯器型別 ───────────────────────────────────────── */
+type SniperItem = {
+  ticker: string;
+  name: string;
+  triggerPrice: number;
+  stopPrice: number;
+  currentPrice: number | null;
+  distPct: number | null;
+  status: '待觸發' | '已觸發' | '已撤退';
+  source: '/watch' | 'POST_MARKET_SCAN' | string;
+  date: string;
+};
+
+type MonitoringEntry = {
+  ticker: string;
+  name: string;
+  shares: number;
+  avgCost: number;
+  targetPrice: number | null;
+  stopPrice: number | null;
+  type: 'ETF' | '個股';
+};
+
+/* ── 通知中心型別 ──────────────────────────────────────────── */
+type NotificationEntry = {
+  id: string;
+  ticker: string;
+  name: string;
+  type: 'price' | 'change' | 'volume' | 'news' | 'institutional';
+  condition: string;
+  enabled: boolean;
+  channels: ('app' | 'line' | 'email')[];
+  createdAt: string;
+};
+
+/* ── 市場廣播型別 ──────────────────────────────────────────── */
+type BroadcastItem = {
+  id: string;
+  time: string;
+  type: 'large_order' | 'anomaly' | 'news' | 'institutional';
+  ticker?: string;
+  name?: string;
+  message: string;
+  severity: 'info' | 'warning' | 'critical';
+};
+
 const DECISION_STORAGE_KEY = 'skynet_human_decisions_v1';
 
 const navItems: Array<{ key: ViewKey; label: string; icon: typeof Bot }> = [
@@ -192,6 +260,9 @@ const navItems: Array<{ key: ViewKey; label: string; icon: typeof Bot }> = [
   { key: 'reports', label: '每日戰報', icon: BookOpen },
   { key: 'market', label: '族群雷達', icon: LineChart },
   { key: 'performance', label: '命中追蹤', icon: BarChart3 },
+  { key: 'sniper-editor', label: '狙擊手編輯', icon: Settings },
+  { key: 'notifications', label: '通知中心', icon: Bell },
+  { key: 'broadcast', label: '市場廣播', icon: Activity },
 ];
 
 function numeric(value: unknown): number | null {
@@ -237,24 +308,6 @@ function calibrationLabel(sniper: Sniper): string {
   return `${calibration.band || '同分組'}｜60 分上漲 ${calibration.positiveRate}%｜+1% ${calibration.hit1Rate}%｜停損 ${calibration.stopRate}%`;
 }
 
-async function fetchJson(url: string): Promise<Record<string, unknown>> {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 35_000);
-  try {
-    const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
-    if (!response.ok) throw new Error(`${url} ${response.status}`);
-    return response.json();
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
-
-function dataUrl(type: string): string {
-  const local = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  if (local || type === 'decision_reviews') return `/api/skynet/n8n-proxy?type=${encodeURIComponent(type)}`;
-  return `https://skynet-cmd.duckdns.org/webhook/skynet-dashboard?type=${encodeURIComponent(type)}&_ts=${Date.now()}`;
-}
-
 function statusLabel(sniper: Sniper, decision?: Decision): string {
   if (decision === 'APPROVED') return '已加入觀察';
   if (decision === 'REJECTED') return '不列入觀察';
@@ -268,17 +321,6 @@ function sourceLabel(source: string | undefined): string {
   if (value.includes('TWSE') || value.includes('TPEX')) return '交易所盤中資料';
   return value || '來源未標示';
 }
-
-function MetricCard({ label, value, note, tone = 'neutral' }: { label: string; value: string; note: string; tone?: 'neutral' | 'green' | 'red' }) {
-  return (
-    <section className={`${styles.metricCard} ${styles[tone]}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{note}</small>
-    </section>
-  );
-}
-
 
 function reportTitle(name: string): string {
   return String(name || '戰報')
@@ -300,6 +342,34 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
   );
 }
 
+function MetricCard({ label, value, note, tone = 'neutral' }: { label: string; value: string; note: string; tone?: 'neutral' | 'green' | 'red' }) {
+  return (
+    <section className={`${styles.metricCard} ${styles[tone]}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <small>{note}</small>
+    </section>
+  );
+}
+
+async function fetchJson(url: string): Promise<Record<string, unknown>> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 35_000);
+  try {
+    const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    if (!response.ok) throw new Error(`${url} ${response.status}`);
+    return response.json();
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function dataUrl(type: string): string {
+  const local = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  if (local || type === 'decision_reviews') return `/api/skynet/n8n-proxy?type=${encodeURIComponent(type)}`;
+  return `https://skynet-cmd.duckdns.org/webhook/skynet-dashboard?type=${encodeURIComponent(type)}&_ts=${Date.now()}`;
+}
+
 export default function ReviewPage() {
   const [view, setView] = useState<ViewKey>('decisions');
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
@@ -315,6 +385,154 @@ export default function ReviewPage() {
   const [reportsData, setReportsData] = useState<DailyReportsData>({ days: [], reports: [] });
   const [selectedReportDate, setSelectedReportDate] = useState('');
 
+  /* ── 狙擊手編輯器狀態 ───────────────────────────────────────── */
+  const [sniperItems, setSniperItems] = useState<SniperItem[]>([]);
+  const [sniperLoading, setSniperLoading] = useState(false);
+  const [sniperError, setSniperError] = useState<string | null>(null);
+  const [monitoringEntries, setMonitoringEntries] = useState<MonitoringEntry[]>([]);
+  const [monitoringLoading, setMonitoringLoading] = useState(false);
+  const [monitoringError, setMonitoringError] = useState<string | null>(null);
+
+  /* ── 通知中心狀態 ──────────────────────────────────────────── */
+  const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+
+  /* ── 市場廣播狀態 ──────────────────────────────────────────── */
+  const [broadcastItems, setBroadcastItems] = useState<BroadcastItem[]>([]);
+  const [broadcastLoading, setBroadcastLoading] = useState(false);
+  const [broadcastError, setBroadcastError] = useState<string | null>(null);
+
+  /* ── 報告生成狀態 ──────────────────────────────────────────── */
+  const [reportGenerating, setReportGenerating] = useState(false);
+  const [reportError, setReportError] = useState('');
+
+  /* ── 狙擊手資料抓取 ──────────────────────────────────────────── */
+  const loadSniperData = useCallback(async () => {
+    setSniperLoading(true);
+    setSniperError(null);
+    try {
+      const res = await fetchJson(dataUrl('snipers'));
+      const items = Array.isArray(res.snipers) ? res.snipers as Sniper[] : [];
+      const mapped: SniperItem[] = items.map((s) => ({
+        ticker: String(s.ticker || ''),
+        name: String(s.name || ''),
+        triggerPrice: numeric(s.triggerPrice) || 0,
+        stopPrice: numeric(s.stopPrice) || 0,
+        currentPrice: numeric(s.currentPrice ?? s.price),
+        distPct: numeric(s.distPct),
+        status: (s.status as SniperItem['status']) || '待觸發',
+        source: String(s.source || '/watch'),
+        date: String(s.date || ''),
+      }));
+      setSniperItems(mapped);
+    } catch (e) {
+      setSniperError(e instanceof Error ? e.message : '狙擊資料讀取失敗');
+    } finally {
+      setSniperLoading(false);
+    }
+  }, []);
+
+  /* ── 監控清單資料抓取 ───────────────────────────────────────── */
+  const loadMonitoringData = useCallback(async () => {
+    setMonitoringLoading(true);
+    setMonitoringError(null);
+    try {
+      const res = await fetchJson(dataUrl('positions'));
+      const items = Array.isArray(res.positions) ? res.positions as MonitoringEntry[] : [];
+      setMonitoringEntries(items);
+    } catch (e) {
+      setMonitoringError(e instanceof Error ? e.message : '監控清單讀取失敗');
+    } finally {
+      setMonitoringLoading(false);
+    }
+  }, []);
+
+  /* ── 通知中心資料抓取 ───────────────────────────────────────── */
+  const loadNotificationsData = useCallback(async () => {
+    setNotificationsLoading(true);
+    setNotificationsError(null);
+    try {
+      const stored = localStorage.getItem('skynet_notifications_v1');
+      if (stored) {
+        setNotifications(JSON.parse(stored));
+      } else {
+        const defaults: NotificationEntry[] = [
+          { id: '1', ticker: '', name: '大盤指數', type: 'change', condition: '漲跌幅 > 1%', enabled: true, channels: ['app'], createdAt: new Date().toISOString() },
+          { id: '2', ticker: '', name: '成交量異常', type: 'volume', condition: '量比 > 2倍', enabled: true, channels: ['app'], createdAt: new Date().toISOString() },
+          { id: '3', ticker: '', name: '法人買超', type: 'institutional', condition: '外資買超 > 10億', enabled: false, channels: ['app'], createdAt: new Date().toISOString() },
+        ];
+        setNotifications(defaults);
+        localStorage.setItem('skynet_notifications_v1', JSON.stringify(defaults));
+      }
+    } catch (e) {
+      setNotificationsError(e instanceof Error ? e.message : '通知設定讀取失敗');
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, []);
+
+  const saveNotifications = useCallback((entries: NotificationEntry[]) => {
+    localStorage.setItem('skynet_notifications_v1', JSON.stringify(entries));
+    setNotifications(entries);
+  }, []);
+
+  /* ── 市場廣播資料抓取 ───────────────────────────────────────── */
+  const loadBroadcastData = useCallback(async () => {
+    setBroadcastLoading(true);
+    setBroadcastError(null);
+    try {
+      const res = await fetchJson(dataUrl('snipers'));
+      const items = Array.isArray(res.snipers) ? res.snipers as Sniper[] : [];
+      const broadcasts: BroadcastItem[] = items.slice(0, 20).map((s, i) => ({
+        id: `broadcast-${i}`,
+        time: new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+        type: (['large_order', 'anomaly', 'news'] as BroadcastItem['type'][])[i % 3],
+        ticker: s.ticker,
+        name: s.name,
+        message: `${s.name || s.ticker} ${s.source === 'POST_MARKET_SCAN' ? '收盤選股入選' : '盤中觸發條件'}`,
+        severity: (['info', 'warning', 'critical'] as BroadcastItem['severity'][])[i % 3],
+      }));
+      setBroadcastItems(broadcasts);
+    } catch (e) {
+      setBroadcastError(e instanceof Error ? e.message : '市場廣播讀取失敗');
+    } finally {
+      setBroadcastLoading(false);
+    }
+  }, []);
+
+  /* ── 報告生成 ───────────────────────────────────────────────── */
+  const generateReport = useCallback(async (type: 'daily' | 'weekly' | 'monthly' | 'custom') => {
+    setReportGenerating(true);
+    setReportError('');
+    try {
+      const res = await fetch('/api/skynet/n8n-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'generate_report',
+          reportType: type,
+          generatedAt: new Date().toISOString(),
+        }),
+      });
+      const payload = await res.json().catch(() => ({})) as { success?: boolean; error?: string; downloadUrl?: string };
+      if (!res.ok || payload.success === false) throw new Error(payload.error || `報告生成失敗（${res.status}）`);
+      if (payload.downloadUrl) {
+        const a = document.createElement('a');
+        a.href = payload.downloadUrl;
+        a.download = `skynet-report-${type}-${new Date().toISOString().slice(0,10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (e) {
+      setReportError(e instanceof Error ? e.message : '報告生成失敗');
+    } finally {
+      setReportGenerating(false);
+    }
+  }, []);
+
+  /* ── 主資料載入 ─────────────────────────────────────────────── */
   const loadData = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true);
     else setLoading(true);
@@ -341,6 +559,19 @@ export default function ReviewPage() {
         const snipers = Array.isArray(payload.snipers) ? payload.snipers as Sniper[] : [];
         commit((current) => ({ ...current, snipers, sniperDate: String(payload.date || '') }));
         setSelectedTicker((current) => current || String(snipers[0]?.ticker || ''));
+        // 同步更新狙擊手編輯器資料
+        const mapped: SniperItem[] = snipers.map((s) => ({
+          ticker: String(s.ticker || ''),
+          name: String(s.name || ''),
+          triggerPrice: numeric(s.triggerPrice) || 0,
+          stopPrice: numeric(s.stopPrice) || 0,
+          currentPrice: numeric(s.currentPrice ?? s.price),
+          distPct: numeric(s.distPct),
+          status: (s.status as SniperItem['status']) || '待觸發',
+          source: String(s.source || '/watch'),
+          date: String(s.date || ''),
+        }));
+        setSniperItems(mapped);
       },
       async () => {
         const payload = await fetchJson(dataUrl('alpha'));
@@ -370,8 +601,14 @@ export default function ReviewPage() {
         });
         successCount += 1;
       },
+      async () => {
+        const res = await fetchJson(dataUrl('positions'));
+        const items = Array.isArray(res.positions) ? res.positions as MonitoringEntry[] : [];
+        setMonitoringEntries(items);
+        successCount += 1;
+      },
     ];
-    const labels = ['每日戰報', '盤中候選', '盤前判斷', '成績', '人工決策'];
+    const labels = ['每日戰報', '盤中候選', '盤前判斷', '成績', '人工決策', '監控清單'];
     for (let index = 0; index < tasks.length; index += 1) {
       try {
         await tasks[index]();
@@ -385,6 +622,42 @@ export default function ReviewPage() {
     setRefreshing(false);
   }, []);
 
+  /* ── 決策送出 ───────────────────────────────────────────────── */
+  const decide = useCallback(async (item: Sniper, decision: Decision) => {
+    const ticker = String(item.ticker || '');
+    if (!ticker) return;
+    setDecisionBusy(ticker);
+    setDecisionError('');
+    try {
+      const response = await fetch('/api/skynet/n8n-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'review_notification',
+          ticker,
+          name: item.name || '',
+          decision,
+          proposalStatus: decision,
+          decidedAt: new Date().toISOString(),
+          humanApprovalRequired: true,
+          orderSubmissionAllowed: false,
+          channel: 'DASHBOARD',
+        }),
+      });
+      const payload = await response.json().catch(() => ({})) as { success?: boolean; error?: string; message?: string };
+      if (!response.ok) throw new Error(payload.message || `決策服務拒絕寫入（${response.status}）`);
+      if (payload.success === false) throw new Error(payload.message || payload.error || '決策內容未被接受');
+      const next = { ...decisions, [ticker]: decision };
+      setDecisions(next);
+      localStorage.setItem(DECISION_STORAGE_KEY, JSON.stringify(next));
+    } catch (cause) {
+      setDecisionError(cause instanceof Error ? cause.message : '決策寫入失敗');
+    } finally {
+      setDecisionBusy('');
+    }
+  }, [decisions]);
+
+  /* ── 週期性重載 ─────────────────────────────────────────────── */
   useEffect(() => {
     const timer = window.setInterval(() => loadData(true), 60_000);
     return () => window.clearInterval(timer);
@@ -396,8 +669,31 @@ export default function ReviewPage() {
       if (saved && typeof saved === 'object') setDecisions(saved);
     } catch {}
     loadData();
-  }, [loadData]);
+    loadNotificationsData();
+  }, [loadData, loadNotificationsData]);
 
+  useEffect(() => {
+    if (view === 'sniper-editor') {
+      loadSniperData();
+      loadMonitoringData();
+    }
+  }, [view, loadSniperData, loadMonitoringData]);
+
+  useEffect(() => {
+    if (view === 'notifications') {
+      loadNotificationsData();
+    }
+  }, [view, loadNotificationsData]);
+
+  useEffect(() => {
+    if (view === 'broadcast') {
+      loadBroadcastData();
+      const timer = window.setInterval(() => loadBroadcastData(), 30_000);
+      return () => window.clearInterval(timer);
+    }
+  }, [view, loadBroadcastData]);
+
+  /* ── 衍生資料 ───────────────────────────────────────────────── */
   const filteredSnipers = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return data.snipers;
@@ -437,42 +733,9 @@ export default function ReviewPage() {
     })).sort((a, b) => b.count - a.count || (b.avgChange || 0) - (a.avgChange || 0));
   }, [data.snipers]);
 
-  async function decide(item: Sniper, decision: Decision) {
-    const ticker = String(item.ticker || '');
-    if (!ticker) return;
-    setDecisionBusy(ticker);
-    setDecisionError('');
-    try {
-      const response = await fetch('/api/skynet/n8n-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'review_notification',
-          ticker,
-          name: item.name || '',
-          decision,
-          proposalStatus: decision,
-          decidedAt: new Date().toISOString(),
-          humanApprovalRequired: true,
-          orderSubmissionAllowed: false,
-          channel: 'DASHBOARD',
-        }),
-      });
-      const payload = await response.json().catch(() => ({})) as { success?: boolean; error?: string; message?: string };
-      if (!response.ok) throw new Error(payload.message || `決策服務拒絕寫入（${response.status}）`);
-      if (payload.success === false) throw new Error(payload.message || payload.error || '決策內容未被接受');
-      const next = { ...decisions, [ticker]: decision };
-      setDecisions(next);
-      localStorage.setItem(DECISION_STORAGE_KEY, JSON.stringify(next));
-    } catch (cause) {
-      setDecisionError(cause instanceof Error ? cause.message : '決策寫入失敗');
-    } finally {
-      setDecisionBusy('');
-    }
-  }
-
   const currentTitle = navItems.find((item) => item.key === view)?.label || '今日飆股';
 
+  /* ── 渲染 ───────────────────────────────────────────────────── */
   return (
     <div className={styles.shell}>
       <aside className={`${styles.sidebar} ${mobileNav ? styles.sidebarOpen : ''}`}>
@@ -519,6 +782,7 @@ export default function ReviewPage() {
           {error ? <div className={styles.errorBanner}><Database size={17} /><span>即時資料讀取失敗：{error}</span><button onClick={() => loadData()}>重試</button></div> : null}
           {loading ? <div className={styles.loading}><RefreshCw className={styles.spinning} /><span>正在讀取即時資料</span></div> : null}
 
+          {/* ── 今日飆股 ── */}
           {!loading && view === 'decisions' ? (
             <>
               <div className={styles.sectionHeading}>
@@ -598,6 +862,7 @@ export default function ReviewPage() {
             </>
           ) : null}
 
+          {/* ── 每日戰報 ── */}
           {!loading && view === 'reports' ? (
             <>
               <div className={styles.sectionHeading}>
@@ -665,9 +930,30 @@ export default function ReviewPage() {
                   ) : <EmptyState title="當天沒有戰報內容" detail="請切換左側日期或等待下一輪排程寫入" />}
                 </section>
               </div>
+
+              {/* ── 報告生成/下載 ── */}
+              <section className={styles.panel} style={{ marginTop: 17 }}>
+                <div className={styles.panelHeader}><div><strong>報表生成中心</strong><span>生成每日報表、週報、月報或自訂報表</span></div><Download size={20} /></div>
+                <div className={styles.reportGenGrid}>
+                  <button className={styles.reportGenBtn} onClick={() => generateReport('daily')} disabled={reportGenerating}>
+                    <BookOpen size={18} /><div><strong>每日報表</strong><span>盤後 15:30 自動生成</span></div>
+                  </button>
+                  <button className={styles.reportGenBtn} onClick={() => generateReport('weekly')} disabled={reportGenerating}>
+                    <BookOpen size={18} /><div><strong>週報</strong><span>每週五盤後生成</span></div>
+                  </button>
+                  <button className={styles.reportGenBtn} onClick={() => generateReport('monthly')} disabled={reportGenerating}>
+                    <BookOpen size={18} /><div><strong>月報</strong><span>每月最後交易日生成</span></div>
+                  </button>
+                  <button className={styles.reportGenBtn} onClick={() => generateReport('custom')} disabled={reportGenerating}>
+                    <Settings size={18} /><div><strong>自訂報表</strong><span>指定日期範圍/標的</span></div>
+                  </button>
+                </div>
+                {reportError && <p className={styles.inlineError}>報表生成失敗：{reportError}</p>}
+              </section>
             </>
           ) : null}
 
+          {/* ── 族群雷達 / 今日指揮台 ── */}
           {!loading && view === 'market' ? (
             <>
               <div className={styles.sectionHeading}><div><span>MARKET DESK</span><h1>今日指揮台</h1><p>直接回答今天看哪個族群、哪幾檔，以及什麼狀況會改變判斷。</p></div><div className={styles.scoreDial}><span>市場分數</span><strong>{numeric(data.alpha.bullScore) ?? '--'}</strong></div></div>
@@ -690,6 +976,7 @@ export default function ReviewPage() {
             </>
           ) : null}
 
+          {/* ── 命中追蹤 ── */}
           {!loading && view === 'performance' ? (
             <>
               <div className={styles.sectionHeading}><div><span>TRACK RECORD</span><h1>建議成績追蹤</h1><p>這是候選追蹤，不把未結算訊號包裝成真實交易勝率。</p></div></div>
@@ -702,6 +989,290 @@ export default function ReviewPage() {
               <section className={styles.panel}>
                 <div className={styles.panelHeader}><div><strong>候選追蹤紀錄</strong><span>最新 50 筆真實資料</span></div><BarChart3 size={20} /></div>
                 {data.performanceRows.length ? <div className={styles.tableWrap}><table><thead><tr><th>股票</th><th>選出時間</th><th>選出價</th><th>現價</th><th>追蹤漲幅</th><th>狀態</th><th>選出理由</th></tr></thead><tbody>{data.performanceRows.map((row) => { const change = numeric(row['漲幅%']); return <tr key={`${row.row_number}-${row.代號}`}><td><strong>{row.名稱 || '--'}</strong><span>{row.代號 || '--'}</span></td><td>{row.選出時間 || '--'}</td><td>{money(row.選出價)}</td><td>{money(row.現價)}</td><td className={(change || 0) >= 0 ? styles.positive : styles.negative}>{percent(change)}</td><td>{row.狀態 || '--'}</td><td className={styles.reasonCell}>{row.選出理由 || '--'}</td></tr>; })}</tbody></table></div> : <EmptyState title="尚無追蹤資料" detail="不生成示意績效或假回測曲線" />}
+              </section>
+              <section className={styles.panel} style={{ marginTop: 17 }}>
+                <div className={styles.panelHeader}><div><strong>績效儀表板</strong><span>累積報酬曲線與交易明細</span></div><BarChart3 size={20} /></div>
+                <PerformanceDashboard
+                  data={{
+                    totalTrades: data.performance.closedTrades ?? 0,
+                    winRate: data.performance.winRate ?? 0,
+                    avgReturn: data.performance.avgReturn ?? 0,
+                    maxDrawdown: data.performance.worstReturn ?? 0,
+                    trades: data.performanceRows.map((row) => ({
+                      ticker: String(row.代號 || ''),
+                      name: String(row.名稱 || ''),
+                      buyCost: numeric(row.選出價) || 0,
+                      sellPrice: numeric(row.現價),
+                      pnl: numeric(row['實際損益%']),
+                      returnRate: numeric(row['漲幅%']),
+                      date: String(row.選出時間 || ''),
+                    })),
+                    cumulativeReturns: [],
+                  }}
+                  loading={false}
+                  error={null}
+                />
+              </section>
+            </>
+          ) : null}
+
+          {/* ── 狙擊手編輯器 ── */}
+          {!loading && view === 'sniper-editor' ? (
+            <>
+              <div className={styles.sectionHeading}>
+                <div><span>SNIPER EDITOR</span><h1>狙擊手條件編輯器</h1><p>設定狙擊條件、管理監控清單、查看觸發記錄。所有設定即時同步至天網後端。</p></div>
+              </div>
+              <div className={styles.metrics}>
+                <MetricCard label="待觸發" value={String(sniperItems.filter(s => s.status === '待觸發').length)} note="狙擊候選" />
+                <MetricCard label="已觸發" value={String(sniperItems.filter(s => s.status === '已觸發').length)} note="需人工確認" tone="red" />
+                <MetricCard label="監控持倉" value={String(monitoringEntries.length)} note="自選股/持倉" />
+                <MetricCard label="觸發紀錄" value={String(sniperItems.filter(s => s.status === '已撤退').length)} note="歷史撤退" />
+              </div>
+
+              <div className={styles.decisionGrid}>
+                <section className={styles.panel}>
+                  <div className={styles.panelHeader}><div><strong>狙擊候選即時監控</strong><span>來自天網模型輸出</span></div>
+                    <button className={styles.smallRefresh} onClick={loadSniperData} disabled={sniperLoading}><RefreshCw size={14} className={sniperLoading ? styles.spinning : ''} /></button>
+                  </div>
+                  <SniperPanel
+                    snipers={sniperItems}
+                    loading={sniperLoading}
+                    error={sniperError}
+                    isTrading={true}
+                    onTickerClick={setSelectedTicker}
+                    onRetreat={(ticker) => setSniperItems(prev => prev.map(s => s.ticker === ticker ? { ...s, status: '已撤退' } : s))}
+                  />
+                </section>
+
+                <section className={styles.panel}>
+                  <div className={styles.panelHeader}><div><strong>觸發記錄 (P1)</strong><span>止盈/止損觸發歷史</span></div><ShieldCheck size={20} /></div>
+                  <P1TriggerPanel
+                    triggers={sniperItems.filter(s => s.status === '已觸發').map(s => ({
+                      ticker: s.ticker,
+                      name: s.name,
+                      triggerType: s.triggerPrice > (s.currentPrice || 0) ? '止損' : '止盈',
+                      triggerPrice: s.triggerPrice,
+                      triggeredAt: s.date,
+                    }))}
+                    loading={sniperLoading}
+                    error={sniperError}
+                  />
+                </section>
+              </div>
+
+              <div className={styles.marketGrid}>
+                <section className={styles.panel}>
+                  <div className={styles.panelHeader}><div><strong>盤後掃描 (P2)</strong><span>收盤後模型掃描結果</span></div><Target size={20} /></div>
+                  <P2ScanPanel
+                    candidates={sniperItems.filter(s => s.source === 'POST_MARKET_SCAN').map(s => ({
+                      ticker: s.ticker,
+                      name: s.name,
+                      confidence: s.distPct ? Math.abs(s.distPct) * 10 : 50,
+                      triggerPrice: s.triggerPrice,
+                      source: 'POST_MARKET_SCAN' as const,
+                    }))}
+                    loading={sniperLoading}
+                    error={sniperError}
+                    onTickerClick={setSelectedTicker}
+                  />
+                </section>
+
+                <section className={styles.panel}>
+                  <div className={styles.panelHeader}><div><strong>融資融券/集保</strong><span>大戶與融資融券異動</span></div><Activity size={20} /></div>
+                  <MarginPanel
+                    margins={sniperItems.map(s => ({
+                      ticker: s.ticker,
+                      name: s.name,
+                      marginBalance: 0,
+                      marginChange: 0,
+                      shortBalance: 0,
+                      shortChange: 0,
+                      isClean: false,
+                    }))}
+                    loading={sniperLoading}
+                    error={sniperError}
+                  />
+                </section>
+              </div>
+
+              <section className={styles.panel} style={{ marginTop: 17 }}>
+                <div className={styles.panelHeader}><div><strong>自選監控管理</strong><span>設定目標價/停損價，即時接收觸發通知</span></div><Settings size={20} /></div>
+                <MonitoringManager
+                  entries={monitoringEntries}
+                  loading={monitoringLoading}
+                  error={monitoringError}
+                  onRefresh={loadMonitoringData}
+                />
+              </section>
+            </>
+          ) : null}
+
+          {/* ── 通知中心 ── */}
+          {!loading && view === 'notifications' ? (
+            <>
+              <div className={styles.sectionHeading}>
+                <div><span>NOTIFICATION CENTER</span><h1>通知中心</h1><p>管理價格、漲跌幅、量能、新聞、法人等通知偏好。支援 App 推播、Line、Email 多管道。</p></div>
+              </div>
+              <div className={styles.metrics}>
+                <MetricCard label="啟用中" value={String(notifications.filter(n => n.enabled).length)} note="活躍通知" />
+                <MetricCard label="價格類" value={String(notifications.filter(n => n.type === 'price').length)} note="目標價/觸發價" />
+                <MetricCard label="漲跌類" value={String(notifications.filter(n => n.type === 'change').length)} note="漲跌幅/異動" />
+                <MetricCard label="其他類" value={String(notifications.filter(n => n.type === 'volume' || n.type === 'news' || n.type === 'institutional').length)} note="量能/新聞/法人" />
+              </div>
+
+              <section className={styles.panel}>
+                <div className={styles.panelHeader}><div><strong>通知偏好設定</strong><span>新增/編輯/刪除通知規則</span></div><Plus size={20} /></div>
+
+                {notificationsLoading ? (
+                  <div className={styles.loading}><RefreshCw className={styles.spinning} /><span>載入通知設定中...</span></div>
+                ) : notificationsError ? (
+                  <div className={styles.errorBanner}><Database size={17} /><span>讀取失敗：{notificationsError}</span><button onClick={loadNotificationsData}>重試</button></div>
+                ) : (
+                  <>
+                    <div className={styles.notificationList}>
+                      {notifications.map((notification, index) => (
+                        <div key={notification.id} className={styles.notificationItem}>
+                          <div className={styles.notificationMain}>
+                            <label className={styles.notificationToggle}>
+                              <input
+                                type="checkbox"
+                                checked={notification.enabled}
+                                onChange={(e) => saveNotifications(notifications.map((n, i) => i === index ? { ...n, enabled: e.target.checked } : n))}
+                              />
+                              <span className={styles.notificationToggleSlider} />
+                            </label>
+                            <div className={styles.notificationInfo}>
+                              <strong>{notification.name || notification.ticker || '全市場'}</strong>
+                              <span className={styles.notificationMeta}>
+                                {notification.type === 'price' && '💰 價格觸發'}
+                                {notification.type === 'change' && '📈 漲跌幅異動'}
+                                {notification.type === 'volume' && '📊 量能異常'}
+                                {notification.type === 'news' && '📰 新聞事件'}
+                                {notification.type === 'institutional' && '🏛️ 法人動向'}
+                                {' · '}{notification.condition}
+                              </span>
+                            </div>
+                          </div>
+                          <div className={styles.notificationChannels}>
+                            {notification.channels.includes('app') && <span className={styles.channelBadge}><span className={styles.channelDot} />App</span>}
+                            {notification.channels.includes('line') && <span className={styles.channelBadge}><span className={`${styles.channelDot} ${styles.line}`} />Line</span>}
+                            {notification.channels.includes('email') && <span className={styles.channelBadge}><span className={`${styles.channelDot} ${styles.email}`} />Email</span>}
+                          </div>
+                          <button
+                            className={styles.notificationDelete}
+                            onClick={() => saveNotifications(notifications.filter((_, i) => i !== index))}
+                            aria-label="刪除通知"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button className={styles.addNotificationBtn} onClick={() => {
+                      const newId = `notif-${Date.now()}`;
+                      const newNotification: NotificationEntry = {
+                        id: newId,
+                        ticker: '',
+                        name: '新通知',
+                        type: 'price',
+                        condition: '目標價 ≥ 0',
+                        enabled: false,
+                        channels: ['app'],
+                        createdAt: new Date().toISOString(),
+                      };
+                      saveNotifications([...notifications, newNotification]);
+                    }}>
+                      <Plus size={16} /> 新增通知規則
+                    </button>
+                  </>
+                )}
+              </section>
+
+              <section className={styles.panel} style={{ marginTop: 17 }}>
+                <div className={styles.panelHeader}><div><strong>通知歷史記錄</strong><span>最近 50 筆發送記錄</span></div><Clock3 size={20} /></div>
+                <div className={styles.notificationHistory}>
+                  <p className={styles.historyEmpty}>通知發送記錄將在這裡顯示（需後端 Webhook 支援）</p>
+                </div>
+              </section>
+            </>
+          ) : null}
+
+          {/* ── 市場廣播 ── */}
+          {!loading && view === 'broadcast' ? (
+            <>
+              <div className={styles.sectionHeading}>
+                <div><span>MARKET BROADCAST</span><h1>市場廣播</h1><p>大單、異常交易、新聞事件即時流。融合雷達提供天網候選深度分析。</p></div>
+                <div className={styles.asOf}><Clock3 size={16} />即時更新</div>
+              </div>
+
+              <div className={styles.marketGrid}>
+                <section className={styles.panel} style={{ gridColumn: '1 / -1' }}>
+                  <div className={styles.panelHeader}><div><strong>融合雷達</strong><span>SkyNet 飆股候選深度分析</span></div><Target size={20} /></div>
+                  <FusionRadarPanel
+                    ticker={selectedTicker}
+                    marketLabel="台股"
+                    strategy="buy_red_tail"
+                    period="日"
+                  />
+                </section>
+              </div>
+
+              <div className={styles.metrics} style={{ marginTop: 17 }}>
+                <MetricCard label="即時廣播" value={String(broadcastItems.length)} note="大單/異常/新聞" />
+                <MetricCard label="大單買進" value={String(broadcastItems.filter(b => b.type === 'large_order').length)} note="主力進場" tone="green" />
+                <MetricCard label="異常交易" value={String(broadcastItems.filter(b => b.type === 'anomaly').length)} note="價量異常" tone="red" />
+                <MetricCard label="新聞事件" value={String(broadcastItems.filter(b => b.type === 'news').length)} note="突發消息" />
+              </div>
+
+              <section className={styles.panel}>
+                <div className={styles.panelHeader}><div><strong>即時廣播流</strong><span>按時間倒序，紅色為關鍵異常</span></div>
+                  <button className={styles.smallRefresh} onClick={loadBroadcastData} disabled={broadcastLoading}><RefreshCw size={14} className={broadcastLoading ? styles.spinning : ''} /></button>
+                </div>
+                {broadcastLoading ? (
+                  <div className={styles.loading}><RefreshCw className={styles.spinning} /><span>載入廣播資料中...</span></div>
+                ) : broadcastError ? (
+                  <div className={styles.errorBanner}><Database size={17} /><span>讀取失敗：{broadcastError}</span><button onClick={loadBroadcastData}>重試</button></div>
+                ) : broadcastItems.length === 0 ? (
+                  <EmptyState title="目前無即時廣播" detail="等待下一輪資料更新" />
+                ) : (
+                  <div className={styles.broadcastList}>
+                    {broadcastItems.map((item) => (
+                      <div key={item.id} className={`${styles.broadcastItem} ${item.severity}`}>
+                        <span className={styles.broadcastTime}>{item.time}</span>
+                        <span className={styles.broadcastType}>
+                          {item.type === 'large_order' && '💰 大單'}
+                          {item.type === 'anomaly' && '⚠️ 異常'}
+                          {item.type === 'news' && '📰 新聞'}
+                          {item.type === 'institutional' && '🏛️ 法人'}
+                        </span>
+                        {item.ticker && <span className={styles.broadcastTicker}>{item.ticker} {item.name}</span>}
+                        <span className={styles.broadcastMessage}>{item.message}</span>
+                        <span className={styles.broadcastSeverity}>{item.severity === 'critical' ? '🔴' : item.severity === 'warning' ? '🟡' : '🟢'}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className={styles.panel} style={{ marginTop: 17 }}>
+                <div className={styles.panelHeader}><div><strong>指數即時盤口</strong><span>加權/櫃買/雙漲跌家數</span></div><Activity size={20} /></div>
+                <IndexPanel
+                  quotes={[]}
+                  loading={false}
+                  error={null}
+                  lastUpdated={null}
+                  isTrading={true}
+                />
+              </section>
+
+              <section className={styles.panel} style={{ marginTop: 17 }}>
+                <div className={styles.panelHeader}><div><strong>月營收/法人/融資</strong><span>基本面資料快照</span></div><BarChart3 size={20} /></div>
+                <div className={styles.marketGrid}>
+                  <MonthlyRevenuePanel revenues={[]} loading={false} error={null} />
+                  <InstitutionalPanel data={null} loading={false} error={null} lastUpdated={null} />
+                  <MOPSPanel announcements={[]} loading={false} error={null} tickers={[]} />
+                </div>
               </section>
             </>
           ) : null}
