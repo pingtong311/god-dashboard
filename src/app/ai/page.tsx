@@ -1,8 +1,25 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { ChatStreamEvent } from '@/lib/aiChat';
 import { describeAiChatError, type AiChatErrorBody } from '@/lib/aiChatErrors';
+import {
+  MessageSquare,
+  X,
+  Loader2,
+  Send,
+  Trash2,
+  Edit3,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  History,
+  Tag,
+  Sparkles,
+  Minimize,
+  Maximize2,
+} from 'lucide-react';
 import styles from './ai.module.css';
 
 /* ── 型別定義 ──────────────────────────────────────────── */
@@ -38,15 +55,68 @@ const EXAMPLE_QUESTIONS: readonly string[] = [
 
 const LOG_REFRESH_MS = 30_000;
 
+/* ── 對話歷史相關 ───────────────────────────────────────── */
+
+const HISTORY_STORAGE_KEY = 'ai_chat_history';
+const MAX_HISTORY_SESSIONS = 50;
+const MAX_MESSAGES_PER_SESSION = 200;
+
+type ChatSession = {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: number;
+  updatedAt: number;
+  ticker?: string; // 個股語境
+};
+
 let messageSeq = 0;
 function createMessageId(): string {
   messageSeq += 1;
   return `msg-${Date.now()}-${messageSeq}`;
 }
 
-export default function AIPage() {
+function createSessionId(): string {
+  return `session-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function loadHistory(): ChatSession[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(sessions: ChatSession[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(sessions.slice(0, MAX_HISTORY_SESSIONS)));
+  } catch {
+    // Ignore quota exceeded
+  }
+}
+
+function generateTitle(firstMessage: string): string {
+  const trimmed = firstMessage.trim().slice(0, 30);
+  return trimmed || '新對話';
+}
+
+function AIPage() {
+  const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>('chat');
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  /* ── 個股語境標籤（來自 ?ticker= 參數）──────────────────── */
+  const paramTicker = searchParams?.get('ticker')?.toUpperCase() || '';
+  const [tickerContext, setTickerContext] = useState<string>(paramTicker);
+
+  /* ── 對話歷史狀態 ──────────────────────────────────────── */
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   /* ── AI 問答狀態 ─────────────────────────────────────── */
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -71,8 +141,17 @@ export default function AIPage() {
     }
   }, []);
 
+  // 初始化：載入歷史紀錄
   useEffect(() => {
     setMounted(true);
+    const loaded = loadHistory();
+    setSessions(loaded);
+    if (loaded.length > 0) {
+      const latest = loaded[0];
+      setActiveSessionId(latest.id);
+      setMessages(latest.messages);
+      if (latest.ticker) setTickerContext(latest.ticker);
+    }
   }, []);
 
   // 感知日誌：每 30 秒輪詢一次（與原實作行為一致）。
@@ -89,6 +168,24 @@ export default function AIPage() {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  /* ── 對話歷史持久化：active session 的 messages / ticker 變更時存檔 ────────── */
+  useEffect(() => {
+    if (!activeSessionId) return;
+    setSessions((prev) => {
+      const idx = prev.findIndex((s) => s.id === activeSessionId);
+      if (idx === -1) return prev;
+      const updated = [...prev];
+      updated[idx] = {
+        ...updated[idx],
+        messages: messages.slice(0, MAX_MESSAGES_PER_SESSION),
+        ticker: tickerContext || undefined,
+        updatedAt: Date.now(),
+      };
+      saveHistory(updated);
+      return updated;
+    });
+  }, [messages, tickerContext, activeSessionId]);
 
   /* ── 對話串流邏輯 ────────────────────────────────────── */
 
@@ -123,6 +220,21 @@ export default function AIPage() {
       const text = (rawText ?? input).trim();
       if (!text || isStreaming) return;
 
+      // 如果沒有 active session，建立一個新的
+      if (!activeSessionId) {
+        const newId = createSessionId();
+        const newSession: ChatSession = {
+          id: newId,
+          title: generateTitle(text),
+          messages: [],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          ticker: tickerContext || undefined,
+        };
+        setSessions((prev) => [newSession, ...prev]);
+        setActiveSessionId(newId);
+      }
+
       const userMessage: ChatMessage = {
         id: createMessageId(),
         role: 'user',
@@ -141,6 +253,15 @@ export default function AIPage() {
       setMessages([...history, assistantMessage]);
       setInput('');
       setIsStreaming(true);
+
+      // 若是第一條 user 訊息，更新 session 標題
+      if (activeSessionId && messages.length === 0) {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeSessionId ? { ...s, title: generateTitle(text) } : s
+          )
+        );
+      }
 
       // 只送出有效的 user / assistant 內容；system prompt 由伺服器端注入。
       const payloadMessages = history
@@ -247,11 +368,71 @@ export default function AIPage() {
     [handleSend]
   );
 
+  /* ── 歷史/Session 管理 ──────────────────────────────────── */
+  const newSession = useCallback(() => {
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = null;
+    setMessages([]);
+    setInput('');
+    setIsStreaming(false);
+    setActiveSessionId(null);
+    setHistoryOpen(false);
+  }, []);
+
+  const switchSession = useCallback((sessionId: string) => {
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = null;
+    const session = sessions.find((s) => s.id === sessionId);
+    if (session) {
+      setMessages(session.messages);
+      setActiveSessionId(session.id);
+      if (session.ticker) setTickerContext(session.ticker);
+    }
+    setHistoryOpen(false);
+  }, [sessions]);
+
+  const deleteSession = useCallback((sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setSessions((prev) => {
+      const filtered = prev.filter((s) => s.id !== sessionId);
+      saveHistory(filtered);
+      return filtered;
+    });
+    if (activeSessionId === sessionId) {
+      setMessages([]);
+      setActiveSessionId(null);
+    }
+  }, [activeSessionId]);
+
+  const toggleHistory = useCallback(() => {
+    setHistoryOpen((prev) => !prev);
+  }, []);
+
+  const clearTickerContext = useCallback(() => {
+    setTickerContext('');
+  }, []);
+
   if (!mounted) return null;
 
   return (
     <div className={styles.aiRoot}>
       <div className={styles.shell}>
+        {/* ── 個股語境標籤 ── */}
+        {tickerContext && (
+          <div className={styles.tickerContextBar}>
+            <Tag className={styles.tickerTagIcon} size={14} />
+            <span className={styles.tickerTagText}>個股語境：{tickerContext}</span>
+            <button
+              type="button"
+              className={styles.tickerTagClose}
+              onClick={clearTickerContext}
+              aria-label="清除個股語境"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
         <header className={styles.topBar}>
           <div className={styles.brandRow}>
             <span className={styles.brandMark}>AI</span>
@@ -259,6 +440,26 @@ export default function AIPage() {
               <h1 className={styles.brandTitle}>股市大佬 · AI 問答</h1>
               <p className={styles.brandSub}>台股籌碼與技術面即時對話助手</p>
             </div>
+          </div>
+
+          <div className={styles.topBarActions}>
+            <button
+              type="button"
+              className={`${styles.iconBtn} ${historyOpen ? styles.iconBtnActive : ''}`}
+              onClick={toggleHistory}
+              aria-label={historyOpen ? '關閉歷史' : '開啟歷史'}
+              aria-expanded={historyOpen}
+            >
+              <History size={20} />
+            </button>
+            <button
+              type="button"
+              className={styles.iconBtn}
+              onClick={newSession}
+              aria-label="新對話"
+            >
+              <Plus size={20} />
+            </button>
           </div>
 
           <div className={styles.tabBar} role="tablist" aria-label="AI 頁面分頁">
@@ -282,6 +483,52 @@ export default function AIPage() {
             </button>
           </div>
         </header>
+
+        {/* ── 歷史側邊欄 ── */}
+        {historyOpen && (
+          <aside className={styles.historyPanel} aria-label="對話歷史">
+            <div className={styles.historyHeader}>
+              <h2 className={styles.historyTitle}>對話歷史</h2>
+            </div>
+            <div className={styles.historyList}>
+              {sessions.length === 0 ? (
+                <p className={styles.historyEmpty}>尚無對話紀錄</p>
+              ) : (
+                sessions.map((session) => (
+                  <button
+                    key={session.id}
+                    type="button"
+                    className={`${styles.historyItem} ${activeSessionId === session.id ? styles.historyItemActive : ''}`}
+                    onClick={() => switchSession(session.id)}
+                  >
+                    <div className={styles.historyItemMain}>
+                      <span className={styles.historyItemTitle}>{session.title}</span>
+                      {session.ticker && (
+                        <span className={styles.historyItemTicker}>{session.ticker}</span>
+                      )}
+                    </div>
+                    <span className={styles.historyItemTime}>
+                      {new Date(session.updatedAt).toLocaleString('zh-TW', {
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.historyItemDelete}
+                      onClick={(e) => deleteSession(session.id, e)}
+                      aria-label="刪除此對話"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </button>
+                ))
+              )}
+            </div>
+          </aside>
+        )}
 
         {activeTab === 'chat' ? (
           <section className={styles.chatPanel} aria-label="AI 問答">
@@ -459,6 +706,16 @@ export default function AIPage() {
     </div>
   );
 }
+
+function AIPageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <AIPage />
+    </Suspense>
+  );
+}
+
+export default AIPageWrapper;
 
 /* ── 子元件 ────────────────────────────────────────────── */
 
