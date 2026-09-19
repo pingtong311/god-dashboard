@@ -14,8 +14,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Loader2, AlertTriangle, TrendingUp, Clock, BarChart2 } from 'lucide-react';
-import CandlestickChart from './CandlestickChart';
+import { X, Loader2, AlertTriangle, TrendingUp, Clock, BarChart2, Minus, Maximize2, GitBranch, Trash2, Undo2, Save } from 'lucide-react';
+import CandlestickChart, { CrosshairProvider, useCrosshair } from './CandlestickChart';
 import { calculateSMA } from '@/lib/sma';
 import { calculateMACD, calculateKD, calculateBollingerBands, calculateRSI, calculateBIAS } from '@/lib/indicators';
 import {
@@ -64,6 +64,51 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_ticker: '無效的股票代號。',
   network_error: '網路連線異常，請檢查網路後再試。',
 };
+
+// ── 畫圖工具類型 ────────────────────────────────────────
+
+type DrawingTool = 'none' | 'trendline' | 'horizontal' | 'fibonacci';
+
+interface Drawing {
+  id: string;
+  type: 'trendline' | 'horizontal' | 'fibonacci';
+  points: { x?: number; y?: number; time: string; price: number }[];
+  color: string;
+  lineWidth: number;
+  lineStyle: 'solid' | 'dashed' | 'dotted';
+}
+
+const DRAWING_TOOLS: { id: DrawingTool; label: string; icon: React.ReactNode; shortcut: string }[] = [
+  { id: 'none', label: '游標', icon: <Maximize2 size={16} />, shortcut: 'V' },
+  { id: 'trendline', label: '趨勢線', icon: <GitBranch size={16} />, shortcut: 'T' },
+  { id: 'horizontal', label: '水平線', icon: <Minus size={16} />, shortcut: 'H' },
+  { id: 'fibonacci', label: '斐波那契', icon: <Maximize2 size={16} />, shortcut: 'F' },
+];
+
+const DRAWING_STORAGE_KEY = 'kline_drawings_';
+
+function getDrawingStorageKey(ticker: string, timeframe: string): string {
+  return `${DRAWING_STORAGE_KEY}${ticker}_${timeframe}`;
+}
+
+function loadDrawings(ticker: string, timeframe: string): Drawing[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const stored = localStorage.getItem(getDrawingStorageKey(ticker, timeframe));
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDrawings(ticker: string, timeframe: string, drawings: Drawing[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(getDrawingStorageKey(ticker, timeframe), JSON.stringify(drawings));
+  } catch {
+    // Ignore quota exceeded
+  }
+}
 
 function getErrorMessage(errorCode: string, ticker: string): string {
   const msg = ERROR_MESSAGES[errorCode] ?? `發生未知錯誤（${errorCode}）`;
@@ -225,6 +270,53 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
   const [, setQuoteError] = useState(false);
   // 技術指標面板開關
   const [showIndicators, setShowIndicators] = useState(false);
+
+  // 畫圖工具狀態
+  const [activeTool, setActiveTool] = useState<DrawingTool>('none');
+  const [drawings, setDrawings] = useState<Drawing[]>([]);
+  const [drawingHistory, setDrawingHistory] = useState<Drawing[][]>([]);
+
+  // 載入儲存的畫圖
+  useEffect(() => {
+    const saved = loadDrawings(ticker, timeframe);
+    setDrawings(saved);
+    setDrawingHistory([saved]);
+  }, [ticker, timeframe]);
+
+  // 儲存畫圖
+  useEffect(() => {
+    if (drawings.length > 0) {
+      saveDrawings(ticker, timeframe, drawings);
+    }
+  }, [drawings, ticker, timeframe]);
+
+  // 更新 drawingHistory 供復原
+  useEffect(() => {
+    setDrawingHistory(prev => [...prev.slice(-19), drawings]); // 最多保留 20 步
+  }, [drawings]);
+
+  // 復原功能
+  const undoDrawing = useCallback(() => {
+    if (drawingHistory.length > 1) {
+      const newHistory = drawingHistory.slice(0, -1);
+      const previous = newHistory[newHistory.length - 1];
+      setDrawings(previous);
+      setDrawingHistory(newHistory);
+    }
+  }, [drawingHistory]);
+
+  // 清除所有畫圖
+  const clearDrawings = useCallback(() => {
+    setDrawings([]);
+    setDrawingHistory([[]]);
+  }, []);
+
+  // 加入新畫圖
+  const addDrawing = useCallback((drawing: Omit<Drawing, 'id'>) => {
+    const newDrawing: Drawing = { ...drawing, id: `${Date.now()}_${Math.random().toString(36).slice(2, 9)}` };
+    setDrawings(prev => [...prev, newDrawing]);
+    setActiveTool('none');
+  }, []);
 
   // 快取（Daily K，TTL 5 分鐘）
   const dailyCache = useRef<Map<string, CacheEntry>>(new Map());
@@ -462,6 +554,41 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
           <span>指標</span>
         </button>
 
+        {/* 畫圖工具列 */}
+        <div className="kline-drawing-toolbar" role="group" aria-label="畫圖工具">
+          {DRAWING_TOOLS.map(tool => (
+            <button
+              key={tool.id}
+              className={`kline-drawing-btn ${activeTool === tool.id ? 'active' : ''}`}
+              onClick={() => setActiveTool(tool.id)}
+              title={`${tool.label} (${tool.shortcut})`}
+              aria-pressed={activeTool === tool.id}
+            >
+              {tool.icon}
+              <span className="kline-drawing-btn-label">{tool.label}</span>
+            </button>
+          ))}
+          {drawings.length > 0 && (
+            <>
+              <button
+                className="kline-drawing-btn undo"
+                onClick={undoDrawing}
+                title="復原 (Ctrl+Z)"
+                disabled={drawingHistory.length <= 1}
+              >
+                <Undo2 size={16} />
+              </button>
+              <button
+                className="kline-drawing-btn clear"
+                onClick={clearDrawings}
+                title="清除所有畫圖"
+              >
+                <Trash2 size={16} />
+              </button>
+            </>
+          )}
+        </div>
+
         {/* 日期範圍切換（#9，僅日K 顯示） */}
         {timeframe === 'daily' && (
           <div className="kline-daterange-toggle">
@@ -518,7 +645,15 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
 
         {/* K 線圖 */}
         {!loading && !error && displayCandles && displayCandles.length > 0 && (
-          <CandlestickChart candles={displayCandles} timeframe={timeframe} target={target} stopLoss={stopLoss} />
+          <CandlestickChart
+            candles={displayCandles}
+            timeframe={timeframe}
+            target={target}
+            stopLoss={stopLoss}
+            drawings={drawings}
+            onAddDrawing={addDrawing}
+            activeTool={activeTool}
+          />
         )}
 
         {/* 無資料 */}

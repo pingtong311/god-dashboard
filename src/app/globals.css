@@ -8071,3 +8071,72 @@ body.review-mode .rail-card {
   color: var(--muted);
   font-weight: 700;
 }
+
+/* ── 畫圖工具列樣式 ─────────────────────────────────────── */
+
+.kline-drawing-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 6px;
+  background: rgba(3, 6, 16, 0.6);
+  border: 1px solid rgba(183, 192, 212, 0.2);
+  flex-shrink: 0;
+}
+
+.kline-drawing-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.kline-drawing-btn:hover:not(:disabled) {
+  background: rgba(197, 160, 89, 0.1);
+  border-color: rgba(197, 160, 89, 0.3);
+  color: var(--accent);
+}
+
+.kline-drawing-btn.active {
+  background: rgba(197, 160, 89, 0.15);
+  border-color: rgba(197, 160, 89, 0.5);
+  color: var(--accent);
+}
+
+.kline-drawing-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.kline-drawing-btn-label {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .kline-drawing-btn-label {
+    display: inline;
+  }
+}
+
+.kline-drawing-btn.undo,
+.kline-drawing-btn.clear {
+  margin-left: 4px;
+  padding: 6px 8px;
+}
+
+.kline-drawing-btn.undo:hover:not(:disabled),
+.kline-drawing-btn.clear:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
