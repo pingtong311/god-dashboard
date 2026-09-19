@@ -86,27 +86,41 @@ export default function Navigation() {
 
   const isLight = theme === 'light';
 
+  /**
+   * 是否顯示「返回上一頁」。
+   *
+   * 博主實測（`extracted/site/`，grep `返回上一頁`）：
+   *   首頁 home.html = 0，其餘 10 個外殼頁 = 1。
+   *   → 首頁沒有上一頁可回，故不顯示；這是博主刻意的，不是漏寫。
+   * 故僅在非首頁的 guest 頁面渲染。（比對前先去結尾斜線，`/` 保持原樣。）
+   */
+  const strippedPath = pathname.replace(/\/+$/, '');
+  const normalizedPath = strippedPath === '' ? '/' : strippedPath;
+  const showBack = normalizedPath !== '/';
+
   return (
     <header className={styles.header}>
       <div className={styles.inner}>
-        {/* 返回上一頁（手機／平板顯示，lg 以上隱藏） */}
-        <button
-          type="button"
-          className={styles.backBtn}
-          aria-label="返回上一頁"
-          onClick={() => router.back()}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="22"
-            height="22"
-            fill="currentColor"
-            viewBox="0 0 256 256"
-            aria-hidden="true"
+        {/* 返回上一頁（手機／平板顯示，lg 以上隱藏；首頁不顯示） */}
+        {showBack && (
+          <button
+            type="button"
+            className={styles.backBtn}
+            aria-label="返回上一頁"
+            onClick={() => router.back()}
           >
-            <path d="M228,128a12,12,0,0,1-12,12H69l51.52,51.51a12,12,0,0,1-17,17l-72-72a12,12,0,0,1,0-17l72-72a12,12,0,0,1,17,17L69,116H216A12,12,0,0,1,228,128Z" />
-          </svg>
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="22"
+              height="22"
+              fill="currentColor"
+              viewBox="0 0 256 256"
+              aria-hidden="true"
+            >
+              <path d="M228,128a12,12,0,0,1-12,12H69l51.52,51.51a12,12,0,0,1-17,17l-72-72a12,12,0,0,1,0-17l72-72a12,12,0,0,1,17,17L69,116H216A12,12,0,0,1,228,128Z" />
+            </svg>
+          </button>
+        )}
 
         {/* 品牌：Logo + 股市大佬 / TRADEBOSS */}
         <Link href="/" className={styles.brand} aria-label="回股市大佬首頁">
