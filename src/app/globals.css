@@ -8140,3 +8140,40 @@ body.review-mode .rail-card {
   border-color: rgba(239, 68, 68, 0.3);
   color: #ef4444;
 }
+
+/* 長按/懸停浮標提示 */
+.kline-candle-tooltip {
+  position: absolute;
+  z-index: 100;
+  background: rgba(4, 12, 28, 0.98);
+  border: 1px solid rgba(197, 160, 89, 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  min-width: 140px;
+  pointer-events: none;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  animation: klineTooltipFadeIn 0.15s ease-out;
+}
+
+@keyframes klineTooltipFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.kline-candle-tooltip .tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 3px 0;
+  color: var(--ink);
+}
+
+.kline-candle-tooltip .tooltip-row span:first-child {
+  color: var(--muted);
+}
+
+.kline-candle-tooltip .tooltip-row strong {
+  color: var(--ink);
+}

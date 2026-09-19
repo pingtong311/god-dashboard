@@ -249,6 +249,102 @@ function normalizeDaily(raw: FugleHistoricalResponse) {
   return { candles };
 }
 
+/**
+ * 將日K重採樣為週K
+ * 每週以週五收盤為基準（若該週無週五則取最後一個交易日）
+ */
+function resampleToWeekly(dailyCandles: { date: string; open: number; high: number; low: number; close: number; volume: number }[]) {
+  const weeklyMap = new Map<string, typeof dailyCandles[0][]>();
+  
+  for (const candle of dailyCandles) {
+    const date = new Date(candle.date);
+    // 取得該週的週五日期作為 key（ISO 週數：年份-週數）
+    const year = date.getUTCFullYear();
+    const week = getISOWeek(date);
+    const key = `${year}-W${week.toString().padStart(2, '0')}`;
+    
+    if (!weeklyMap.has(key)) {
+      weeklyMap.set(key, []);
+    }
+    weeklyMap.get(key)!.push(candle);
+  }
+  
+  const weeklyCandles = Array.from(weeklyMap.entries())
+    .map(([key, candles]) => {
+      // 依日期排序
+      candles.sort((a, b) => a.date.localeCompare(b.date));
+      const first = candles[0];
+      const last = candles[candles.length - 1];
+      const high = Math.max(...candles.map(c => c.high));
+      const low = Math.min(...candles.map(c => c.low));
+      const volume = candles.reduce((sum, c) => sum + c.volume, 0);
+      
+      return {
+        date: last.date, // 週五或該週最後交易日
+        open: first.open,
+        high,
+        low,
+        close: last.close,
+        volume,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+  
+  return { candles: weeklyCandles };
+}
+
+/**
+ * 將日K重採樣為月K
+ */
+function resampleToMonthly(dailyCandles: { date: string; open: number; high: number; low: number; close: number; volume: number }[]) {
+  const monthlyMap = new Map<string, typeof dailyCandles[0][]>();
+  
+  for (const candle of dailyCandles) {
+    const date = new Date(candle.date);
+    const year = date.getUTCFullYear();
+    const month = date.getUTCMonth() + 1; // 1-12
+    const key = `${year}-${month.toString().padStart(2, '0')}`;
+    
+    if (!monthlyMap.has(key)) {
+      monthlyMap.set(key, []);
+    }
+    monthlyMap.get(key)!.push(candle);
+  }
+  
+  const monthlyCandles = Array.from(monthlyMap.entries())
+    .map(([key, candles]) => {
+      candles.sort((a, b) => a.date.localeCompare(b.date));
+      const first = candles[0];
+      const last = candles[candles.length - 1];
+      const high = Math.max(...candles.map(c => c.high));
+      const low = Math.min(...candles.map(c => c.low));
+      const volume = candles.reduce((sum, c) => sum + c.volume, 0);
+      
+      return {
+        date: last.date, // 月底或該月最後交易日
+        open: first.open,
+        high,
+        low,
+        close: last.close,
+        volume,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+  
+  return { candles: monthlyCandles };
+}
+
+/**
+ * 取得 ISO 週數
+ */
+function getISOWeek(date: Date): number {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
 function normalizeIntraday(raw: FugleIntradayResponse) {
   // Fugle API 回傳欄位為 `data`，但保留 `candles` 相容性
   const source = raw.data ?? raw.candles ?? [];
@@ -308,7 +404,7 @@ export async function GET(request: NextRequest) {
   }
 
   // 2. 驗證 type 值
-  if (!['daily', 'intraday', 'quote'].includes(type)) {
+  if (!['daily', 'weekly', 'monthly', 'intraday', 'quote'].includes(type)) {
     return NextResponse.json(
       { error: 'invalid_type' },
       { status: 400 }
@@ -356,7 +452,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const url = getFugleUrl(cleanTicker, type, from);
+    // 對於 weekly/monthly，我們需要先取得 daily 資料再重採樣
+    const fetchType = (type === 'weekly' || type === 'monthly') ? 'daily' : type;
+    const url = getFugleUrl(cleanTicker, fetchType, from);
 
     const fugleRes = await fetch(url, {
       headers: {
@@ -375,6 +473,13 @@ export async function GET(request: NextRequest) {
           { status: 429 }
         );
       }
+      // 將 Fugle intraday 401/403 映射為明確錯誤代碼
+      if (type === 'intraday' && (fugleRes.status === 401 || fugleRes.status === 403)) {
+        return NextResponse.json(
+          { error: 'intraday_not_subscribed' },
+          { status: fugleRes.status }
+        );
+      }
       if (type === 'intraday') {
         return NextResponse.json(
           { error: 'upstream_error' },
@@ -384,11 +489,18 @@ export async function GET(request: NextRequest) {
       const yahooController = new AbortController();
       const yahooTimeout = setTimeout(() => yahooController.abort(), 8_000);
       try {
-        if (type === 'daily') {
+        if (type === 'daily' || type === 'weekly' || type === 'monthly') {
           const yahooData = await fetchYahooDaily(cleanTicker, market, from, yahooController.signal);
           clearTimeout(yahooTimeout);
           if (yahooData?.candles && yahooData.candles.length > 0) {
-            return NextResponse.json(normalizeDaily(yahooData), { status: 200 });
+            const dailyNormalized = normalizeDaily(yahooData);
+            if (type === 'weekly') {
+              return NextResponse.json(resampleToWeekly(dailyNormalized.candles), { status: 200 });
+            }
+            if (type === 'monthly') {
+              return NextResponse.json(resampleToMonthly(dailyNormalized.candles), { status: 200 });
+            }
+            return NextResponse.json(dailyNormalized, { status: 200 });
           }
         } else if (type === 'quote') {
           const yahooQuote = await fetchYahooQuote(cleanTicker, market, yahooController.signal);
@@ -407,11 +519,20 @@ export async function GET(request: NextRequest) {
     }
 
     const rawData = await fugleRes.json();
-    const normalized = type === 'daily'
-      ? normalizeDaily(rawData as FugleHistoricalResponse)
-      : type === 'intraday'
-        ? normalizeIntraday(rawData as FugleIntradayResponse)
-        : normalizeQuote(rawData as FugleQuoteResponse);
+    let normalized;
+    if (type === 'daily') {
+      normalized = normalizeDaily(rawData as FugleHistoricalResponse);
+    } else if (type === 'weekly') {
+      const dailyNormalized = normalizeDaily(rawData as FugleHistoricalResponse);
+      normalized = resampleToWeekly(dailyNormalized.candles);
+    } else if (type === 'monthly') {
+      const dailyNormalized = normalizeDaily(rawData as FugleHistoricalResponse);
+      normalized = resampleToMonthly(dailyNormalized.candles);
+    } else if (type === 'intraday') {
+      normalized = normalizeIntraday(rawData as FugleIntradayResponse);
+    } else {
+      normalized = normalizeQuote(rawData as FugleQuoteResponse);
+    }
 
     return NextResponse.json(normalized, { status: 200 });
 

@@ -53,7 +53,7 @@ export function useCrosshair() {
 interface CrosshairProviderProps {
   children: React.ReactNode;
   visibleCandles: ChartCandle[];
-  timeframe: 'daily' | 'intraday';
+  timeframe: Timeframe;
 }
 
 export function CrosshairProvider({ children, visibleCandles, timeframe }: CrosshairProviderProps) {
@@ -365,7 +365,7 @@ interface Drawing {
 interface DrawingOverlayProps {
   drawings: Drawing[];
   visibleCandles: ChartCandle[];
-  timeframe: 'daily' | 'intraday';
+  timeframe: Timeframe;
   yDomain: [number, number];
   height: number;
   width: number;
@@ -387,7 +387,7 @@ function DrawingOverlay({
 }: DrawingOverlayProps) {
   if (chartType !== 'main') return null; // Only render on main chart
 
-  const xKey = timeframe === 'daily' ? 'date' : 'time';
+  const xKey = timeframe === 'intraday' ? 'time' : 'date';
   const [minPrice, maxPrice] = yDomain;
 
   // Convert drawing points to SVG coordinates
@@ -489,7 +489,7 @@ function DrawingOverlay({
 interface DrawingPreviewProps {
   activeTool: 'trendline' | 'horizontal' | 'fibonacci';
   visibleCandles: ChartCandle[];
-  timeframe: 'daily' | 'intraday';
+  timeframe: Timeframe;
   yDomain: [number, number];
   height: number;
   width: number;
@@ -508,7 +508,7 @@ function DrawingPreview({
   const [points, setPoints] = useState<{ time: string; price: number }[]>([]);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
 
-  const xKey = timeframe === 'daily' ? 'date' : 'time';
+  const xKey = timeframe === 'intraday' ? 'time' : 'date';
   const [minPrice, maxPrice] = yDomain;
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -591,17 +591,21 @@ function DrawingPreview({
 
 // ── Main Chart Component ──────────────────────────────
 
+import type { Timeframe } from './KLinePanel';
+
 interface CandlestickChartProps {
   candles: ChartCandle[];
-  timeframe: 'daily' | 'intraday';
+  timeframe: Timeframe;
   target?: number;    // 目標價水平線
   stopLoss?: number;  // 防守價水平線
   drawings?: Drawing[];
   onAddDrawing?: (drawing: Omit<Drawing, 'id'>) => void;
   activeTool?: 'none' | 'trendline' | 'horizontal' | 'fibonacci';
+  onCandleHover?: (candle: ChartCandle | null) => void;
+  onHoverPositionChange?: (pos: { x: number; y: number } | null) => void;
 }
 
-export default function CandlestickChart({ candles, timeframe, target, stopLoss, drawings = [], onAddDrawing, activeTool = 'none' }: CandlestickChartProps) {
+export default function CandlestickChart({ candles, timeframe, target, stopLoss, drawings = [], onAddDrawing, activeTool = 'none', onCandleHover, onHoverPositionChange }: CandlestickChartProps) {
   // 縮放與平移狀態
   const [visibleCount, setVisibleCount] = useState(() => Math.min(candles.length, 60));
   const [startIndex, setStartIndex] = useState(0);
@@ -701,33 +705,74 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
     }
   }, [candles.length, visibleCount]);
 
-  const handleTouchEnd = useCallback(() => {
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     isDragging.current = false;
     setIsDraggingState(false);
     lastTouchDist.current = null;
   }, []);
 
-  // ── Mouse tracking for crosshair ──────────────────────
+  // ── Mouse tracking for crosshair & hover tooltip ──────────────────────
   const handleChartMouseMove = useCallback((e: React.MouseEvent) => {
     const container = chartContainerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const relX = e.clientX - rect.left;
+    const relY = e.clientY - rect.top;
     // Approximate index from X position
     const candleWidth = rect.width / Math.max(1, visibleCandles.length);
     const index = Math.floor(relX / candleWidth);
     const clampedIndex = Math.max(0, Math.min(visibleCandles.length - 1, index));
-    // Update crosshair context via a global event or we'll use a different approach
-    // For now, dispatch a custom event that the CrosshairProvider can listen to
+    // Update crosshair context via custom event
     window.dispatchEvent(new CustomEvent('crosshair-move', { detail: { index: clampedIndex, timeframe } }));
-  }, [visibleCandles.length, timeframe]);
+    // Also trigger hover tooltip callback
+    if (onCandleHover && visibleCandles[clampedIndex]) {
+      onCandleHover(visibleCandles[clampedIndex]);
+      onHoverPositionChange?.({ x: relX + 10, y: relY - 120 }); // Offset for tooltip positioning
+    }
+  }, [visibleCandles.length, timeframe, onCandleHover, onHoverPositionChange]);
 
   const handleChartMouseLeave = useCallback(() => {
     window.dispatchEvent(new CustomEvent('crosshair-leave'));
-  }, []);
+    onCandleHover?.(null);
+    onHoverPositionChange?.(null);
+  }, [onCandleHover, onHoverPositionChange]);
 
-  // Listen for crosshair events in the provider - we'll handle this in the provider
-  // Actually, let's use a simpler approach: the CrosshairProvider will listen to these events
+  // Long press detection for touch devices
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const handleTouchStartForHover = useCallback((e: React.TouchEvent) => {
+    // Clear any existing timer
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    
+    const touch = e.touches[0];
+    const container = chartContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const relX = touch.clientX - rect.left;
+    const relY = touch.clientY - rect.top;
+    const candleWidth = rect.width / Math.max(1, visibleCandles.length);
+    const index = Math.floor(relX / candleWidth);
+    const clampedIndex = Math.max(0, Math.min(visibleCandles.length - 1, index));
+    
+    // Start long press timer (500ms)
+    longPressTimerRef.current = setTimeout(() => {
+      if (onCandleHover && visibleCandles[clampedIndex]) {
+        onCandleHover(visibleCandles[clampedIndex]);
+        onHoverPositionChange?.({ x: relX + 10, y: relY - 120 });
+      }
+    }, 500);
+  }, [visibleCandles.length, onCandleHover, onHoverPositionChange]);
+
+  const handleTouchEndForHover = useCallback((e?: React.TouchEvent) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    // On touch end, clear hover after a delay
+    setTimeout(() => {
+      onCandleHover?.(null);
+      onHoverPositionChange?.(null);
+    }, 1000);
+  }, [onCandleHover, onHoverPositionChange]);
 
   // ── 渲染 ───────────────────────────────────────────────
   if (!candles.length) {
@@ -735,7 +780,7 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
   }
 
   // X 軸標籤格式
-  const xKey = timeframe === 'daily' ? 'date' : 'time';
+  const xKey = timeframe === 'intraday' ? 'time' : 'date';
 
   // Y 軸範圍（加 padding）
   const prices = visibleCandles.flatMap((c) => [c.high, c.low]);
@@ -765,10 +810,10 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onTouchStart={handleTouchStart}
+        onMouseLeave={handleChartMouseLeave}
+        onTouchStart={(e) => { handleTouchStart(e); handleTouchStartForHover(e); }}
         onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        onTouchEnd={(e) => { handleTouchEnd(e); handleTouchEndForHover(e); }}
         onMouseEnter={handleChartMouseMove}
         style={{ cursor: isDraggingState ? 'grabbing' : 'crosshair', userSelect: 'none', position: 'relative' }}
       >
