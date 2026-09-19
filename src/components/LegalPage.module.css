@@ -1,0 +1,139 @@
+/* ============================================================================
+ * LegalPage.module.css
+ * ----------------------------------------------------------------------------
+ * 逐條複刻博主 /privacy.html 與 /terms.html 的 inline <style>。
+ *
+ * 博主這兩頁「自帶」一份獨立、淺色（light-only）樣式，刻意不理會全站主題：
+ *   :root { color-scheme: light; }
+ *   body { margin:0; padding:24px 16px 48px;
+ *          font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;
+ *          line-height:1.7; color:#1a1a1a; background:#fafafa; }
+ *   main { max-width:720px; margin:0 auto; background:#fff; padding:28px 22px;
+ *          border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+ *   h1 { font-size:1.6rem; margin:0 0 12px; }
+ *   h2 { font-size:1.2rem; margin:28px 0 10px; }
+ *   h3 { font-size:1.05rem; margin:18px 0 8px; }
+ *   p, li { font-size:0.98rem; }
+ *   ul { padding-left:1.3em; }
+ *   hr { border:0; border-top:1px solid #e5e5e5; margin:24px 0; }
+ *   a { color:#0b5fff; }
+ *   .nav { margin-bottom:16px; font-size:0.9rem; }
+ *   .nav a { margin-right:12px; }
+ *
+ * ⚠ 刻意保留「淺色硬寫死」：峰子全站預設 dark（<html data-theme="dark">，
+ *   由 src/styles/theme.css 驅動），但博主這兩頁無視主題、一律淺色。
+ *   為忠實複刻，這裡不使用任何 --* 設計變數，並在容器上設 color-scheme:light
+ *   （CSS Module 已做 class 作用域，不會外洩到其他路由）。
+ *
+ * ⚠ 因全站載入 Tailwind 4 preflight，UA 預設值會被歸零；故凡博主「依賴 UA
+ *   預設」之處（標題粗體、ul 的 disc 符號與縮排、a 的底線、hr 的分隔線）
+ *   都必須在此明確寫出，否則外觀會偏離博主原頁。
+ * ========================================================================== */
+
+/* 對應博主 body（含 padding / 字型 / 行高 / 淺色底）。以 div 承接整頁底色，
+   故補上 min-height 讓淺底鋪滿視窗（博主 body 亦為整頁底）。 */
+.page {
+  box-sizing: border-box;
+  color-scheme: light;
+  min-height: 100vh;
+  margin: 0;
+  padding: 24px 16px 48px;
+  font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  line-height: 1.7;
+  color: #1a1a1a;
+  background: #fafafa;
+}
+
+/* 對應博主 main（白色卡片）。 */
+.main {
+  max-width: 720px;
+  margin: 0 auto;
+  background: #fff;
+  padding: 28px 22px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* 對應博主 h1（字級 + UA 粗體）。 */
+.h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin: 0 0 12px;
+}
+
+/* 對應博主 h2。 */
+.h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 28px 0 10px;
+}
+
+/* 對應博主 h3。 */
+.h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 18px 0 8px;
+}
+
+/* 對應博主 p, li。 */
+.p,
+.li {
+  font-size: 0.98rem;
+}
+
+/* 對應博主 ul（padding-left:1.3em；符號與上下留白還原 UA 預設）。 */
+.ul {
+  margin: 1em 0;
+  padding-left: 1.3em;
+  list-style: disc outside;
+}
+
+/* 有序清單（博主原始頁未出現 <ol>，仍保留以備不時之需）。 */
+.ol {
+  margin: 1em 0;
+  padding-left: 1.3em;
+  list-style: decimal outside;
+}
+
+/* 對應博主 hr。 */
+.hr {
+  border: 0;
+  border-top: 1px solid #e5e5e5;
+  margin: 24px 0;
+}
+
+/* 對應博主 a { color:#0b5fff }（底線還原 UA 預設）。 */
+.link {
+  color: #0b5fff;
+  text-decoration: underline;
+}
+
+/* 對應博主 .nav。 */
+.nav {
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+
+/* 對應博主 .nav a。 */
+.navLink {
+  margin-right: 12px;
+  color: #0b5fff;
+  text-decoration: underline;
+}
+
+/* 對應博主 <strong>（還原 UA 的 bolder）。 */
+.strong {
+  font-weight: bolder;
+}
+
+/* 對應博主 <em>（還原 UA 的 italic）。 */
+.em {
+  font-style: italic;
+}
+
+/* 引言（博主原始頁未出現 <blockquote>，仍保留以備不時之需）。 */
+.blockquote {
+  margin: 1em 0;
+  padding-left: 1em;
+  border-left: 3px solid #e5e5e5;
+}
