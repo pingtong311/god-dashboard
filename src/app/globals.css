@@ -30,6 +30,28 @@
   --color-green: var(--accent-green);
   --color-purple: var(--accent-purple);
   --color-red: var(--accent-red);
+
+  /* ── 「股市大佬」設計語彙 token → Tailwind 色票 ────────────────────────────
+     博主外殼（compliance-bar / site-footer / mobile-taskbar）逐字使用
+     `bg-bg/60`、`bg-surface/96`、`text-ink`、`text-muted/70`、`border-line`、
+     `text-accent`、`bg-accent`、`text-bg` 等工具類別；本專案原本只註冊了
+     background / foreground 兩個色票，故在此補上 token → 色票對應，
+     讓那些 class 名稱能如博主 DOM 一般直接生效（值取自 src/styles/theme.css）。
+     以 `@theme inline` 註冊，確保 utilities 直接引用 `var(--…)` 執行期變數，
+     明暗主題切換時即時跟著變。 */
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-elevated: var(--elevated);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-gold: var(--gold);
+  --color-violet: var(--violet);
+  --color-signal: var(--signal);
+  --color-up: var(--up);
+  --color-down: var(--down);
 }
 
 body {
@@ -44,6 +66,52 @@ body {
   background-size: 40px 40px, 40px 40px, 100% 100%, 100% 100%;
   background-attachment: fixed;
   min-height: 100vh;
+}
+
+/* ============================================================================
+ * 「股市大佬」未登入態外殼（guest shell）全域自訂類別
+ * ----------------------------------------------------------------------------
+ * 博主的未登入態外殼（compliance-bar / site-footer / mobile-taskbar / skip-link
+ * / data-panel）除 Tailwind 工具類別外，另在「全域樣式表」定義了下列自訂類別
+ * （非 Tailwind，逐字照抄自 extracted/site/*.css 的四個 CSS chunk）。
+ *
+ * 這些類別名同時是 <ComplianceBar/> <SiteFooter/> <MobileTaskbar/> <SkipLink/>
+ * 四個元件的 className 字串來源 —— 直接沿用博主原類別名，維持 DOM 逐字一致。
+ * 由於本質是「全域類別」（博主亦如此定義），故此處集中於 globals.css，
+ * 未以 CSS Module 改寫（避免雜湊後類別名偏離博主 DOM）。
+ * ========================================================================== */
+
+/* 法遵條：博主僅在 App 外殼模式下隱藏（webview 若帶 data-app-shell 則一併套用）。 */
+html[data-app-shell='true'] .compliance-bar {
+  display: none !important;
+}
+
+/* 跳到主要內容：鍵盤聚焦時顯示焦點外框（平時以 -translate-y-24 移出畫面）。 */
+.skip-link:focus-visible {
+  outline: 3px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* 未登入態底部列：頂部陰影（博主 .mobile-taskbar）。 */
+.mobile-taskbar {
+  box-shadow: 0 -10px 28px #03101a24;
+}
+
+/* 已選取膠囊：金色陰影（博主 .taskbar-active-pill；淺色主題另有較深版本）。 */
+.taskbar-active-pill {
+  box-shadow: 0 6px 18px #c5a05959;
+}
+
+html[data-theme='light'] .taskbar-active-pill {
+  box-shadow: 0 6px 16px #8d6a224d;
+}
+
+/* 資料面板（頁尾免責卡等）：內緣高光 + 外陰影（博主 .data-panel）。 */
+.data-panel {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ink) 5%, transparent),
+    0 14px 34px #03101a21;
+  transition: border-color 0.18s, background-color 0.18s,
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .quant-shell {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { shouldShowAppTabBar } from '@/lib/shellRoutes';
 import {
   CandlestickChart,
   Crosshair,
@@ -67,8 +68,8 @@ const MORE_ITEMS: MoreItem[] = [
   { href: '/', label: '首頁', hint: '今日精華與產業地圖', icon: CandlestickChart },
 ];
 
-/** 需要底部列的頁面前綴（/chips/2330 這類動態路由以 startsWith 判定）。 */
-const TAB_BAR_PREFIXES = ['/diary', '/radar', '/review', '/chart', '/ai', '/sim', '/watchlist', '/chips'];
+/** 需要底部列的頁面（App 主分頁）一律交由 @/lib/shellRoutes 的
+ *  shouldShowAppTabBar() 判定（單一來源；/chips/2330 這類動態子路徑亦涵蓋）。 */
 
 export default function AppTabBar() {
   const pathname = usePathname();
@@ -84,11 +85,8 @@ export default function AppTabBar() {
     setMoreOpen(false);
   }, [pathname]);
 
-  // 與 Navigation.tsx 互補 —— 上述頁面皆由底部列接手導覽。
-  const showTabBar = TAB_BAR_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
-  if (!showTabBar) return null;
+  // 與 Navigation.tsx 互補 —— App 主分頁由底部列接手導覽。
+  if (!shouldShowAppTabBar(pathname)) return null;
 
   /** 「更多」抽屜中是否有項目符合當前路徑（用於高亮「更多」按鈕）。 */
   const moreActive = MORE_ITEMS.some((item) => item.href === mountedPath);

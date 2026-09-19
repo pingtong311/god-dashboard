@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { shouldShowHeader } from '@/lib/shellRoutes';
 import styles from './Navigation.module.css';
 
 /**
@@ -16,34 +17,8 @@ import styles from './Navigation.module.css';
  * 注意：App 底部功能列 <AppTabBar /> 已由 layout.tsx 全域渲染，本元件不重複渲染。
  */
 
-/**
- * 不顯示頂部導覽的路徑前綴。共兩類：
- *
- * (1) App 的「主分頁」（看盤日記 / 資金雷達 / 戰情室 / 圖表 / AI 問答）——
- *     已由 <AppTabBar /> 底部功能列接手導覽，且屬 App 主體；
- *     依博主設計，App 主體不應再出現網站 header。
- *
- * (2) 博主的「SEO 版面」頁面（`lang="zh-Hant-TW"`，與 App 版面的 `lang="zh-Hant"` 不同）——
- *     這些頁面在博主站上**完全沒有導覽外殼**（無 site-header、無 <nav>、無底部列），
- *     是給搜尋引擎與免登入訪客的純內容頁。已實測確認：
- *       /learn/[slug]  416 篇全部如此（`grep -c site-header learn/*.html` = 0）
- *       /s/[ticker]    例：s2330.html 同樣無 site-header / nav / mobile-taskbar
- *     峰子的 /s/[ticker] 正是照 s2330.html 的 SEO 版面複刻
- *     （個股盤後研究 / BlackScore / 三大法人近 5 日淨買賣），故一併排除。
- *
- * 以上皆含子路徑。
- */
-const NO_HEADER_PREFIXES = [
-  // (1) App 主分頁
-  '/diary',
-  '/radar',
-  '/review',
-  '/chart',
-  '/ai',
-  // (2) 博主 SEO 版面（無外殼）
-  '/learn',
-  '/s',
-] as const;
+// 是否顯示網站 header 一律交由 @/lib/shellRoutes 的 shouldShowHeader() 判定
+// （單一來源；三種外殼 family 的完整說明見該檔開頭註解）。
 
 /** 博主桌面導覽四項（順序、名稱、路徑皆照抄，不含自行新增項目）。 */
 type NavItem = { readonly name: string; readonly path: string };
@@ -104,11 +79,8 @@ export default function Navigation() {
     });
   }, []);
 
-  // App 主分頁與博主 SEO 版面（皆含子路徑）不顯示網站 header。
-  const hideHeader = NO_HEADER_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
-  if (hideHeader) {
+  // 只在未登入態（guest）顯示網站 header；App 主分頁與 SEO 純內容頁皆隱藏。
+  if (!shouldShowHeader(pathname)) {
     return null;
   }
 

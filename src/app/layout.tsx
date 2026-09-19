@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import { Noto_Sans_TC, Rajdhani } from "next/font/google";
 import "./globals.css";
+import SkipLink from "@/components/SkipLink";
+import ComplianceBar from "@/components/ComplianceBar";
 import Navigation from "@/components/Navigation";
+import SiteFooter from "@/components/SiteFooter";
 import AppTabBar from "@/components/AppTabBar";
+import MobileTaskbar from "@/components/MobileTaskbar";
 import { buildDisplayPreferencesInitScript } from "@/lib/displayPreferences";
 
 /**
@@ -67,12 +71,22 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: displayPreferencesInitScript }}
         />
       </head>
-      <body className="min-h-screen bg-background text-foreground selection:bg-cyan/30 review-mode" data-review-theme="dark">
+      {/* 未登入態外殼（guest shell）依博主 <body> 文件順序渲染：
+          skip-link → compliance-bar → site-header → 內容 → site-footer，
+          另加固定底欄 mobile-taskbar（5 欄）。
+          各元件皆自行以 @/lib/shellRoutes 判定是否屬於 guest 外殼，非 guest 回傳 null，
+          故 App 主分頁（僅 AppTabBar）與 SEO 純內容頁（無外殼）不受影響。
+          body 加 pb-40 lg:pb-16，避免固定底欄遮住行動版頁尾（博主 body 同此）。 */}
+      <body className="min-h-screen bg-background text-foreground selection:bg-cyan/30 review-mode pb-40 lg:pb-16" data-review-theme="dark">
+        <SkipLink />
+        <ComplianceBar />
         <Navigation />
-        <AppTabBar />
-        <main className="w-full">
+        <main id="main-content" className="w-full">
           {children}
         </main>
+        <SiteFooter />
+        <AppTabBar />
+        <MobileTaskbar />
       </body>
     </html>
   );
