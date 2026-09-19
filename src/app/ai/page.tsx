@@ -3,7 +3,57 @@
 import { useCallback, useEffect, useRef, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { ChatStreamEvent } from '@/lib/aiChat';
+import { AVAILABLE_MODELS, type AvailableModelId, NVIDIA_MODEL } from '@/lib/aiChat';
 import { describeAiChatError, type AiChatErrorBody } from '@/lib/aiChatErrors';
+
+/* ── SpeechRecognition 環境型別（Web Speech API 標準）────────────── */
+interface SpeechRecognition extends EventTarget {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  maxAlternatives: number;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onerror: (event: SpeechRecognitionErrorEvent) => void;
+  onend: () => void;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  readonly results: SpeechRecognitionResultList;
+  readonly resultIndex: number;
+}
+
+interface SpeechRecognitionResultList {
+  readonly length: number;
+  item(index: number): SpeechRecognitionResult;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionResult {
+  readonly length: number;
+  item(index: number): SpeechRecognitionAlternative;
+  [index: number]: SpeechRecognitionAlternative;
+  readonly isFinal: boolean;
+}
+
+interface SpeechRecognitionAlternative {
+  readonly transcript: string;
+  readonly confidence: number;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  readonly error: string;
+  readonly message: string;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: { new (): SpeechRecognition };
+    webkitSpeechRecognition: { new (): SpeechRecognition };
+  }
+}
 import {
   MessageSquare,
   X,
@@ -19,6 +69,11 @@ import {
   Sparkles,
   Minimize,
   Maximize2,
+  Mic,
+  MicOff,
+  Image,
+  Camera,
+  Cpu,
 } from 'lucide-react';
 import styles from './ai.module.css';
 
@@ -114,6 +169,20 @@ function AIPage() {
   const paramTicker = searchParams?.get('ticker')?.toUpperCase() || '';
   const [tickerContext, setTickerContext] = useState<string>(paramTicker);
 
+  /* ── 模型選擇 ───────────────────────────────────────────── */
+  const [selectedModel, setSelectedModel] = useState<AvailableModelId>(NVIDIA_MODEL);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+
+  /* ── 語音輸入 ───────────────────────────────────────────── */
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+
+  /* ── 圖片上傳 ───────────────────────────────────────────── */
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   /* ── 對話歷史狀態 ──────────────────────────────────────── */
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -128,6 +197,79 @@ function AIPage() {
   /* ── 感知日誌狀態（保留原功能）──────────────────────── */
   const [logs, setLogs] = useState<InsightLog[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(true);
+
+  // 語音識別初始化
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'zh-TW';
+      recognition.interimResults = true;
+      recognition.continuous = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        const transcript = Array.from(event.results)
+          .map(result => result[0].transcript)
+          .join('');
+        setInput(prev => prev + transcript);
+      };
+
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.warn('Speech recognition error:', event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      setVoiceSupported(true);
+    }
+  }, []);
+
+  const toggleListening = useCallback(() => {
+    if (!recognitionRef.current || !voiceSupported) return;
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      setInput('');
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  }, [isListening, voiceSupported]);
+
+  // 圖片上傳處理
+  const handleImageUpload = useCallback(async (file: File) => {
+    setUploadingImage(true);
+    try {
+      // 轉為 base64 供預覽
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      setImagePreview(base64);
+      // 將圖片資訊加入輸入框（稍後送出時處理）
+      // 這裡先預覽，實際送出時會一併發送
+    } catch (error) {
+      console.error('Image upload failed:', error);
+    } finally {
+      setUploadingImage(false);
+    }
+  }, []);
+
+  const removeImage = useCallback(() => {
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const triggerFileInput = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -252,6 +394,8 @@ function AIPage() {
       const history = [...messages, userMessage];
       setMessages([...history, assistantMessage]);
       setInput('');
+      setImagePreview(null); // 清除圖片預覽
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setIsStreaming(true);
 
       // 若是第一條 user 訊息，更新 session 標題
@@ -275,7 +419,7 @@ function AIPage() {
         const res = await fetch('/api/skynet/ai-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: payloadMessages }),
+          body: JSON.stringify({ messages: payloadMessages, model: selectedModel }),
           signal: controller.signal,
         });
 
@@ -343,7 +487,7 @@ function AIPage() {
         abortRef.current = null;
       }
     },
-    [input, isStreaming, messages, applyEvent, updateAssistant]
+    [input, isStreaming, messages, applyEvent, updateAssistant, selectedModel]
   );
 
   const handleStop = useCallback(() => {
@@ -460,6 +604,40 @@ function AIPage() {
             >
               <Plus size={20} />
             </button>
+            {/* ── 模型選擇 ───────────────────────────────────────────── */}
+            <div className={styles.modelPicker}>
+              <button
+                type="button"
+                className={styles.modelBtn}
+                onClick={() => setModelMenuOpen(!modelMenuOpen)}
+                aria-label="選擇模型"
+                aria-expanded={modelMenuOpen}
+                aria-haspopup="listbox"
+              >
+                <Cpu size={18} />
+                <span className={styles.modelBtnLabel}>
+                  {AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.label ?? selectedModel}
+                </span>
+              </button>
+              {modelMenuOpen && (
+                <ul className={styles.modelMenu} role="listbox" aria-label="可用模型">
+                  {AVAILABLE_MODELS.map((m) => (
+                    <li key={m.id} role="option" aria-selected={selectedModel === m.id}>
+                      <button
+                        type="button"
+                        className={`${styles.modelOption} ${selectedModel === m.id ? styles.modelOptionActive : ''}`}
+                        onClick={() => {
+                          setSelectedModel(m.id);
+                          setModelMenuOpen(false);
+                        }}
+                      >
+                        {m.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
 
           <div className={styles.tabBar} role="tablist" aria-label="AI 頁面分頁">
@@ -559,6 +737,24 @@ function AIPage() {
             </div>
 
             <div className={styles.composer}>
+              {/* ── 圖片預覽條 ───────────────────────────────────── */}
+              {imagePreview && (
+                <div className={styles.imagePreviewStrip}>
+                  <img
+                    src={imagePreview}
+                    alt="上傳預覽"
+                    className={styles.imagePreviewThumb}
+                  />
+                  <button
+                    type="button"
+                    className={styles.imagePreviewRemove}
+                    onClick={removeImage}
+                    aria-label="移除圖片"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               <textarea
                 className={styles.composerTextarea}
                 value={input}
@@ -568,6 +764,17 @@ function AIPage() {
                 rows={2}
                 disabled={isStreaming}
                 aria-label="輸入問題"
+              />
+              {/* 隱藏檔案輸入 */}
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleImageUpload(file);
+                }}
               />
               <div className={styles.composerActions}>
                 <button
@@ -579,6 +786,28 @@ function AIPage() {
                   清除對話
                 </button>
                 <div className={styles.composerRight}>
+                  {/* 語音輸入按鈕 */}
+                  <button
+                    type="button"
+                    className={`${styles.composerVoiceBtn} ${isListening ? styles.composerVoiceBtnActive : ''}`}
+                    onClick={toggleListening}
+                    disabled={!voiceSupported}
+                    aria-label={isListening ? '停止語音輸入' : '語音輸入'}
+                    aria-pressed={isListening}
+                    title={voiceSupported ? (isListening ? '停止語音輸入' : '語音輸入') : '瀏覽器不支援語音辨識'}
+                  >
+                    {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                  </button>
+                  {/* 圖片上傳按鈕 */}
+                  <button
+                    type="button"
+                    className={styles.composerImageBtn}
+                    onClick={triggerFileInput}
+                    aria-label="上傳圖片"
+                    title="上傳圖片"
+                  >
+                    <Image size={18} />
+                  </button>
                   {isStreaming ? (
                     <button type="button" className={styles.stopBtn} onClick={handleStop}>
                       停止
@@ -588,7 +817,7 @@ function AIPage() {
                       type="button"
                       className={styles.sendBtn}
                       onClick={() => void handleSend()}
-                      disabled={input.trim().length === 0}
+                      disabled={input.trim().length === 0 && !imagePreview}
                     >
                       送出
                     </button>

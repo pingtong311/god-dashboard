@@ -3,6 +3,7 @@ import { guardMutation, sanitizeUpstreamError } from '@/lib/apiGuard';
 import {
   NVIDIA_CHAT_ENDPOINT,
   NVIDIA_MODEL,
+  AVAILABLE_MODELS,
   SYSTEM_PROMPT,
   encodeChatEvent,
   normalizeMessages,
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
   }
 
-  const normalized = normalizeMessages((body as { messages?: unknown } | null)?.messages);
+  const normalized = normalizeMessages((body as { messages?: unknown; model?: unknown } | null)?.messages);
   if (!normalized.ok) {
     // 單則使用者訊息過長：明確報錯，不做靜默截斷。
     if (normalized.error === 'message_too_long') {
@@ -67,9 +68,13 @@ export async function POST(request: Request) {
 
   const messages = normalized.messages;
 
+  // 模型選擇（驗證是否在允許清單中）
+  const requestedModel = (body as { model?: string }).model;
+  const selectedModel = AVAILABLE_MODELS.some(m => m.id === requestedModel) ? requestedModel : NVIDIA_MODEL;
+
   // 系統提示固定由伺服器端注入，前端無法覆寫。
   const upstreamPayload = {
-    model: NVIDIA_MODEL,
+    model: selectedModel,
     messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
     temperature: 1,
     top_p: 0.95,

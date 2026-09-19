@@ -687,3 +687,209 @@
 .shell:has(~ .historyPanel) {
   /* 當 historyPanel 開啟時，shell 會被遮擋，這裡可視情況調整 */
 }
+
+/* ── 模型選擇下拉 ───────────────────────────────────────────────── */
+
+.modelPicker {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.modelBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--bs-border);
+  background: rgba(11, 15, 20, 0.7);
+  color: var(--bs-text);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+}
+
+.modelBtn:hover {
+  border-color: var(--bs-gold-line);
+  background: var(--bs-gold-soft);
+  color: var(--bs-gold);
+}
+
+.modelBtn:focus-visible {
+  outline: 2px solid var(--bs-gold);
+  outline-offset: 2px;
+}
+
+.modelBtnLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 240px;
+  max-width: 320px;
+  padding: 6px;
+  border: 1px solid var(--bs-gold-line);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(11, 15, 20, 0.96), rgba(10, 17, 40, 0.98));
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  list-style: none;
+  z-index: 30;
+  animation: modelMenuFadeIn 0.15s ease-out;
+}
+
+@keyframes modelMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modelOption {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--bs-text);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.modelOption:hover {
+  background: var(--bs-gold-soft);
+  border-color: var(--bs-gold-line);
+  color: var(--bs-gold);
+}
+
+.modelOptionActive {
+  background: var(--bs-gold-soft);
+  border-color: var(--bs-gold);
+  color: var(--bs-gold);
+}
+
+/* ── 作曲區：語音、圖片按鈕、預覽條 ─────────────────────────────── */
+
+.composerActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.composerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.composerVoiceBtn,
+.composerImageBtn {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--bs-border);
+  background: rgba(11, 15, 20, 0.7);
+  color: var(--bs-text-dim);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.composerVoiceBtn:hover:not(:disabled),
+.composerImageBtn:hover:not(:disabled) {
+  border-color: var(--bs-gold-line);
+  background: var(--bs-gold-soft);
+  color: var(--bs-gold);
+}
+
+.composerVoiceBtn:disabled,
+.composerImageBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.composerVoiceBtnActive {
+  border-color: var(--bs-gold);
+  background: var(--bs-gold-soft);
+  color: var(--bs-gold);
+  box-shadow: 0 0 0 2px rgba(197, 160, 89, 0.3);
+}
+
+.imagePreviewStrip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid var(--bs-gold-line);
+  border-radius: 10px;
+  background: var(--bs-gold-soft);
+}
+
+.imagePreviewThumb {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--bs-gold-line);
+  flex-shrink: 0;
+}
+
+.imagePreviewRemove {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: var(--bs-gold);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.imagePreviewRemove:hover {
+  background: rgba(197, 160, 89, 0.25);
+  color: var(--bs-gold);
+}
+
+/* 調整送出按鈕在有圖片時的行為 */
+.sendBtn {
+  padding: 9px 20px;
+  border-radius: 9px;
+  border: 1px solid var(--bs-gold);
+  background: var(--bs-gold);
+  color: #0a1128;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: filter 0.18s ease, opacity 0.18s ease;
+}
+
+.sendBtn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.sendBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

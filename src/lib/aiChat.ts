@@ -10,6 +10,17 @@
 export const NVIDIA_CHAT_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
 export const NVIDIA_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b';
 
+/** 可用模型列表（支援切換）。 */
+export const AVAILABLE_MODELS = [
+  { id: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'Nemotron 3 Ultra (推理強)' },
+  { id: 'nvidia/nemotron-3-ultra', label: 'Nemotron 3 Ultra (多模態)' },
+  { id: 'meta/llama-3.1-405b-instruct', label: 'Llama 3.1 405B' },
+  { id: 'meta/llama-3.1-70b-instruct', label: 'Llama 3.1 70B' },
+  { id: 'nvidia/nemotron-4-340b-instruct', label: 'Nemotron 4 340B' },
+] as const;
+
+export type AvailableModelId = typeof AVAILABLE_MODELS[number]['id'];
+
 /**
  * 輸入防護上限，避免端點被濫用。
  *
