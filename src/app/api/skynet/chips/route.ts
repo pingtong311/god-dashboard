@@ -281,7 +281,9 @@ export async function GET(req: NextRequest) {
       date: twseDateToIso(ymd),
       foreignNet: toLots(row[4]), // 外陸資買賣超股數
       trustNet: toLots(row[10]), // 投信買賣超股數
-      dealerNet: toLots(row[14]), // 自營商買賣超股數（自行買賣）
+      // 自營商取 index 11（合計＝自行買賣＋避險）。
+      // index 14 只是「自行買賣」部分，會低估自營商（2330 實例：979 張 vs 正確 1,361 張）。
+      dealerNet: toLots(row[11]),
       totalNet: toLots(row[18]), // 三大法人買賣超股數合計
     };
   }
