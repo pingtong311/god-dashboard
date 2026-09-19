@@ -12,10 +12,11 @@
  * 櫃買指數僅有即時來源，取不到時顯示「—」，不可整頁崩潰。
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import {
   Building2,
   ChevronRight,
+  ChevronDown,
   Clock,
   Flame,
   Layers,
@@ -85,13 +86,56 @@ export default function DiaryPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const load = useCallback(async (quiet = false) => {
+  // 日期切換器相關
+  const [tradingDates, setTradingDates] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
+  const dateDropdownRef = useRef<HTMLDivElement>(null);
+
+  // 載入交易日清單
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchTradingDates() {
+      try {
+        const res = await fetch('/api/skynet/trading-dates?count=30', { cache: 'no-store' });
+        const body = await res.json();
+        if (res.ok && body?.ok && Array.isArray(body.dates)) {
+          if (!cancelled) {
+            setTradingDates(body.dates);
+            setSelectedDate(body.current);
+          }
+        }
+      } catch {
+        // 忽略錯誤，使用預設當日
+      }
+    }
+    fetchTradingDates();
+    return () => { cancelled = true; };
+  }, []);
+
+  // 點擊外部關閉下拉選單
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dateDropdownRef.current && !dateDropdownRef.current.contains(event.target as Node)) {
+        setDateDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const load = useCallback(async (date?: string, quiet = false) => {
     if (quiet) setRefreshing(true);
     else setLoading(true);
     setError('');
 
+    const dateParam = date ?? selectedDate;
+    const url = dateParam
+      ? `/api/skynet/market-overview?date=${dateParam.replace(/-/g, '')}&sectorLimit=5`
+      : '/api/skynet/market-overview?sectorLimit=5';
+
     const [overviewResult, liveResult] = await Promise.allSettled([
-      fetch('/api/skynet/market-overview?sectorLimit=5', { cache: 'no-store' }).then(async (res) => {
+      fetch(url, { cache: 'no-store' }).then(async (res) => {
         const body = (await res.json()) as { ok?: boolean; data?: MarketOverview; message?: string };
         if (!res.ok || !body?.ok || !body.data) {
           throw new Error(body?.message || 'market overview unavailable');
@@ -111,11 +155,23 @@ export default function DiaryPage() {
 
     setLoading(false);
     setRefreshing(false);
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 當選擇日期改變時重新載入
+  useEffect(() => {
+    if (selectedDate) {
+      void load(selectedDate);
+    }
+  }, [selectedDate, load]);
+
+  const handleDateSelect = (date: string) => {
+    setSelectedDate(date);
+    setDateDropdownOpen(false);
+  };
 
   // 加權指數：優先盤中即時（t99），否則退回收盤值（indexClose）。
   const twseLive = live.find((item) => item.symbol === 't99' && item.price > 0) ?? null;
@@ -146,9 +202,39 @@ export default function DiaryPage() {
               <span>MARKET DIARY</span>
             </div>
           </div>
+          {/* 日期切換下拉選單 */}
+          <div className={styles.dateDropdown} ref={dateDropdownRef}>
+            <button
+              className={styles.dateTrigger}
+              onClick={() => setDateDropdownOpen(!dateDropdownOpen)}
+              aria-expanded={dateDropdownOpen}
+              aria-haspopup="listbox"
+              aria-label={`選擇交易日，目前為 ${selectedDate || '今日'}`}
+            >
+              <span className={styles.dateLabel}>{selectedDate || '今日'}</span>
+              <ChevronDown size={14} className={`${styles.chevron} ${dateDropdownOpen ? styles.chevronOpen : ''}`} />
+            </button>
+            {dateDropdownOpen && (
+              <ul className={styles.dateList} role="listbox" aria-label="交易日清單">
+                {tradingDates.map((date) => (
+                  <li key={date} role="option" aria-selected={date === selectedDate}>
+                    <button
+                      className={`${styles.dateOption} ${date === selectedDate ? styles.dateOptionSelected : ''}`}
+                      onClick={() => handleDateSelect(date)}
+                    >
+                      {date}
+                    </button>
+                  </li>
+                ))}
+                {tradingDates.length === 0 && (
+                  <li className={styles.dateOptionEmpty}>載入中…</li>
+                )}
+              </ul>
+            )}
+          </div>
           <button
             className={styles.iconButton}
-            onClick={() => load(true)}
+            onClick={() => load(undefined, true)}
             disabled={refreshing}
             aria-label="重新整理大盤資訊"
           >
@@ -230,7 +316,7 @@ export default function DiaryPage() {
                 </div>
 
                 <div className={styles.actions}>
-                  <button className={styles.ghostButton} onClick={() => load(true)} disabled={refreshing}>
+                  <button className={styles.ghostButton} onClick={() => load(undefined, true)} disabled={refreshing}>
                     <Search size={15} />查詢盤前資訊
                   </button>
                   <button className={styles.goldButton}>
