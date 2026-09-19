@@ -1,0 +1,562 @@
+/* ============================================================================
+ * 籌碼研究頁 /chips/[ticker] 樣式
+ * 設計語彙：src/styles/theme.css（深色主體 + 古銅金），一律使用 var()，不寫死色碼。
+ * ========================================================================== */
+
+.page {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-noto);
+  /* 讓開固定式底部功能列 + iOS Home Indicator */
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+}
+
+.page * {
+  box-sizing: border-box;
+}
+
+/* ── 頁首 ─────────────────────────────────────────────── */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--header-bg);
+  backdrop-filter: blur(var(--blur-glass));
+  -webkit-backdrop-filter: blur(var(--blur-glass));
+  border-bottom: 1px solid var(--header-line);
+  padding: 12px 16px 10px;
+}
+
+.headerTop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.backButton {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease-premium), color 0.2s var(--ease-premium);
+}
+
+.backButton:hover {
+  border-color: var(--gold-line);
+  color: var(--accent);
+}
+
+.headerTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.subTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 2px;
+  min-width: 0;
+}
+
+.tickerCode {
+  font-family: var(--font-tech);
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.stockName {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headerMeta {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-family: var(--font-tech);
+  white-space: nowrap;
+}
+
+/* 即時報價列 */
+.quoteRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.quotePrice {
+  font-family: var(--font-tech);
+  font-size: var(--text-xl);
+  font-weight: 700;
+}
+
+.quoteChange {
+  font-family: var(--font-tech);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.quoteVolume {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-family: var(--font-tech);
+}
+
+.quoteMuted {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.refreshButton {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease-premium), color 0.2s var(--ease-premium);
+}
+
+.refreshButton:hover:not(:disabled) {
+  border-color: var(--gold-line);
+  color: var(--accent);
+}
+
+.refreshButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.spinning {
+  animation: chipsSpin 1s linear infinite;
+}
+
+@keyframes chipsSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── 主體 ─────────────────────────────────────────────── */
+
+.body {
+  width: min(1080px, 100%);
+  margin: 0 auto;
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+/* 日期範圍 + 匯出 */
+.rangeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rangeButton {
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-premium);
+}
+
+.rangeButton:hover {
+  border-color: var(--gold-line);
+  color: var(--ink);
+}
+
+.rangeActive {
+  background: var(--accent-soft);
+  border-color: var(--gold-line);
+  color: var(--accent);
+}
+
+.exportButton {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--gold-line);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-premium);
+}
+
+.exportButton:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.exportButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 錯誤橫幅 */
+.errorBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid var(--signal);
+  border-radius: var(--radius-panel);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.errorBanner button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* 分頁切換 */
+.tabBar {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 2px;
+}
+
+.tabButton {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.2s var(--ease-premium), border-color 0.2s var(--ease-premium);
+}
+
+.tabButton:hover {
+  color: var(--ink);
+}
+
+.tabActive {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* 骨架 */
+.skeletonWrap {
+  display: grid;
+  gap: 12px;
+}
+
+.skeletonCard {
+  height: 120px;
+  border-radius: var(--radius-panel);
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--surface-2) 50%,
+    var(--surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: chipsShimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes chipsShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ── 區塊 ─────────────────────────────────────────────── */
+
+.section {
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-glass);
+}
+
+.sectionTitle {
+  margin: 0 0 12px;
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.subTabRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.subTab {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-premium);
+}
+
+.subTab:hover {
+  color: var(--ink);
+}
+
+.subTabActive {
+  background: var(--accent-soft);
+  border-color: var(--gold-line);
+  color: var(--accent);
+}
+
+/* 空狀態 */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-panel);
+}
+
+.emptyTitle {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.emptyDesc {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  line-height: var(--leading-relaxed);
+  max-width: 42ch;
+}
+
+/* 指標卡 */
+.metricCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.metricCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+}
+
+.metricLabel {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  letter-spacing: 0.06em;
+}
+
+.metricValue {
+  font-family: var(--font-tech);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.metricHint {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-family: var(--font-tech);
+}
+
+/* 圖表容器 */
+.chartBox {
+  width: 100%;
+  min-height: 280px;
+  padding: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  margin-bottom: 16px;
+}
+
+.chartSkeleton {
+  height: 260px;
+  border-radius: var(--radius-control);
+  background: linear-gradient(
+    90deg,
+    var(--surface) 0%,
+    var(--elevated) 50%,
+    var(--surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: chipsShimmer 1.4s ease-in-out infinite;
+}
+
+/* 表格 */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.table th,
+.table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table th {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.table td {
+  color: var(--ink);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.right {
+  text-align: right;
+}
+
+.num {
+  font-family: var(--font-tech);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 漲跌（台股慣例：紅漲綠跌） */
+.up {
+  color: var(--up);
+}
+
+.down {
+  color: var(--down);
+}
+
+.flat {
+  color: var(--muted);
+}
+
+/* 交叉連結 */
+.crossLinks {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.crossLink {
+  padding: 9px 14px;
+  border: 1px solid var(--gold-line);
+  border-radius: var(--radius-control);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+  transition: opacity 0.2s var(--ease-premium);
+}
+
+.crossLink:hover {
+  opacity: 0.85;
+}
+
+.footerNote {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: var(--leading-relaxed);
+  text-align: center;
+}
+
+/* ── 手機版 ───────────────────────────────────────────── */
+
+@media (max-width: 820px) {
+  .headerMeta {
+    display: none;
+  }
+
+  .body {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .section {
+    padding: 12px;
+  }
+
+  .exportButton {
+    margin-left: 0;
+  }
+
+  .metricValue {
+    font-size: var(--text-xl);
+  }
+
+  .table th,
+  .table td {
+    padding: 8px 6px;
+    font-size: var(--text-xs);
+  }
+}
