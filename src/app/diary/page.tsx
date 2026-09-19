@@ -24,6 +24,10 @@ import {
   Search,
   Sparkles,
   CheckCircle,
+  Zap,
+  Newspaper,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { MarketOverview } from '@/types/market';
@@ -47,6 +51,14 @@ type IndexDisplay = {
   change: number;
   changePercent: number;
   sourceLabel: string;
+};
+
+/** 盤中快訊項目（對應 /api/skynet/insights 回傳格式） */
+type InsightLog = {
+  time: string;
+  type: 'ALERT' | 'SCAN' | 'THOUGHT' | 'INIT' | 'ERROR';
+  msg: string;
+  isAlert?: boolean;
 };
 
 /** 成交金額易讀化：620,167,469,587 → '0.62兆'。 */
@@ -86,6 +98,15 @@ export default function DiaryPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+
+  // 即時行情輪詢相關
+  const [isLiveConnected, setIsLiveConnected] = useState(false);
+  const [livePrices, setLivePrices] = useState<Record<string, LiveItem>>({});
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 盤中快訊流
+  const [newsItems, setNewsItems] = useState<InsightLog[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
 
   // 日期切換器相關
   const [tradingDates, setTradingDates] = useState<string[]>([]);
@@ -135,6 +156,69 @@ export default function DiaryPage() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // 即時行情輪詢（盤中每 10 秒、盤後每 60 秒）
+  useEffect(() => {
+    const isMarketHours = () => {
+      const now = new Date();
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+      const day = now.getDay(); // 0=週日, 6=週六
+      if (day === 0 || day === 6) return false;
+      const time = hours * 60 + minutes;
+      // 盤中 09:00-13:30
+      return time >= 9 * 60 && time <= 13 * 60 + 30;
+    };
+
+    const POLL_INTERVAL_MS = isMarketHours() ? 10_000 : 60_000;
+
+    const fetchLive = async () => {
+      try {
+        const res = await fetch('/api/skynet/twse?tickers=t99,otc:o00,2330,2454,2317', { cache: 'no-store' });
+        const body = (await res.json()) as { items?: LiveItem[] };
+        if (res.ok && Array.isArray(body?.items)) {
+          const priceMap: Record<string, LiveItem> = {};
+          body.items.forEach(item => { priceMap[item.symbol] = item; });
+          setLivePrices(priceMap);
+          setIsLiveConnected(true);
+        } else {
+          setIsLiveConnected(false);
+        }
+      } catch {
+        setIsLiveConnected(false);
+      }
+    };
+
+    // 立即執行一次
+    void fetchLive();
+
+    pollIntervalRef.current = setInterval(fetchLive, POLL_INTERVAL_MS);
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, []);
+
+  // 盤中快訊流輪詢（每 30 秒）
+  const fetchNews = useCallback(async () => {
+    setNewsLoading(true);
+    try {
+      const res = await fetch('/api/skynet/insights', { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        setNewsItems(data);
+      }
+    } catch {
+      // 靜默失敗
+    } finally {
+      setNewsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchNews();
+    const interval = setInterval(fetchNews, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchNews]);
 
   const load = useCallback(async (date?: string, quiet = false) => {
     if (quiet) setRefreshing(true);
@@ -238,20 +322,26 @@ export default function DiaryPage() {
     setDateDropdownOpen(false);
   };
 
-  // 加權指數：優先盤中即時（t99），否則退回收盤值（indexClose）。
+  // 加權指數：優先輪詢即時（t99），其次載入時即時（t99），否則退回收盤值（indexClose）。
+  const twsePoll = livePrices['t99'];
+  const otcPoll = livePrices['o00'];
   const twseLive = live.find((item) => item.symbol === 't99' && item.price > 0) ?? null;
   const otcLive = live.find((item) => item.symbol === 'o00' && item.price > 0) ?? null;
   const indexClose = overview?.indexClose ?? null;
 
-  const twseIndex: IndexDisplay | null = twseLive
-    ? { name: '加權指數', price: twseLive.price, change: twseLive.change, changePercent: twseLive.changePercent, sourceLabel: '即時' }
-    : indexClose && indexClose.price > 0
-      ? { name: '加權指數', price: indexClose.price, change: indexClose.change, changePercent: indexClose.changePercent, sourceLabel: '收盤' }
-      : null;
+  const twseIndex: IndexDisplay | null = twsePoll
+    ? { name: '加權指數', price: twsePoll.price, change: twsePoll.change, changePercent: twsePoll.changePercent, sourceLabel: '即時' }
+    : twseLive
+      ? { name: '加權指數', price: twseLive.price, change: twseLive.change, changePercent: twseLive.changePercent, sourceLabel: '即時' }
+      : indexClose && indexClose.price > 0
+        ? { name: '加權指數', price: indexClose.price, change: indexClose.change, changePercent: indexClose.changePercent, sourceLabel: '收盤' }
+        : null;
 
-  const otcIndex: IndexDisplay | null = otcLive
-    ? { name: '櫃買指數', price: otcLive.price, change: otcLive.change, changePercent: otcLive.changePercent, sourceLabel: '即時' }
-    : null;
+  const otcIndex: IndexDisplay | null = otcPoll
+    ? { name: '櫃買指數', price: otcPoll.price, change: otcPoll.change, changePercent: otcPoll.changePercent, sourceLabel: '即時' }
+    : otcLive
+      ? { name: '櫃買指數', price: otcLive.price, change: otcLive.change, changePercent: otcLive.changePercent, sourceLabel: '即時' }
+      : null;
 
   const breadth = overview?.breadth ?? null;
   const turnoverText = overview ? formatTurnover(overview.turnover.total) : '--';
@@ -266,6 +356,11 @@ export default function DiaryPage() {
               <strong>看盤日記</strong>
               <span>MARKET DIARY</span>
             </div>
+          </div>
+          {/* 即時連線狀態指示器 */}
+          <div className={styles.liveStatus} aria-live="polite">
+            <span className={`${styles.liveDot} ${isLiveConnected ? styles.liveConnected : styles.liveDisconnected}`} />
+            <span className={styles.liveText}>{isLiveConnected ? '即時連線中' : '連線中斷'}</span>
           </div>
           {/* 日期切換下拉選單 */}
           <div className={styles.dateDropdown} ref={dateDropdownRef}>
@@ -502,6 +597,55 @@ export default function DiaryPage() {
                     <div className={styles.empty}>
                       <Layers size={24} />
                       <span>暫無類股資料</span>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* 盤中快訊流 */}
+              <section className={styles.newsSection}>
+                <div className={styles.newsHeader}>
+                  <div className={styles.newsTitle}>
+                    <Newspaper size={15} />
+                    <span>盤中快訊</span>
+                  </div>
+                  <div className={styles.newsStatus}>
+                    {newsLoading ? (
+                      <RefreshCw size={14} className={styles.spinning} />
+                    ) : (
+                      <Zap size={14} className={styles.zapIcon} />
+                    )}
+                    <span className={styles.newsStatusText}>即時更新</span>
+                  </div>
+                </div>
+                <div className={styles.newsList}>
+                  {newsItems.length > 0 ? (
+                    newsItems.map((item, index) => (
+                      <article
+                        key={`${item.time}-${index}`}
+                        className={`${styles.newsItem} ${styles[item.type.toLowerCase()]} ${item.isAlert ? styles.alert : ''}`}
+                      >
+                        <time className={styles.newsTime}>{item.time}</time>
+                        <div className={styles.newsContent}>
+                          <h4 className={styles.newsTitleText}>
+                            {item.type === 'ALERT' ? '⚠ 重大訊號' : item.type === 'SCAN' ? '📊 掃描訊號' : item.type === 'THOUGHT' ? '💡 策略思考' : item.type === 'INIT' ? '🔄 系統同步' : '❌ 連線錯誤'}
+                          </h4>
+                          <p className={styles.newsBody}>{item.msg}</p>
+                        </div>
+                        {item.msg.match(/\[(\d{4,6}[A-Z]?)\s/) && (
+                          <Link
+                            href={`/chart?ticker=${item.msg.match(/\[(\d{4,6}[A-Z]?)\s/)?.[1]}`}
+                            className={styles.newsTickerLink}
+                          >
+                            {item.msg.match(/\[(\d{4,6}[A-Z]?)\s/)?.[1]}
+                          </Link>
+                        )}
+                      </article>
+                    ))
+                  ) : (
+                    <div className={styles.newsEmpty}>
+                      <Newspaper size={24} />
+                      <span>暫無快訊，等待下一輪同步…</span>
                     </div>
                   )}
                 </div>
