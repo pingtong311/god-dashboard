@@ -17,13 +17,33 @@ import styles from './Navigation.module.css';
  */
 
 /**
- * 不顯示頂部導覽的路徑前綴。
+ * 不顯示頂部導覽的路徑前綴。共兩類：
  *
- * 這 5 條是 App 的「主分頁」（看盤日記 / 資金雷達 / 戰情室 / 圖表 / AI 問答），
- * 已由 <AppTabBar /> 底部功能列接手導覽，且屬於 App 主體；
- * 依博主設計，App 主體不應再出現網站 header，故對其（含子路徑）回傳 null。
+ * (1) App 的「主分頁」（看盤日記 / 資金雷達 / 戰情室 / 圖表 / AI 問答）——
+ *     已由 <AppTabBar /> 底部功能列接手導覽，且屬 App 主體；
+ *     依博主設計，App 主體不應再出現網站 header。
+ *
+ * (2) 博主的「SEO 版面」頁面（`lang="zh-Hant-TW"`，與 App 版面的 `lang="zh-Hant"` 不同）——
+ *     這些頁面在博主站上**完全沒有導覽外殼**（無 site-header、無 <nav>、無底部列），
+ *     是給搜尋引擎與免登入訪客的純內容頁。已實測確認：
+ *       /learn/[slug]  416 篇全部如此（`grep -c site-header learn/*.html` = 0）
+ *       /s/[ticker]    例：s2330.html 同樣無 site-header / nav / mobile-taskbar
+ *     峰子的 /s/[ticker] 正是照 s2330.html 的 SEO 版面複刻
+ *     （個股盤後研究 / BlackScore / 三大法人近 5 日淨買賣），故一併排除。
+ *
+ * 以上皆含子路徑。
  */
-const APP_TAB_PREFIXES = ['/diary', '/radar', '/review', '/chart', '/ai'] as const;
+const NO_HEADER_PREFIXES = [
+  // (1) App 主分頁
+  '/diary',
+  '/radar',
+  '/review',
+  '/chart',
+  '/ai',
+  // (2) 博主 SEO 版面（無外殼）
+  '/learn',
+  '/s',
+] as const;
 
 /** 博主桌面導覽四項（順序、名稱、路徑皆照抄，不含自行新增項目）。 */
 type NavItem = { readonly name: string; readonly path: string };
@@ -84,11 +104,11 @@ export default function Navigation() {
     });
   }, []);
 
-  // App 主分頁（含子路徑）由底部功能列接手，回傳 null 不顯示網站 header。
-  const isAppTab = APP_TAB_PREFIXES.some(
+  // App 主分頁與博主 SEO 版面（皆含子路徑）不顯示網站 header。
+  const hideHeader = NO_HEADER_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
-  if (isAppTab) {
+  if (hideHeader) {
     return null;
   }
 
