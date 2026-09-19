@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  CheckCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { MarketOverview } from '@/types/market';
@@ -92,6 +93,17 @@ export default function DiaryPage() {
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
   const dateDropdownRef = useRef<HTMLDivElement>(null);
 
+  // 下拉重新整理相關
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isPulling, setIsPulling] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const pullStartRef = useRef<number | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // 下拉觸發閾值
+  const PULL_THRESHOLD = 80;
+  const MAX_PULL = 120;
+
   // 載入交易日清單
   useEffect(() => {
     let cancelled = false;
@@ -156,6 +168,59 @@ export default function DiaryPage() {
     setLoading(false);
     setRefreshing(false);
   }, [selectedDate]);
+
+  // 下拉重新整理觸控處理
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+
+    function onTouchStart(e: TouchEvent) {
+      // 只在頁面頂部且未載入/重新整理時啟用
+      if (window.scrollY === 0 && !loading && !refreshing) {
+        pullStartRef.current = e.touches[0].clientY;
+        setIsPulling(true);
+      }
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      if (pullStartRef.current === null || !isPulling) return;
+      if (window.scrollY > 0) return;
+
+      const delta = e.touches[0].clientY - pullStartRef.current;
+      if (delta > 0) {
+        e.preventDefault();
+        const distance = Math.min(delta * 0.5, MAX_PULL);
+        setPullDistance(distance);
+      }
+    }
+
+    function onTouchEnd() {
+      if (pullStartRef.current === null || !isPulling) return;
+
+      const triggered = pullDistance >= PULL_THRESHOLD;
+      setPullDistance(0);
+      setIsPulling(false);
+      pullStartRef.current = null;
+
+      if (triggered) {
+        // 觸發重新整理
+        void load(undefined, true);
+        // 顯示 Toast
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 2500);
+      }
+    }
+
+    content.addEventListener('touchstart', onTouchStart, { passive: true });
+    content.addEventListener('touchmove', onTouchMove, { passive: false });
+    content.addEventListener('touchend', onTouchEnd, { passive: true });
+
+    return () => {
+      content.removeEventListener('touchstart', onTouchStart);
+      content.removeEventListener('touchmove', onTouchMove);
+      content.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [loading, refreshing, pullDistance, load]);
 
   useEffect(() => {
     void load();
@@ -242,7 +307,22 @@ export default function DiaryPage() {
           </button>
         </header>
 
-        <div className={styles.content}>
+        {/* 下拉重新整理指示器 */}
+        {isPulling && pullDistance > 0 && (
+          <div className={styles.pullIndicator} style={{ height: pullDistance }} aria-hidden="true">
+            <div className={styles.pullContent}>
+              <RefreshCw
+                size={20}
+                className={`${styles.pullIcon} ${pullDistance >= PULL_THRESHOLD ? styles.pullIconReady : ''}`}
+              />
+              <span className={styles.pullText}>
+                {pullDistance >= PULL_THRESHOLD ? '鬆開以重新整理' : '下拉以重新整理'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div className={styles.content} ref={contentRef}>
           {error ? (
             <div className={styles.errorBanner}>
               <span>{error}</span>
@@ -435,6 +515,14 @@ export default function DiaryPage() {
             </>
           ) : null}
         </div>
+
+        {/* Toast 通知 */}
+        {showToast && (
+          <div className={styles.toast} role="status" aria-live="polite">
+            <CheckCircle size={18} />
+            <span>資料已更新</span>
+          </div>
+        )}
       </div>
     </div>
   );
