@@ -89,7 +89,7 @@ export default function DiaryPage() {
     setError('');
 
     const [overviewResult, liveResult] = await Promise.allSettled([
-      fetch('/api/skynet/market-overview', { cache: 'no-store' }).then(async (res) => {
+      fetch('/api/skynet/market-overview?sectorLimit=5', { cache: 'no-store' }).then(async (res) => {
         const body = (await res.json()) as { ok?: boolean; data?: MarketOverview; message?: string };
         if (!res.ok || !body?.ok || !body.data) {
           throw new Error(body?.message || 'market overview unavailable');

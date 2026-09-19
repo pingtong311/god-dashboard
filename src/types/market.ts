@@ -84,3 +84,25 @@ export type MarketOverview = {
   /** 產業焦點：各類股指數（依漲幅由大到小，最多 5）。 */
   sectorFocus: SectorFocus[];
 };
+
+/** 族群熱圖：單一產業群組彙總資料。 */
+export interface TreemapSector {
+  sector: string;
+  totalMarketCap: number;
+  totalVolume: number;
+  count: number;
+  items: TreemapStock[];
+  changePercent: number;
+}
+
+/** 族群熱圖：單一個股資料。 */
+export interface TreemapStock {
+  symbol: string;
+  name: string;
+  sector: string;
+  marketCap: number;
+  price: number;
+  change: number;
+  changePercent: number;
+  volume: number;
+}

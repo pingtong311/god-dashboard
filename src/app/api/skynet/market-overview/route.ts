@@ -14,6 +14,8 @@ import { loadMarketOverview, MarketOverviewError } from '@/lib/marketOverview';
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const dateParam = searchParams.get('date') ?? undefined;
+  const sectorLimitParam = searchParams.get('sectorLimit');
+  const sectorLimit = sectorLimitParam ? parseInt(sectorLimitParam, 10) : undefined;
 
   if (dateParam !== undefined && !/^\d{8}$/.test(dateParam)) {
     return NextResponse.json(
@@ -22,8 +24,15 @@ export async function GET(request: Request) {
     );
   }
 
+  if (sectorLimit !== undefined && (!Number.isFinite(sectorLimit) || sectorLimit < 1 || sectorLimit > 50)) {
+    return NextResponse.json(
+      { error: 'invalid_sector_limit', message: 'sectorLimit must be 1-50' },
+      { status: 400 }
+    );
+  }
+
   try {
-    const data = await loadMarketOverview(dateParam);
+    const data = await loadMarketOverview(dateParam, undefined, sectorLimit);
     if (!Number.isFinite(data.indexClose.price) || data.indexClose.price <= 0) {
       return NextResponse.json(
         { error: 'upstream_error', message: 'market index unavailable' },

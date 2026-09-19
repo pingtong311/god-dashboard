@@ -1,0 +1,232 @@
+/* ============================================================================
+ * 產業地圖 —— 32 類股色塊網格樣式
+ * 設計語彙：src/styles/theme.css (CSS 變數)
+ * ========================================================================== */
+
+.section {
+  background: var(--surface);
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}
+
+.titleIcon {
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.count {
+  font-family: var(--font-tech);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 12px;
+}
+
+.card {
+  background: var(--bg);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  transition:
+    transform 0.2s var(--ease-premium),
+    box-shadow 0.2s var(--ease-premium),
+    border-color 0.2s var(--ease-premium);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glass);
+  border-color: var(--gold-line);
+}
+
+.card.up {
+  border-left: 3px solid var(--up);
+}
+
+.card.down {
+  border-left: 3px solid var(--down);
+}
+
+.link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  padding: 12px;
+}
+
+.cardInner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--text-xs);
+}
+
+.index {
+  color: var(--muted);
+}
+
+.indexValue {
+  font-family: var(--font-tech);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.change {
+  font-family: var(--font-tech);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.change.up {
+  color: var(--up);
+}
+
+.change.down {
+  color: var(--down);
+}
+
+.barWrapper {
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: auto;
+}
+
+.bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s var(--ease-premium);
+}
+
+/* Skeleton */
+.skeletonGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 12px;
+}
+
+.skeletonCard {
+  aspect-ratio: 1 / 0.8;
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 25%,
+    var(--elevated) 50%,
+    var(--surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--line);
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Empty / Error */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--muted);
+  gap: 12px;
+}
+
+.emptyIcon {
+  font-size: 2rem;
+  opacity: 0.5;
+}
+
+.emptyText {
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+.retryBtn {
+  padding: 8px 16px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: opacity 0.2s var(--ease-premium);
+}
+
+.retryBtn:hover {
+  opacity: 0.9;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    padding: 8px;
+  }
+  .cardInner {
+    gap: 6px;
+    padding: 8px;
+  }
+  .name {
+    font-size: var(--text-xs);
+  }
+  .metrics {
+    font-size: 10px;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

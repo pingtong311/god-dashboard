@@ -69,7 +69,7 @@ const SECTOR_INDEX_SUFFIX = '類指數';
 type RawTable = { data?: string[][] } | string[][] | null | undefined;
 
 /** 取出 table 的資料列（相容 { data } 物件與純陣列兩種格式）。 */
-function rowsOf(table: RawTable): string[][] {
+export function rowsOf(table: RawTable): string[][] {
   if (Array.isArray(table)) return table as string[][];
   if (table && Array.isArray((table as { data?: string[][] }).data)) {
     return (table as { data: string[][] }).data;
@@ -176,10 +176,10 @@ export function extractIndex(tables: RawTable[]): MarketIndexQuote {
  * 3. 舊制 5 檔「總類股」與新制細類並列，會重複計算，需排除（37 → 32）。
  *
  * @param tables MI_INDEX 的 tables 陣列（僅讀 tables[0]）
- * @param limit  最多回傳幾筆（依漲跌百分比由大到小）
+ * @param limit  最多回傳幾筆（依漲跌百分比由大到小），預設 32（全類股）
  * @returns 已去掉「類指數」後綴的類股名稱，加上指數、漲跌點數與漲跌百分比
  */
-export function extractSectorFocus(tables: RawTable[], limit = 5): SectorFocus[] {
+export function extractSectorFocus(tables: RawTable[], limit = 32): SectorFocus[] {
   const rows = rowsOf(tables?.[0]);
   const result: SectorFocus[] = [];
   for (const row of rows) {
@@ -303,6 +303,7 @@ export function parseMarketOverview(
   miIndexJson: { tables?: RawTable[] } | null | undefined,
   t86Json: unknown,
   dateYmd: string,
+  sectorLimit?: number,
 ): MarketOverview {
   const tables = Array.isArray(miIndexJson?.tables) ? (miIndexJson as { tables: RawTable[] }).tables : [];
   return {
@@ -312,7 +313,7 @@ export function parseMarketOverview(
     turnover: extractTurnover(tables),
     topGainers: extractTopGainers(tables),
     institutionalBuy: extractInstitutionalBuy(t86Json),
-    sectorFocus: extractSectorFocus(tables),
+    sectorFocus: extractSectorFocus(tables, sectorLimit),
   };
 }
 
@@ -434,7 +435,7 @@ function cacheTtlMs(): number {
  * 取得大盤總覽（含 TTL 快取）。
  * 並行抓取 rwd MI_INDEX（4.8MB）與 rwd T86（2.17MB），兩者皆帶 User-Agent。
  */
-export async function loadMarketOverview(date?: string, fetchImpl?: FetchLike): Promise<MarketOverview> {
+export async function loadMarketOverview(date?: string, fetchImpl?: FetchLike, sectorLimit?: number): Promise<MarketOverview> {
   // 同 resolveLatestTradingDate：可選參數在本體內解析，無 fetch 時丟可被 catch 的領域錯誤。
   const doFetch = fetchImpl ?? globalThis.fetch;
   if (typeof doFetch !== 'function') {
@@ -462,7 +463,7 @@ export async function loadMarketOverview(date?: string, fetchImpl?: FetchLike): 
     t86Json = await t86Res.json().catch(() => null);
   }
 
-  const overview = parseMarketOverview(miJson, t86Json, resolved);
+  const overview = parseMarketOverview(miJson, t86Json, resolved, sectorLimit);
   overviewCache.set(resolved, { data: overview, expiresAt: Date.now() + cacheTtlMs() });
   return overview;
 }
