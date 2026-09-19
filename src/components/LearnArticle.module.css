@@ -1,0 +1,283 @@
+/* 教學專欄文章頁（/learn/[slug]）— 逐項對照博主 .seo-learn-article 版面。
+ * 一律使用 theme.css 的 var() token，不寫死色碼。 */
+
+.wrap {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 22px 18px 96px;
+}
+
+.article {
+  color: var(--ink);
+  line-height: 1.85;
+}
+
+/* ── seo-meta：分類膠囊 + 閱讀時間 ── */
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 10px;
+}
+
+.cat {
+  display: inline-block;
+  padding: 0.2em 0.75em;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 900;
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.read {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.title {
+  font-size: clamp(26px, 4vw, 38px);
+  line-height: 1.28;
+  margin: 8px 0 12px;
+  letter-spacing: -0.01em;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+/* ── 本文目錄（原生 <details>，無需 client JS） ── */
+.toc {
+  margin: 18px 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 2px 16px;
+}
+
+.tocSummary {
+  cursor: pointer;
+  font-weight: 900;
+  font-size: 13.5px;
+  color: var(--muted);
+  padding: 10px 0;
+}
+
+.tocList {
+  margin: 0 0 12px;
+  padding-left: 1.3rem;
+  font-size: 14px;
+}
+
+.tocList a {
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.tocList a:hover {
+  color: var(--accent);
+}
+
+.body {
+  margin-top: 6px;
+}
+
+.intro {
+  font-size: 1.06rem;
+  color: var(--ink);
+  margin: 0 0 18px;
+}
+
+/* ── 段落 / 行內連結 ── */
+.p {
+  margin: 0 0 18px;
+}
+
+.link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── 清單（hd-list / hd-list--num / hd-list--check） ── */
+.list,
+.listNum {
+  margin: 0.6em 0 1.1em;
+  padding-left: 1.35rem;
+}
+
+.listCheck {
+  margin: 0.6em 0 1.1em;
+  list-style: none;
+  padding-left: 0;
+}
+
+.listCheck li {
+  position: relative;
+  padding-left: 1.6em;
+  margin: 0.45em 0;
+}
+
+.listCheck li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--down);
+  font-weight: 800;
+}
+
+/* ── 表格（hd-tbl-scroll / hd-tbl） ── */
+.tblScroll {
+  overflow-x: auto;
+  margin: 1em 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tbl {
+  width: 100%;
+  min-width: 420px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.tbl th,
+.tbl td {
+  border: 1px solid var(--line);
+  padding: 0.65em 0.8em;
+  text-align: left;
+  vertical-align: top;
+}
+
+.tbl th {
+  background: var(--surface-2);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.tbl tbody tr:nth-child(odd) td {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+/* ── 圖卡（hd-viz / hd-fig） ── */
+.fig {
+  margin: 1.6em 0;
+}
+
+.figFrame {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.figCap {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-top: 0.45em;
+}
+
+/* ── FAQ（hd-faq 內的 <details>） ── */
+.faq {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.faqItem {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.3em 1em;
+  background: var(--surface);
+}
+
+.faqItem summary {
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0.45em 0;
+  color: var(--ink);
+}
+
+.faqA {
+  margin: 0.2em 0 0.8em;
+  color: var(--muted);
+}
+
+/* ── 章節標題 ── */
+.section {
+  scroll-margin-top: 80px;
+}
+
+.h2 {
+  font-size: clamp(1.3rem, 1.15rem + 0.55vw, 1.55rem);
+  font-weight: 800;
+  margin: 2em 0 0.65em;
+  padding-left: 0.55em;
+  border-left: 4px solid var(--accent);
+  color: var(--ink);
+}
+
+/* ── 本文重點（博主無此卡，以站上金線卡片呈現） ── */
+.tldr {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  padding: 0.9em 1.2em;
+  margin: 1.2em 0;
+}
+
+.tldrTitle {
+  display: block;
+  color: var(--accent);
+  font-size: 0.95rem;
+  margin-bottom: 0.4em;
+}
+
+.tldrList {
+  margin: 0;
+  padding-left: 1.25em;
+}
+
+.tldrList li {
+  margin: 0.3em 0;
+  font-weight: 600;
+}
+
+/* ── 相關文章 ── */
+.related {
+  margin-top: 28px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.relatedTitle {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+
+.relatedLink {
+  display: block;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 800;
+  font-size: 14.5px;
+  text-decoration: none;
+  line-height: 1.5;
+}
+
+.relatedLink:hover {
+  border-color: var(--accent);
+}

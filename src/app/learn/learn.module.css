@@ -1,0 +1,189 @@
+/* 教學專欄索引（/learn）— 一律使用 theme.css 的 var() token。 */
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 18px 96px;
+}
+
+.header {
+  margin-bottom: 14px;
+}
+
+.title {
+  font-size: clamp(24px, 3.5vw, 32px);
+  font-weight: 900;
+  color: var(--ink);
+  margin: 0 0 6px;
+}
+
+.desc {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.search {
+  width: 100%;
+  max-width: 520px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13.5px;
+  outline: none;
+}
+
+.search::placeholder {
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+
+.search:focus {
+  border-color: var(--accent);
+}
+
+/* ── 分類篩選 ── */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color 0.2s var(--ease-premium), color 0.2s var(--ease-premium);
+}
+
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.chipActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+.chipCount {
+  font-family: var(--font-tech);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  opacity: 0.85;
+}
+
+.resultLine {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 14px 0 0;
+}
+
+.empty {
+  margin: 40px 0;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* ── 分組 ── */
+.group {
+  margin-top: 26px;
+}
+
+.groupTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--ink);
+  margin: 0 0 12px;
+  padding-left: 0.5em;
+  border-left: 4px solid var(--accent);
+}
+
+.groupTag {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 0.15em 0.7em;
+}
+
+.count {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+/* ── 卡片格線 ── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  text-decoration: none;
+  transition: border-color 0.2s var(--ease-premium);
+}
+
+.card:hover {
+  border-color: var(--accent);
+}
+
+.cardTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15em 0.7em;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 900;
+  font-size: 11.5px;
+}
+
+.read {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 0;
+}

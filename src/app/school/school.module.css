@@ -1,0 +1,574 @@
+/* ============================================================================
+ * /school 台股學堂 — CSS Module
+ * ----------------------------------------------------------------------------
+ * 版面逐項對照博主原始 HTML（IOS_design/extracted/site/school.html）。
+ * 顏色一律取用 src/styles/theme.css 的 var() token（--bg / --surface /
+ * --surface-2 / --line / --ink / --muted / --accent / --accent-soft /
+ * --up / --down / --gold-line …），不寫死色碼；唯一例外是 warn 區塊的
+ * amber 色（博主原文即寫死 border-amber-400/30 + bg-amber-400/10）。
+ *
+ * 為什麼不用 Tailwind utility：
+ *   本專案 globals.css 的 @theme inline 只映射了 background / foreground /
+ *   cyan / green / purple / red 等少數色票，並未定義博主使用的 accent / bg /
+ *   surface / surface-2 / line / muted / ink / up / down 等 utility 色名，
+ *   故 `bg-surface-2`、`text-accent` 之類的 class 在本專案不會產生樣式。
+ *   因此全部以 CSS Module + var() token 手寫，最貼近原版且不依賴不存在的工具類。
+ * ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+ * 外殼（對照博主 <main class="shell-main mx-auto w-full max-w-[1360px]
+ * px-4 pt-5 md:px-6 lg:pt-7">）
+ * ------------------------------------------------------------------------- */
+.shell {
+  width: 100%;
+  max-width: 1360px;
+  margin: 0 auto;
+  min-height: 58dvh;
+  padding: 20px 16px calc(8.5rem + env(safe-area-inset-bottom));
+  outline: none;
+}
+
+@media (min-width: 768px) {
+  .shell {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .shell {
+    padding-top: 28px;
+    padding-bottom: calc(6.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 頁面層級切換膠囊（<nav aria-label="相關功能切換">）
+ * ------------------------------------------------------------------------- */
+.subNav {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: -4px -4px 4px;
+}
+
+.subNavTrack {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 16px 4px 4px;
+  scrollbar-width: none;
+}
+
+.subNavTrack::-webkit-scrollbar {
+  display: none;
+}
+
+.subNavPill {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  white-space: nowrap;
+  min-height: 44px;
+  border-radius: 9999px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 900;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.subNavPill:hover {
+  color: var(--ink);
+}
+
+.subNavPill:active {
+  transform: scale(0.95);
+}
+
+.subNavPillActive,
+.subNavPillActive:hover {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: transparent;
+}
+
+.subNavSpacer {
+  width: 16px;
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * page-enter 進場動效（對照博主 @keyframes page-enter-in）
+ * ------------------------------------------------------------------------- */
+.enter {
+  animation: 0.2s ease-out both pageEnterIn;
+}
+
+@keyframes pageEnterIn {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enter {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 頁首：h1 + 說明 + 分享
+ * ------------------------------------------------------------------------- */
+.title {
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+@media (min-width: 768px) {
+  .title {
+    font-size: 30px;
+  }
+}
+
+.lead {
+  margin-top: 4px;
+  font-size: 13.5px;
+  line-height: 1.625;
+  color: var(--muted);
+}
+
+@media (min-width: 768px) {
+  .lead {
+    font-size: 14px;
+  }
+}
+
+.shareRow {
+  margin-top: 12px;
+}
+
+.shareBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-weight: 900;
+  font-family: inherit;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  cursor: pointer;
+  transition: transform 0.18s ease, background-color 0.18s ease;
+}
+
+.shareBtn:active {
+  transform: scale(0.97);
+}
+
+/* ---------------------------------------------------------------------------
+ * 頁首引導卡（intro）
+ * ------------------------------------------------------------------------- */
+.intro {
+  margin-top: 16px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  padding: 16px;
+}
+
+@media (min-width: 768px) {
+  .intro {
+    padding: 20px;
+  }
+}
+
+.introTitle {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--accent);
+}
+
+.introDesc {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.625;
+  color: var(--muted);
+}
+
+.introSteps {
+  margin-top: 8px;
+  display: grid;
+  gap: 4px;
+  font-size: 13.5px;
+  font-weight: 700;
+  list-style: none;
+  padding: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * 搜尋框
+ * ------------------------------------------------------------------------- */
+.search {
+  display: block;
+  margin-top: 16px;
+  min-height: 48px;
+  width: 100%;
+  border-radius: 12px;
+  border: 2px solid var(--line);
+  background: var(--surface);
+  padding: 0 16px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+
+.search::placeholder {
+  color: var(--muted);
+}
+
+.search:focus {
+  border-color: var(--accent);
+}
+
+/* ---------------------------------------------------------------------------
+ * 篩選 chips
+ * ------------------------------------------------------------------------- */
+.chips {
+  margin-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  border: 0;
+  background: var(--surface-2);
+  color: var(--muted);
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.chipActive,
+.chipActive:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* ---------------------------------------------------------------------------
+ * 分類 section
+ * ------------------------------------------------------------------------- */
+.sections {
+  margin-top: 20px;
+  display: grid;
+  gap: 28px;
+}
+
+.section {
+  min-width: 0;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sectionTitle {
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+@media (min-width: 768px) {
+  .sectionTitle {
+    font-size: 24px;
+  }
+}
+
+.sectionCount {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.sectionDesc {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.625;
+  color: var(--muted);
+}
+
+@media (min-width: 768px) {
+  .sectionDesc {
+    font-size: 13.5px;
+  }
+}
+
+.articles {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+/* ---------------------------------------------------------------------------
+ * 文章（<details class="hud-panel …">）
+ * hud-panel 的金色細線（:before）逐字複刻博主 CSS。
+ * ------------------------------------------------------------------------- */
+.article {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.article::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  top: -1px;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  opacity: 0.75;
+  background: linear-gradient(90deg, transparent, var(--gold-line), transparent);
+  transition: opacity 0.28s ease, left 0.28s ease, right 0.28s ease;
+}
+
+.article[open] {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.article[open]::before {
+  opacity: 0.95;
+  left: 2%;
+  right: 2%;
+}
+
+.summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 16px;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary::marker {
+  content: "";
+}
+
+@media (min-width: 768px) {
+  .summary {
+    padding: 20px;
+  }
+}
+
+.summaryHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summaryTitle {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+@media (min-width: 768px) {
+  .summaryTitle {
+    font-size: 18px;
+  }
+}
+
+.summaryArrow {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.article[open] .summaryArrow {
+  transform: rotate(90deg);
+}
+
+.summarySub {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.625;
+  color: var(--muted);
+}
+
+/* 內文容器 */
+.body {
+  display: grid;
+  gap: 12px;
+  padding: 0 16px 20px;
+}
+
+@media (min-width: 768px) {
+  .body {
+    padding: 0 20px 20px;
+  }
+}
+
+/* 內文圖示（原樣 SVG markup，透過 dangerouslySetInnerHTML 輸出） */
+.figure {
+  border-radius: 12px;
+  background: var(--bg);
+  padding: 12px;
+}
+
+.figure svg {
+  display: block;
+  width: 100%;
+}
+
+/* 高度固定值：博主原檔在 <svg> 上寫了 Tailwind h-28 / h-32，本專案未定義該
+   色票但間距類可用；為不依賴自動偵測，這裡以 viewBox 直接鎖定博主實際尺寸
+   （220×90 → h-28 = 112px；320×140 → h-32 = 128px），兩者值完全一致。 */
+.figure svg[viewBox="0 0 220 90"] {
+  height: 7rem;
+}
+
+.figure svg[viewBox="0 0 320 140"] {
+  height: 8rem;
+}
+
+/* 原檔寫在 <svg>/<path> 上的 Tailwind 色名（text-up/text-down/text-ink）在本專案
+   的 @theme 未定義，故以 :global 補回 currentColor 的來源色。 */
+.figure :global(.text-up) {
+  color: var(--up);
+}
+
+.figure :global(.text-down) {
+  color: var(--down);
+}
+
+.figure :global(.text-ink) {
+  color: var(--ink);
+}
+
+/* def 文字區塊 */
+.def {
+  border-radius: 12px;
+  background: var(--surface-2);
+  padding: 14px;
+  font-size: 13.5px;
+  line-height: 1.625;
+  color: var(--ink);
+}
+
+@media (min-width: 768px) {
+  .def {
+    font-size: 14px;
+  }
+}
+
+.defLabel {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* warn 區塊（amber 為博主原文寫死色） */
+.warn {
+  border-radius: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.1);
+  padding: 14px;
+  font-size: 12.5px;
+  line-height: 1.625;
+  color: var(--ink);
+}
+
+@media (min-width: 768px) {
+  .warn {
+    font-size: 13.5px;
+  }
+}
+
+/* CTA 按鈕 */
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border-radius: 12px;
+  background: var(--accent);
+  font-size: 13.5px;
+  font-weight: 900;
+  color: var(--bg);
+  text-decoration: none;
+  transition: transform 0.18s ease;
+}
+
+.cta:active {
+  transform: scale(0.99);
+}
+
+/* ---------------------------------------------------------------------------
+ * 搜尋無結果的空狀態
+ * ------------------------------------------------------------------------- */
+.empty {
+  margin-top: 20px;
+  border-radius: 16px;
+  border: 1px dashed var(--line);
+  background: var(--surface);
+  padding: 28px 20px;
+  text-align: center;
+}
+
+.emptyEmoji {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.emptyTitle {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.emptyHint {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.625;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
+ * 頁尾校閱備註（頁面內容，非全站 footer）
+ * ------------------------------------------------------------------------- */
+.note {
+  margin-top: 32px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.625;
+  color: var(--muted);
+}

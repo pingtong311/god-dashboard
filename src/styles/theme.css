@@ -239,3 +239,67 @@ body {
  *    淺色深版：--up:#c9182c / --down:#067a54   （= light 主用）
  *    其餘兩組：--up:#078a5e / --down:#d81f39、--up:#3eeba4 / --down:#ff6b78
  * ------------------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------------------
+ * 7. 漲跌色切換（html[data-updown=us]）— App「設定」中的漲跌色偏好
+ * ----------------------------------------------------------------------------
+ * 逐字複刻博主 1e1_yct8b4k2k.css（抽出檔第 127654 字元起）：
+ *   html[data-updown=us]{--up:#3eeba4;--down:#ff6b78}
+ *   html[data-theme=light][data-updown=us]{--up:#078a5e;--down:#d81f39}
+ * 語意：預設（無屬性）＝台股慣例「紅漲綠跌」（--up 紅 / --down 綠）；
+ *       設 data-updown="us" 後翻轉為美股慣例「綠漲紅跌」。
+ * 註：本區塊必須置於第 1／2 節之後，才能在相同特異度下正確覆寫 :root 與 light 的
+ *     --up / --down（選擇器特異度：html[data-updown=us] 與 html[data-theme=light] 同級，
+ *     靠來源順序決勝；html[data-theme=light][data-updown=us] 特異度更高，兩者皆勝）。
+ * ------------------------------------------------------------------------- */
+html[data-updown="us"] {
+  --up: #3eeba4;
+  --down: #ff6b78;
+}
+html[data-theme="light"][data-updown="us"] {
+  --up: #078a5e;
+  --down: #d81f39;
+}
+
+/* ---------------------------------------------------------------------------
+ * 8. 舒適閱讀（html.comfort-read）— App「設定」中的閱讀舒適度偏好
+ * ----------------------------------------------------------------------------
+ * 逐字複刻博主 1e1_yct8b4k2k.css（抽出檔第 127749 字元起，原文 6 條規則）：
+ *   html.comfort-read{font-size:20px}
+ *   @media (min-width:768px){html.comfort-read{font-size:22px}}
+ *   html.comfort-read:not([data-theme=light]){--ink:#fff;--muted:#dce6f2;--accent:#6dd4ff;--au-card:#060c16e0;letter-spacing:.015em}
+ *   html[data-theme=light].comfort-read{--ink:#05080c;--muted:#33455a;--accent:#0862b4;--au-card:#fffffff0;letter-spacing:.015em}
+ *   html.comfort-read body{font-weight:500;line-height:1.85}
+ *   html.comfort-read body:before{opacity:.38}
+ * 語意：放大根字級、提高對比（深色下更亮、淺色下更暗）、加大行高與字距。
+ * 說明：博主原 CSS 使用的 --ink / --muted / --accent / --au-card 與本檔 token 同名，可直接對應。
+ * ------------------------------------------------------------------------- */
+html.comfort-read {
+  font-size: 20px;
+}
+@media (min-width: 768px) {
+  html.comfort-read {
+    font-size: 22px;
+  }
+}
+html.comfort-read:not([data-theme="light"]) {
+  --ink: #fff;
+  --muted: #dce6f2;
+  --accent: #6dd4ff;
+  --au-card: #060c16e0;
+  letter-spacing: 0.015em;
+}
+html[data-theme="light"].comfort-read {
+  --ink: #05080c;
+  --muted: #33455a;
+  --accent: #0862b4;
+  --au-card: #fffffff0;
+  letter-spacing: 0.015em;
+}
+html.comfort-read body {
+  font-weight: 500;
+  line-height: 1.85;
+}
+html.comfort-read body:before {
+  opacity: 0.38;
+}
