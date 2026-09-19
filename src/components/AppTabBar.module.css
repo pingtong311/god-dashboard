@@ -52,6 +52,12 @@
   padding: 7px 4px;
   border-radius: 10px;
 
+  /* 「更多」是 <button>，需歸零瀏覽器預設樣式才能與 <Link> 對齊 */
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+
   color: var(--tab-idle);
   font-size: 11px;
   font-weight: 700;
@@ -83,4 +89,141 @@
 .active {
   color: var(--tab-active);
   background: rgba(197, 160, 89, 0.12);
+}
+
+/* ============================================================================
+ * 「更多」抽屜
+ * ----------------------------------------------------------------------------
+ * 收錄次要入口（模擬練習 / 我的關注 / 籌碼研究 / 首頁），
+ * 讓底部列維持 5 個主要分頁的可點擊面積，同時每個 P1 頁面都有入口。
+ * ========================================================================== */
+
+.moreBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 49; /* 需低於 .tabBar（50），避免蓋住底部列 */
+  background: rgba(3, 6, 16, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.moreSheet {
+  position: fixed;
+  z-index: 51; /* 需高於 .tabBar（50） */
+  right: 10px;
+  left: 10px;
+  bottom: calc(78px + env(safe-area-inset-bottom));
+
+  padding: 12px;
+  border: 1px solid var(--gold-line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--shadow-glass);
+
+  animation: moreSheetIn 0.18s var(--ease-premium, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+@keyframes moreSheetIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.moreSheetHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.moreSheetHead strong {
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.moreClose {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.moreClose:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.moreList {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.moreLink {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 10px;
+  border-radius: var(--radius-control);
+  color: var(--muted);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.moreLink:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.moreLinkActive {
+  background: var(--accent-soft);
+  color: var(--gold);
+}
+
+.moreLinkText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.moreLinkText strong {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.moreLinkText em {
+  color: var(--muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+/* 窄螢幕（iPhone SE 等）縮小字級，確保 6 個入口不換行 */
+@media (max-width: 400px) {
+  .tabItem {
+    font-size: 10px;
+    letter-spacing: 0;
+    padding: 7px 2px;
+  }
+
+  .tabBar {
+    gap: 2px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
 }

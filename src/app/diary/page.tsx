@@ -20,10 +20,14 @@ import {
   Clock,
   Flame,
   Layers,
+  PieChart,
+  Radar,
   RefreshCw,
   Search,
   Sparkles,
+  Star,
   CheckCircle,
+  Wallet,
   Zap,
   Newspaper,
   Wifi,
@@ -656,6 +660,41 @@ export default function DiaryPage() {
 
               {/* 5. 族群熱圖（方塊圖） */}
               <Treemap />
+
+              {/* 6. 快捷入口（複刻博主「股票▾」與「我的▾」的功能頁入口） */}
+              <section className={styles.quickSection} aria-labelledby="quick-title">
+                <h2 id="quick-title" className={styles.quickTitle}>快捷入口</h2>
+                <div className={styles.quickGrid}>
+                  <Link href="/radar" className={styles.quickCard}>
+                    <Radar size={20} aria-hidden="true" />
+                    <div>
+                      <strong>資金雷達</strong>
+                      <span>四大排序找出主力佈局標的</span>
+                    </div>
+                  </Link>
+                  <Link href="/sim" className={styles.quickCard}>
+                    <Wallet size={20} aria-hidden="true" />
+                    <div>
+                      <strong>模擬練習</strong>
+                      <span>虛擬資金 1,000,000 零風險練手感</span>
+                    </div>
+                  </Link>
+                  <Link href="/watchlist" className={styles.quickCard}>
+                    <Star size={20} aria-hidden="true" />
+                    <div>
+                      <strong>我的關注</strong>
+                      <span>自選股分群與漲跌提醒</span>
+                    </div>
+                  </Link>
+                  <Link href="/chips/2330" className={styles.quickCard}>
+                    <PieChart size={20} aria-hidden="true" />
+                    <div>
+                      <strong>籌碼研究</strong>
+                      <span>分點明細、集保級距、法人歷史</span>
+                    </div>
+                  </Link>
+                </div>
+              </section>
             </>
           ) : null}
         </div>

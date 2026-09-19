@@ -18,7 +18,6 @@ import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import styles from './stock.module.css';
-import AppTabBar from '@/components/AppTabBar';
 
 // ── 型別定義 ────────────────────────────────────────────
 
@@ -456,6 +455,9 @@ function StockPageContent({ ticker }: StockPageContentProps) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Link href={`/chips/${ticker}`} className={styles.ctaButton}>
+              籌碼研究 →
+            </Link>
             <Link href={`/chart?ticker=${ticker}`} className={styles.ctaButton}>
               開啟 {twseData.name} 完整研究頁 →
             </Link>
@@ -503,8 +505,11 @@ function StockPageContent({ ticker }: StockPageContentProps) {
         </p>
       </footer>
 
-      {/* 底部功能列 */}
-      <AppTabBar />
+      {/*
+        底部功能列不在本頁渲染 —— src/app/layout.tsx:51 已全域掛載唯一一份 <AppTabBar />。
+        個股頁屬細節頁，目前不在 AppTabBar 的顯示白名單內（會回傳 null），
+        保留此註解說明為何沒有自行渲染，避免日後誤加而產生兩條重疊的底部列。
+      */}
     </div>
   );
 }

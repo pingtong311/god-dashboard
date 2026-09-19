@@ -895,3 +895,92 @@
     justify-self: start;
   }
 }
+
+/* ============================================================================
+ * 快捷入口（複刻博主「股票▾」與「我的▾」的功能頁入口）
+ * ----------------------------------------------------------------------------
+ * P1 功能頁（資金雷達／模擬練習／我的關注／籌碼研究）在首頁的入口。
+ * ========================================================================== */
+
+.quickSection {
+  margin-top: 18px;
+}
+
+.quickTitle {
+  margin: 0 0 10px;
+  color: var(--bs-text);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.quickGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quickCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px 12px;
+  border: 1px solid var(--bs-border);
+  border-radius: var(--radius-control);
+  background: var(--bs-ai-bubble);
+  color: var(--bs-text);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
+}
+
+.quickCard:hover {
+  border-color: var(--bs-gold-line);
+  background: var(--bs-gold-soft);
+}
+
+.quickCard:active {
+  transform: scale(0.98);
+}
+
+.quickCard > svg {
+  flex: 0 0 auto;
+  color: var(--bs-gold);
+}
+
+.quickCard > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.quickCard strong {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.quickCard span {
+  color: var(--bs-text-dim);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .quickGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .quickCard span {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 420px) {
+  .quickGrid {
+    grid-template-columns: 1fr;
+  }
+}
