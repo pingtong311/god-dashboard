@@ -26,6 +26,8 @@ import {
 import Link from 'next/link';
 import type { MarketOverview } from '@/types/market';
 import styles from './diary.module.css';
+import SectorMap from '@/components/SectorMap';
+import Treemap from '@/components/Treemap';
 
 /** /api/skynet/twse 回傳的單筆報價（僅取本頁需要的欄位）。 */
 type LiveItem = {
@@ -338,6 +340,12 @@ export default function DiaryPage() {
                   )}
                 </div>
               </section>
+
+              {/* 4. 產業地圖（32 類股色塊） */}
+              <SectorMap initialData={overview?.sectorFocus ?? []} />
+
+              {/* 5. 族群熱圖（方塊圖） */}
+              <Treemap />
             </>
           ) : null}
         </div>
