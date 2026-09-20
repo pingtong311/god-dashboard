@@ -19,7 +19,28 @@ export type MarketIndexQuote = {
   change: number;
   /** 漲跌百分比（帶正負）。 */
   changePercent: number;
-  source: 'twse-mis-live' | 'twse-mi-index-close';
+  source: 'twse-mis-live' | 'twse-mi-index-close' | 'taifex-openapi-close';
+};
+
+/** TAIFEX 期貨收盤報價（台指期 TX 近月，EOD 來源）。
+ *  盤中（08:45–13:45）顯示前一日收盤價，因 TAIFEX OpenAPI 為 EOD 來源；
+ *  即時行情需 Shioaji VPS（未啟用）或 Fugle 期權方案（現 403）。 */
+export type TaifexFuturesQuote = {
+  /** 顯示名稱：'台股期近月'。 */
+  name: string;
+  /** 收盤價（EOD）。route 端空值（'-'/'NULL'/''）轉 null，前端以 lastPrice > 0 保護。 */
+  lastPrice: number;
+  /** 漲跌點數（帶正負）；route 端空值轉 null 時前端顯示 '--'。 */
+  change: number;
+  /** 漲跌百分比（帶正負）；route 端空值轉 null 時前端顯示 '--'。 */
+  changePercent: number;
+  /** '收盤 MM/DD'——EOD 來源連日期一起顯示，避免誤以為即時。 */
+  sourceLabel: string;
+  source: 'taifex-openapi-close';
+  /** 交易日 'YYYY-MM-DD'。 */
+  date: string;
+  /** 近月合約月，形如 'YYYY-MM'。 */
+  contract: string;
 };
 
 /** 漲跌家數（取「股票」欄，非「整體市場」欄）。 */
@@ -105,4 +126,17 @@ export interface TreemapStock {
   change: number;
   changePercent: number;
   volume: number;
+}
+
+/** 族群熱圖完整資料（含分群與市場別群組）。 */
+export interface TreemapData {
+  sectors: TreemapSector[];
+  marketGroups: {
+    上市: TreemapSector[];
+    上櫃: TreemapSector[];
+    ETF: TreemapSector[];
+    其他: TreemapSector[];
+  };
+  totalStocks: number;
+  date: string;
 }

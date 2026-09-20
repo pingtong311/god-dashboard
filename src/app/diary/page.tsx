@@ -34,7 +34,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import Link from 'next/link';
-import type { MarketOverview } from '@/types/market';
+import type { MarketOverview, TaifexFuturesQuote } from '@/types/market';
 import styles from './diary.module.css';
 import SectorMap from '@/components/SectorMap';
 import Treemap from '@/components/Treemap';
@@ -99,6 +99,7 @@ function toneClass(value: number): string {
 export default function DiaryPage() {
   const [overview, setOverview] = useState<MarketOverview | null>(null);
   const [live, setLive] = useState<LiveItem[]>([]);
+  const [futures, setFutures] = useState<TaifexFuturesQuote | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -234,7 +235,7 @@ export default function DiaryPage() {
       ? `/api/skynet/market-overview?date=${dateParam.replace(/-/g, '')}&sectorLimit=5`
       : '/api/skynet/market-overview?sectorLimit=5';
 
-    const [overviewResult, liveResult] = await Promise.allSettled([
+    const [overviewResult, liveResult, futuresResult] = await Promise.allSettled([
       fetch(url, { cache: 'no-store' }).then(async (res) => {
         const body = (await res.json()) as { ok?: boolean; data?: MarketOverview; message?: string };
         if (!res.ok || !body?.ok || !body.data) {
@@ -246,12 +247,24 @@ export default function DiaryPage() {
         const body = (await res.json()) as { items?: LiveItem[] };
         return Array.isArray(body?.items) ? body.items : [];
       }),
+      // 台股期近月（TAIFEX OpenAPI EOD 來源；route 端已做 1 小時快取，盤中會顯示前一日收盤日期）
+      fetch('/api/skynet/futures', { cache: 'no-store' }).then(async (res) => {
+        const body = (await res.json()) as { ok?: boolean; data?: TaifexFuturesQuote; message?: string };
+        if (!res.ok || !body?.ok || !body.data) {
+          throw new Error(body?.message || 'taifex futures unavailable');
+        }
+        return body.data;
+      }),
     ]);
 
     if (overviewResult.status === 'fulfilled') setOverview(overviewResult.value);
     else setError('大盤資料暫時無法取得，請稍後重試。');
 
     if (liveResult.status === 'fulfilled') setLive(liveResult.value);
+
+    // 期近月：EOD 來源，讀不到就維持 null，第 3 格顯示占位 '--'，不造假數字。
+    if (futuresResult.status === 'fulfilled') setFutures(futuresResult.value);
+    else setFutures(null);
 
     setLoading(false);
     setRefreshing(false);
@@ -345,6 +358,20 @@ export default function DiaryPage() {
     ? { name: '櫃買指數', price: otcPoll.price, change: otcPoll.change, changePercent: otcPoll.changePercent, sourceLabel: '即時' }
     : otcLive
       ? { name: '櫃買指數', price: otcLive.price, change: otcLive.change, changePercent: otcLive.changePercent, sourceLabel: '即時' }
+      : null;
+
+  // 台股市近月（第 3 格）：TAIFEX OpenAPI EOD 來源，sourceLabel 為「收盤 MM/DD」。
+  // 盤中（08:45–13:45）顯示前一日收盤價，因 TAIFEX OpenAPI 為 EOD 來源。
+  // 即時行情需 Shioaji VPS（未啟用）或 Fugle 期權方案（現 403）。
+  const futuresIndex: IndexDisplay | null =
+    futures && typeof futures.lastPrice === 'number' && futures.lastPrice > 0
+      ? {
+          name: futures.name || '台股期近月',
+          price: futures.lastPrice,
+          change: futures.change ?? 0,
+          changePercent: futures.changePercent ?? 0,
+          sourceLabel: futures.sourceLabel,
+        }
       : null;
 
   const breadth = overview?.breadth ?? null;
@@ -471,6 +498,19 @@ export default function DiaryPage() {
                         ? `${formatChange(otcIndex.change)} (${formatPercent(otcIndex.changePercent)})`
                         : '—'}
                       {otcIndex ? <i>{otcIndex.sourceLabel}</i> : null}
+                    </em>
+                  </div>
+                  {/* 第 3 格：台股期近月（TAIFEX OpenAPI 收盤 EOD；讀不到顯示占位 '--'，不造假數字） */}
+                  <div className={styles.indexCell}>
+                    <span>{futuresIndex?.name ?? '台股期近月'}</span>
+                    <strong className={futuresIndex ? toneClass(futuresIndex.change) : styles.flat}>
+                      {futuresIndex ? formatPrice(futuresIndex.price) : '—'}
+                    </strong>
+                    <em className={futuresIndex ? toneClass(futuresIndex.change) : styles.flat}>
+                      {futuresIndex
+                        ? `${formatChange(futuresIndex.change)} (${formatPercent(futuresIndex.changePercent)})`
+                        : '—'}
+                      {futuresIndex ? <i>{futuresIndex.sourceLabel}</i> : null}
                     </em>
                   </div>
                 </div>
