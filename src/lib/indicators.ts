@@ -310,6 +310,66 @@ export function calculateRSI(
   return { rsi };
 }
 
+// ─── CDP（Central Pivot Point，最佳終點） ──────────────────────────────────
+
+export interface CDPResult {
+  upper: (number | null)[];
+  middle: (number | null)[];
+  lower: (number | null)[];
+}
+
+/**
+ * 計算 CDP（Central Pivot Point 最佳終點，韓式指標）
+ *
+ * 以過去 period 根 K 棒的（High, Low, Close）平均值計算樞軸：
+ *   PP     = (avgHigh + avgLow + avgClose) / 3
+ *   Upper  = 2 × PP − avgLow
+ *   Lower  = 2 × PP − avgHigh
+ *   Middle = PP − (avgHigh − avgLow)
+ *
+ * 前 period − 1 根資料不足，回傳 null。
+ *
+ * @param highs   最高價陣列
+ * @param lows    最低價陣列
+ * @param closes  收盤價陣列
+ * @param period  統計週期（預設 20）
+ */
+export function calculateCDP(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 20
+): CDPResult {
+  const len = closes.length;
+  const empty: CDPResult = {
+    upper: new Array(len).fill(null),
+    middle: new Array(len).fill(null),
+    lower: new Array(len).fill(null),
+  };
+
+  if (len === 0 || period <= 0 || len < period) return empty;
+
+  const upper: (number | null)[] = new Array(len).fill(null);
+  const middle: (number | null)[] = new Array(len).fill(null);
+  const lower: (number | null)[] = new Array(len).fill(null);
+
+  for (let i = period - 1; i < len; i++) {
+    const sliceH = highs.slice(i - period + 1, i + 1);
+    const sliceL = lows.slice(i - period + 1, i + 1);
+    const sliceC = closes.slice(i - period + 1, i + 1);
+    const avgHigh = sliceH.reduce((acc, v) => acc + v, 0) / period;
+    const avgLow = sliceL.reduce((acc, v) => acc + v, 0) / period;
+    const avgClose = sliceC.reduce((acc, v) => acc + v, 0) / period;
+
+    const pp = (avgHigh + avgLow + avgClose) / 3;
+    upper[i] = 2 * pp - avgLow;
+    lower[i] = 2 * pp - avgHigh;
+    middle[i] = pp - (avgHigh - avgLow);
+  }
+
+  return { upper, middle, lower };
+}
+
 // ─── BIAS ──────────────────────────────────────────────────────────────────────
 
 export interface BIASResult {

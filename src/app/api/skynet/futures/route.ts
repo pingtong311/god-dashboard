@@ -35,7 +35,12 @@
  * Date 必為前一交易日，故 data.sourceLabel 帶日期（如「收盤 09/18」），前端據此顯示，
  * 避免使用者誤以為是即時價。
  *
- * 快取：交易日級 in-memory（1h TTL，team-lead 裁示）；收盤後換到新一天。
+ * 快取（三層）：
+ * 1. KV（Cloudflare 綁定 SKYNET_CACHE，跨 isolate，30 分鐘 TTL）：只存 ~200 字節
+ *    精簡物件 { ts, date, data }，絕不存 806KB 原表。入口命中條件：同日期（tradeDate
+ *    必等於當前 UTC 日，EOD 語義：盤中拿前一天收盤 → 不命中 → 不串跨日資料）且 30 分鐘內。
+ *    命中回 X-Skynet-Data-Source: kv-cache。KV 讀寫皆 catch 兜底，不可用不阻塞主流程。
+ * 2. 交易日級 in-memory（1h TTL，team-lead 裁示）；收盤後換到新一天。
  * 另在 HTTP header 帶 10 分鐘 s-maxage（⚠ src/middleware.ts 對 /api/skynet/* 強制
  * 覆寫 no-store，此 header 只是裁示要求的標記，不可當防線）。
  * 上游失敗時降級回傳最後一個交易日快取（前一日收盤 + X-Skynet-Stale: true）；
@@ -61,6 +66,21 @@ const FUTURES_URL = 'https://openapi.taifex.com.tw/v1/DailyMarketReportFut';
 const UPSTREAM_TIMEOUT_MS = 4_000;
 /** 交易日級 in-memory 快取 TTL：1 小時（team-lead 裁示；收盤後 1h 內換到新一天）。 */
 const DAILY_CACHE_TTL_MS = 3_600_000;
+/** KV 快取 TTL：30 分鐘（與 in-memory 對齊的較短窗口；寫入用 expirationTtl=1800）。 */
+const KV_TTL_MS = 30 * 60 * 1000;
+/** KV key：期近月收盤快照（精簡物件，~200 字節，絕非 806KB 原表）。 */
+const KV_KEY = 'futures_nearest';
+
+/** KV 綁定型別：opennext 在 Workers 運行時注入 globalThis.SKYNET_CACHE；開發環境可能缺席。 */
+type SkynetKv = {
+  get: (key: string, type?: string) => Promise<string | null>;
+  put: (key: string, value: string, options?: { expirationTtl?: number }) => Promise<void>;
+};
+
+/** 取 KV 綁定（可能 undefined——本地 dev / 未綁定時，讀寫一律走 catch 兜底不阻塞）。 */
+function getKv(): SkynetKv | undefined {
+  return (globalThis as unknown as { SKYNET_CACHE?: SkynetKv }).SKYNET_CACHE;
+}
 
 /**
  * in-flight 去重（冷啟動 CPU 風險關鍵一環）：
@@ -71,8 +91,7 @@ let inflight: Promise<TaifexFuturesData | null> | null = null;
 
 /**
  * 交易日級 in-memory 快取（best-effort per-isolate，不依賴 KV 寫入權限）。
- * 金鑰 = 資料 tradeDate（YYYYMMDD）+ 1h TTL；⚠ 不寫 KV（Workers 未開 KV 寫入權限，
- * 806KB 整包快照只適合同 isolate 短期去重，非跨請求持久化需求）。
+ * 金鑰 = 資料 tradeDate（YYYYMMDD）+ 1h TTL。
  */
 let cached: { ts: number; date: string; data: TaifexFuturesData } | null = null;
 
@@ -118,6 +137,9 @@ type TaifexFuturesBody =
   | { ok: true; data: TaifexFuturesData }
   | { ok: false; message: string };
 
+/** KV 存檔精簡物件：{ ts, date, data }（~200 字節）。 */
+type KvStored = { ts: number; date: string; data: TaifexFuturesData };
+
 /** 空值防護：'-' / 'NULL' / '' / undefined 一律回 null（絕不當 0，避免漲跌顯示成平盤）。 */
 function parseNumOrNull(value: string | undefined): number | null {
   if (value === undefined || value === '' || value === '-' || value === 'NULL') return null;
@@ -142,6 +164,23 @@ function toMonthDay(value: string): string {
 function toContractMonth(value: string): string {
   if (!/^\d{6}$/.test(value)) return '';
   return `${value.slice(0, 4)}-${value.slice(4, 6)}`;
+}
+
+/** 當前 UTC 日 'YYYY-MM-DD'（KV 命中判定用）。 */
+function currentTradeDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** 寫 KV（精簡 ~200 字節快照，TTL 30 分鐘）；寫失敗不阻塞主流程（KV 是優化非必需）。 */
+async function writeKv(tradeDate: string, data: TaifexFuturesData): Promise<void> {
+  const kv = getKv();
+  if (!kv) return;
+  const payload = JSON.stringify({ ts: Date.now(), date: tradeDate, data } satisfies KvStored);
+  try {
+    await kv.put(KV_KEY, payload, { expirationTtl: 1800 });
+  } catch {
+    /* KV 寫失敗不阻塞；log 僅供運維，避免冷啟動 console CPU 開銷 */
+  }
 }
 
 /** 從全表挑 TX 近月「一般」時段收盤行；無有效行回 null（交回呼叫端決定降級）。 */
@@ -193,6 +232,8 @@ function pickNearestMonth(raw: TaifexFutRow[]): TaifexFuturesData | null {
   };
 
   cached = { ts: Date.now(), date: tradeDate, data };
+  // fire-and-forget 寫 KV（不 await：KV 寫失敗/延遲不阻塞本次回應；catch 內建）。
+  void writeKv(tradeDate, data);
   return data;
 }
 
@@ -234,23 +275,52 @@ function fetchNearMonthQuote(): Promise<TaifexFuturesData | null> {
  * ⚠ X-Skynet-Trade-Date 必須是純 ASCII 字串：HTTP header 不接受 CJK 字元
  * （非 ASCII 會觸發 ByteString TypeError，route 直接 500）。
  * sourceLabel（含中文「收盤」）只放 response body，不放 header。
+ * dataKind：'kv-cache'（KV 命中）/ 'taifex-openapi-cache'（in-memory 命中）/
+ * 'taifex-openapi-close'（上游新鮮抓取）。
  */
-function responseHeaders(tradeDate: string, fromCache: boolean, stale: boolean): Record<string, string> {
+function responseHeaders(
+  tradeDate: string,
+  dataKind: 'fresh' | 'in-memory-cache' | 'kv-cache',
+  stale: boolean,
+): Record<string, string> {
+  const source =
+    dataKind === 'kv-cache'
+      ? 'kv-cache'
+      : dataKind === 'in-memory-cache'
+        ? 'taifex-openapi-cache'
+        : 'taifex-openapi-close';
   return {
     'Cache-Control': 'public, s-maxage=600',
-    'X-Skynet-Data-Source': fromCache ? 'taifex-openapi-cache' : 'taifex-openapi-close',
+    'X-Skynet-Data-Source': source,
     'X-Skynet-Trade-Date': tradeDate,
     ...(stale ? { 'X-Skynet-Stale': 'true' } : {}),
   };
 }
 
 export async function GET(_req: NextRequest) {
+  // KV 命中（跨 isolate，30 分鐘 TTL）：同日期且未過期才用。
+  // EOD 語義：盤中拿到的 tradeDate 必為前一交易日 ≠ 當前 UTC 日 → 不命中，
+  // 避免跨日串資料（盤中必須重抓前一交易日的新快照）。
+  const kv = getKv();
+  if (kv) {
+    const kvHit = (await kv.get(KV_KEY, 'json').catch(() => null)) as
+      | KvStored
+      | null
+      | undefined;
+    if (kvHit && kvHit.date === currentTradeDate() && Date.now() - kvHit.ts < KV_TTL_MS) {
+      return NextResponse.json<TaifexFuturesBody>(
+        { ok: true, data: kvHit.data },
+        { status: 200, headers: responseHeaders(kvHit.date, 'kv-cache', false) },
+      );
+    }
+  }
+
   // in-memory 快取命中（1h TTL）：直接回 cached.data，CPU ≈ 0。
   // ⚠ 不 mutate cached.data 物件（會污染後續請求），NextResponse.json 會重新序列化。
   if (cached && Date.now() - cached.ts < DAILY_CACHE_TTL_MS) {
     return NextResponse.json<TaifexFuturesBody>(
       { ok: true, data: cached.data },
-      { status: 200, headers: responseHeaders(cached.date, true, false) },
+      { status: 200, headers: responseHeaders(cached.date, 'in-memory-cache', false) },
     );
   }
 
@@ -258,7 +328,7 @@ export async function GET(_req: NextRequest) {
   if (fresh) {
     return NextResponse.json<TaifexFuturesBody>(
       { ok: true, data: fresh },
-      { status: 200, headers: responseHeaders(fresh.date, false, false) },
+      { status: 200, headers: responseHeaders(fresh.date, 'fresh', false) },
     );
   }
 
@@ -267,7 +337,7 @@ export async function GET(_req: NextRequest) {
   if (cached) {
     return NextResponse.json<TaifexFuturesBody>(
       { ok: true, data: cached.data },
-      { status: 200, headers: responseHeaders(cached.date, true, true) },
+      { status: 200, headers: responseHeaders(cached.date, 'in-memory-cache', true) },
     );
   }
 

@@ -2,23 +2,15 @@
  * diary.module.css — 看盤日記首頁（複刻「股市大佬」App 首頁）
  *
  * 【配色集中管理】
- * 刻意採用原版 App 的「深藍 + 古銅金」視覺語彙（與 ai.module.css 同源）。
- * 所有顏色收斂在 .diaryRoot 的 CSS 變數中；不動 globals.css，避免波及 /review 與 /ai。
+ * 所有通用 --bs-* 變數已在 globals.css 統一定義（對齊博主 token）。
+ * 本檔僅保留頁面專用擴充變數（--bs-shell、--bs-ai-bubble）。
  * ========================================================================== */
 
 .diaryRoot {
-  /* ── 原版配色 ─────────────────────────────────────────────────── */
-  --bs-bg: #0a1128;             /* 品牌深藍（頁面底色） */
-  --bs-shell: #0b0f14;          /* 外殼底色（更深） */
-  --bs-gold: var(--gold);           /* 金色強調（按鈕／焦點） */
-  --bs-gold-soft: rgba(197, 160, 89, 0.16);
-  --bs-gold-line: rgba(197, 160, 89, 0.42);
-  --bs-border: #3a4a5e;         /* 邊框 */
-  --bs-text: var(--ink);           /* 主要文字 */
-  --bs-text-dim: var(--muted);       /* 次要文字 */
-  --bs-ai-bubble: #101b36;      /* 卡片底（深藍系） */
-  --bs-error: var(--up);          /* 錯誤提示 */
-  /* ─────────────────────────────────────────────────────────────── */
+  /* ── 頁面專用擴充色 ─────────────────────────────────────────── */
+  --bs-shell: #0b0f14;          /* 外殼底色（比 --bs-bg 更深） */
+  --bs-ai-bubble: #101b36;      /* AI 氣泡卡片底 */
+  /* ───────────────────────────────────────────────────────────── */
 
   box-sizing: border-box;
   width: 100%;
@@ -367,7 +359,8 @@
 
 .indexRow {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* 3 格：加權 / 櫃買 / 台股期近月 */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -663,7 +656,11 @@
     padding: 18px 12px calc(88px + env(safe-area-inset-bottom));
   }
   .indexRow {
-    grid-template-columns: 1fr;
+    /* 3 格在 <640px 折為「2 + 1」：加權/櫃買第一列，台股期近月折到第二列全寬 */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .indexRow .indexCell:last-child {
+    grid-column: 1 / -1;
   }
   .statRow {
     grid-template-columns: repeat(2, minmax(0, 1fr));

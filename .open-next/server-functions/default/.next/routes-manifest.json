@@ -18,7 +18,32 @@
     "afterFiles": [],
     "fallback": []
   },
-  "dynamicRoutes": [],
+  "dynamicRoutes": [
+    {
+      "page": "/chips/[ticker]",
+      "regex": "^/chips/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPticker": "nxtPticker"
+      },
+      "namedRegex": "^/chips/(?<nxtPticker>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/learn/[slug]",
+      "regex": "^/learn/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPslug": "nxtPslug"
+      },
+      "namedRegex": "^/learn/(?<nxtPslug>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/s/[ticker]",
+      "regex": "^/s/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPticker": "nxtPticker"
+      },
+      "namedRegex": "^/s/(?<nxtPticker>[^/]+?)(?:/)?$"
+    }
+  ],
   "staticRoutes": [
     {
       "page": "/",
@@ -33,10 +58,28 @@
       "namedRegex": "^/_not\\-found(?:/)?$"
     },
     {
+      "page": "/about",
+      "regex": "^/about(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/about(?:/)?$"
+    },
+    {
       "page": "/ai",
       "regex": "^/ai(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/ai(?:/)?$"
+    },
+    {
+      "page": "/app",
+      "regex": "^/app(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/app(?:/)?$"
+    },
+    {
+      "page": "/chart",
+      "regex": "^/chart(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/chart(?:/)?$"
     },
     {
       "page": "/diary",
@@ -51,16 +94,82 @@
       "namedRegex": "^/favicon\\.ico(?:/)?$"
     },
     {
+      "page": "/guide",
+      "regex": "^/guide(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/guide(?:/)?$"
+    },
+    {
+      "page": "/learn",
+      "regex": "^/learn(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/learn(?:/)?$"
+    },
+    {
+      "page": "/legal",
+      "regex": "^/legal(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/legal(?:/)?$"
+    },
+    {
       "page": "/liangjia-warroom",
       "regex": "^/liangjia\\-warroom(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/liangjia\\-warroom(?:/)?$"
     },
     {
+      "page": "/login",
+      "regex": "^/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login(?:/)?$"
+    },
+    {
+      "page": "/manual",
+      "regex": "^/manual(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/manual(?:/)?$"
+    },
+    {
+      "page": "/methodology",
+      "regex": "^/methodology(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/methodology(?:/)?$"
+    },
+    {
+      "page": "/pricing",
+      "regex": "^/pricing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/pricing(?:/)?$"
+    },
+    {
+      "page": "/privacy",
+      "regex": "^/privacy(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/privacy(?:/)?$"
+    },
+    {
+      "page": "/radar",
+      "regex": "^/radar(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/radar(?:/)?$"
+    },
+    {
       "page": "/review",
       "regex": "^/review(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/review(?:/)?$"
+    },
+    {
+      "page": "/school",
+      "regex": "^/school(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/school(?:/)?$"
+    },
+    {
+      "page": "/sim",
+      "regex": "^/sim(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sim(?:/)?$"
     },
     {
       "page": "/skynet/day-trading-sim",
@@ -81,10 +190,22 @@
       "namedRegex": "^/terminal(?:/)?$"
     },
     {
+      "page": "/terms",
+      "regex": "^/terms(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/terms(?:/)?$"
+    },
+    {
       "page": "/warroom",
       "regex": "^/warroom(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/warroom(?:/)?$"
+    },
+    {
+      "page": "/watchlist",
+      "regex": "^/watchlist(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/watchlist(?:/)?$"
     }
   ],
   "dataRoutes": [],

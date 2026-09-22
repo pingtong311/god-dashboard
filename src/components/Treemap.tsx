@@ -7,23 +7,11 @@
  */
 
 import { useEffect, useState, useMemo } from 'react';
-import { TreemapSector, TreemapStock } from '@/types/market';
+import { TreemapSector, TreemapStock, TreemapData } from '@/types/market';
 import styles from './Treemap.module.css';
 
-interface TreemapData {
-  sectors: TreemapSector[];
-  marketGroups: {
-    上市: TreemapSector[];
-    上櫃: TreemapSector[];
-    ETF: TreemapSector[];
-    其他: TreemapSector[];
-  };
-  totalStocks: number;
-  date: string;
-}
-
 interface TreemapProps {
-  initialData?: TreemapData;
+  initialData?: TreemapData | null;
 }
 
 const MARKET_LABELS = ['上市', '上櫃', 'ETF', '其他'] as const;

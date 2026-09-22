@@ -58,6 +58,11 @@ export interface ChartCandle {
   // RSI（由 KLinePanel 計算後注入）
   rsi?: number | null;
 
+  // CDP 最佳終點（由 KLinePanel 計算後注入）
+  cdpUpper?: number | null;
+  cdpMiddle?: number | null;
+  cdpLower?: number | null;
+
   // BIAS（由 KLinePanel 計算後注入）
   bias6?: number | null;
   bias12?: number | null;

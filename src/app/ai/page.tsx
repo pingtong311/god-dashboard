@@ -5,6 +5,16 @@ import { useSearchParams } from 'next/navigation';
 import type { ChatStreamEvent } from '@/lib/aiChat';
 import { AVAILABLE_MODELS, type AvailableModelId, NVIDIA_MODEL } from '@/lib/aiChat';
 import { describeAiChatError, type AiChatErrorBody } from '@/lib/aiChatErrors';
+import { markdownToReactNodes } from '@/app/ai/aiMarkdown';
+import {
+  CHIP_ALL_LABEL,
+  QUESTION_CHIPS,
+  QUESTION_CARD_GROUPS,
+  filterCardGroups,
+  countCards,
+  type ChipFilter,
+  type QuestionChip,
+} from '@/app/ai/aiQuestionCards';
 
 /* ── SpeechRecognition 環境型別（Web Speech API 標準）────────────── */
 interface SpeechRecognition extends EventTarget {
@@ -100,13 +110,11 @@ type ChatMessage = {
 
 type TabKey = 'chat' | 'logs';
 
-/** 空狀態的範例問題（點擊即可送出）。 */
-const EXAMPLE_QUESTIONS: readonly string[] = [
-  '幫我解讀今天台股大盤的籌碼變化',
-  '外資連續買超的個股要怎麼篩選？',
-  '融資維持率下降對股價有什麼影響？',
-  '如何用均線判斷台積電目前的趨勢？',
-];
+/**
+ * 空狀態的快速提問卡已改為「依類別分組 + 模式 chips 過濾」：
+ * 類別骨架與 chip 定義見 `@/app/ai/aiQuestionCards`（逐字自 ai.md §3.3/§3.4，
+ * 各卡提問句 spec 標 [無法辨識]，不補腦）。
+ */
 
 const LOG_REFRESH_MS = 30_000;
 
@@ -133,6 +141,17 @@ function createMessageId(): string {
 
 function createSessionId(): string {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * 副標的「盤後收盤」日期（ai.md §3.1）：不硬編碼樣本日期，
+ * 動態取當前日期 `YYYY-MM-DD`。
+ */
+function formatPostMarketDate(now: Date): string {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function loadHistory(): ChatSession[] {
@@ -168,6 +187,9 @@ function AIPage() {
   /* ── 個股語境標籤（來自 ?ticker= 參數）──────────────────── */
   const paramTicker = searchParams?.get('ticker')?.toUpperCase() || '';
   const [tickerContext, setTickerContext] = useState<string>(paramTicker);
+
+  /* ── 模式 chip 過濾（ai.md §3.3，純前端過濾快速提問卡分組）── */
+  const [activeChip, setActiveChip] = useState<ChipFilter>(null);
 
   /* ── 模型選擇 ───────────────────────────────────────────── */
   const [selectedModel, setSelectedModel] = useState<AvailableModelId>(NVIDIA_MODEL);
@@ -581,9 +603,38 @@ function AIPage() {
           <div className={styles.brandRow}>
             <span className={styles.brandMark}>AI</span>
             <div>
-              <h1 className={styles.brandTitle}>股市大佬 · AI 問答</h1>
-              <p className={styles.brandSub}>台股籌碼與技術面即時對話助手</p>
+              {/* ai.md §3.1：標題 `問大佬AI` → 品牌化為 `問峰子AI`；副標兩行，
+                  日期不硬編碼（動態當前日期 + 盤後收盤表述）。 */}
+              <h1 className={styles.brandTitle}>問峰子AI</h1>
+              <p className={styles.brandSub}>
+                根據你的目標與經驗，提供可直接採用的研究視角；所有數據依{' '}
+                {formatPostMarketDate(new Date())} 盤後收盤，結論附依據與風險提醒。
+              </p>
             </div>
+          </div>
+
+          {/* 模式 chips 列（ai.md §3.3）：5 顆類別 chip + 最右「全部」快選。
+              純前端過濾：點選只影響下方快速提問卡的分組顯示。 */}
+          <div className={styles.chipRow} role="group" aria-label="快速提問分類">
+            {QUESTION_CHIPS.map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                className={`${styles.chipBtn} ${activeChip === chip ? styles.chipBtnActive : ''}`}
+                onClick={() => setActiveChip(activeChip === chip ? null : chip)}
+                aria-pressed={activeChip === chip}
+              >
+                {chip}
+              </button>
+            ))}
+            <button
+              type="button"
+              className={`${styles.chipAllBtn} ${activeChip === null ? styles.chipAllBtnActive : ''}`}
+              onClick={() => setActiveChip(null)}
+              aria-pressed={activeChip === null}
+            >
+              {CHIP_ALL_LABEL}
+            </button>
           </div>
 
           <div className={styles.topBarActions}>
@@ -718,18 +769,42 @@ function AIPage() {
                   <p className={styles.emptyDesc}>
                     我可以協助你解讀籌碼、技術面與盤勢。直接輸入問題，或從下方範例開始。
                   </p>
-                  <div className={styles.exampleList}>
-                    {EXAMPLE_QUESTIONS.map((question) => (
-                      <button
-                        key={question}
-                        type="button"
-                        className={styles.exampleBtn}
-                        onClick={() => void handleSend(question)}
-                      >
-                        {question}
-                      </button>
-                    ))}
-                  </div>
+                  {/* 快速提問卡：依類別分組 + 模式 chips 過濾（ai.md §3.3/§3.4）。
+                      各卡提問句 spec 標 [無法辨識] 不補腦：分組預設無卡時顯示占位提示。 */}
+                  {(() => {
+                    const visibleGroups = filterCardGroups(QUESTION_CARD_GROUPS, activeChip);
+                    const totalCards = countCards(visibleGroups);
+                    if (totalCards === 0) {
+                      return (
+                        <div className={styles.questionCardGroups}>
+                          <p className={styles.questionCardPlaceholder}>
+                            快速提問卡整理中，可直接輸入你的台股問題。
+                          </p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className={styles.questionCardGroups}>
+                        {visibleGroups.map((group) => (
+                          <section key={group.category} className={styles.questionCardGroup}>
+                            <h3 className={styles.questionCardGroupTitle}>{group.category}</h3>
+                            <div className={styles.questionCardList}>
+                              {group.cards.map((question) => (
+                                <button
+                                  key={question}
+                                  type="button"
+                                  className={styles.questionCard}
+                                  onClick={() => void handleSend(question)}
+                                >
+                                  {question}
+                                </button>
+                              ))}
+                            </div>
+                          </section>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 messages.map((message) => <MessageBubble key={message.id} message={message} />)
@@ -956,6 +1031,21 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   const rowClass = isUser ? styles.bubbleRowUser : styles.bubbleRowAi;
   const bubbleClass = isUser ? styles.bubbleUser : styles.bubbleAi;
 
+  /**
+   * AI 答覆支援結論/重點/風險提醒三段式答覆中的 Markdown 子集
+   *（**粗體**、*斜體*、`行內程式碼`、標題、列表、表格）。
+   * 使用者氣泡與思考過程維持純文字 pre-wrap。 */
+  const aiContentNodes = message.content
+    ? markdownToReactNodes(message.content, {
+        bold: styles.mdBold,
+        italic: styles.mdItalic,
+        code: styles.mdCode,
+        list: styles.mdList,
+        tableWrap: styles.mdTableWrap,
+        table: styles.mdTable,
+      })
+    : [];
+
   return (
     <div className={`${styles.bubbleRow} ${rowClass}`}>
       <div
@@ -971,7 +1061,11 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         )}
 
         {message.content ? (
-          <p className={styles.bubbleText}>{message.content}</p>
+          isUser ? (
+            <p className={styles.bubbleText}>{message.content}</p>
+          ) : (
+            <div className={styles.mdContent}>{aiContentNodes}</div>
+          )
         ) : isWaiting ? (
           <p className={`${styles.bubbleText} ${styles.thinkingText}`}>正在思考…</p>
         ) : null}

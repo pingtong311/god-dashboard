@@ -1,26 +1,30 @@
 /* ============================================================================
- * ai.module.css — AI 問答頁（複刻「股市大佬 TradeBoss」）
+ * ai.module.css — AI 問答頁（複刻「問大佬 AI」）
  *
- * 【配色集中管理】
- * 本頁刻意採用原版 App 的「深藍 + 古銅金」視覺語彙。
- * 所有顏色都收斂在下方 .aiRoot 的 CSS 變數中：
- * 若日後想切回本專案 globals.css 的深色霓虹風（#020408 / #00f0ff），
- * 只需要修改 .aiRoot 這一個區塊，其餘樣式全部由變數驅動。
+ * 【局部浅色主題】ai.md §4：此頁為淺色（白底、深灰字、金/藍紫強調），但專案整體
+ * 是深色 #0a1128 體系。決策：只在 /ai 頁用「頁面級 --bs-* 覆蓋」做局部浅色，
+ * 不牽動 globals.css 的全局主題。所有 var(--bs-*) 在 .aiRoot 範圍內改為淺色值；
+ * 其他頁不受影響（各頁有自己的 .aiRoot 作用域）。
  * ========================================================================== */
 
 .aiRoot {
-  /* ── 原版配色（整段替換即可切換主題）────────────────────────────── */
-  --bs-bg: #0a1128;             /* 品牌深藍（頁面底色） */
-  --bs-shell: #0b0f14;          /* 外殼底色（更深） */
-  --bs-gold: var(--gold);           /* 金色強調（按鈕／焦點） */
-  --bs-gold-soft: rgba(197, 160, 89, 0.16);
-  --bs-gold-line: rgba(197, 160, 89, 0.42);
-  --bs-border: #3a4a5e;         /* 邊框 */
-  --bs-text: var(--ink);           /* 主要文字 */
-  --bs-text-dim: var(--muted);       /* 次要文字 */
-  --bs-ai-bubble: #101b36;      /* AI 氣泡（深藍系） */
-  --bs-error: var(--up);          /* 錯誤提示 */
-  /* ────────────────────────────────────────────────────────────────── */
+  /* ── 局部浅色主題變數覆蓋（ai.md §4 像素估計，非施工固定值）───────── */
+  --bs-bg: #ffffff;                /* 頁面底色：白 */
+  --bs-shell: #f7f8fa;             /* 外殼/卡片底：淺灰白 */
+  --bs-surface: #ffffff;
+  --bs-surface-2: #f7f8fa;
+  --bs-elevated: #ffffff;
+  --bs-text: #1f2933;             /* 主文字：深灰 */
+  --bs-text-dim: #6b7684;         /* 次要文字：灰 */
+  --bs-border: #e5e7eb;           /* 細邊：淺灰 */
+  --bs-gold: #c5a059;             /* 強調金（淺色主題維持金） */
+  --bs-gold-line: rgba(197, 160, 89, 0.4);
+  --bs-gold-soft: rgba(197, 160, 89, 0.12);
+  --bs-accent: #5b5bd6;           /* 藍紫強調（雷達圓鈕色） */
+  --bs-accent-soft: rgba(91, 91, 214, 0.12);
+  --bs-ai-bubble: #ffffff;        /* AI 氣泡：白底＋細邊 */
+  --bs-error: var(--up);          /* 錯誤提示（漲色紅） */
+  /* ───────────────────────────────────────────────────────────── */
 
   box-sizing: border-box;
   width: 100%;
@@ -29,7 +33,7 @@
   min-height: 100vh;
   overflow-x: hidden;
   background:
-    radial-gradient(circle at 50% -12%, rgba(197, 160, 89, 0.1), transparent 55%),
+    radial-gradient(circle at 50% -12%, rgba(197, 160, 89, 0.08), transparent 55%),
     var(--bs-bg);
   color: var(--bs-text);
 }
@@ -58,7 +62,8 @@
   padding: 14px 16px;
   border: 1px solid var(--bs-border);
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(11, 15, 20, 0.72), rgba(10, 17, 40, 0.9));
+  /* 局部浅色：白卡片底（原深色漸層已移除） */
+  background: var(--bs-shell);
 }
 
 .brandRow {
@@ -85,7 +90,8 @@
 
 .brandTitle {
   margin: 0;
-  font-size: 17px;
+  /* ai.md §4：大標題字級 ≈20–22px、字重 800–900 */
+  font-size: 21px;
   font-weight: 900;
   color: var(--bs-text);
   letter-spacing: 0.01em;
@@ -93,9 +99,69 @@
 
 .brandSub {
   margin: 3px 0 0;
-  font-size: 11px;
-  font-weight: 700;
+  /* ai.md §4：副標字級 ≈12px、字重 400–500 */
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
   color: var(--bs-text-dim);
+}
+
+/* ── 模式 chips 列（ai.md §3.3）────────────────────────────── */
+
+.chipRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chipBtn {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--bs-border);
+  background: var(--bs-bg);
+  color: var(--bs-text-dim);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.chipBtn:hover {
+  color: var(--bs-text);
+  border-color: var(--bs-gold-line);
+}
+
+/* 選中 chip：金邊金底（浅金柔光） */
+.chipBtnActive {
+  color: var(--bs-text);
+  border-color: var(--bs-gold);
+  background: var(--bs-gold-soft);
+}
+
+/* 最右「全部」快選（ai.md §3.3 低信心標籤）：置右、虛線邊區隔 */
+.chipAllBtn {
+  margin-left: auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px dashed var(--bs-border);
+  background: transparent;
+  color: var(--bs-text-dim);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.chipAllBtn:hover {
+  color: var(--bs-text);
+  border-color: var(--bs-gold-line);
+}
+
+.chipAllBtnActive {
+  color: var(--bs-gold);
+  border: 1px solid var(--bs-gold);
+  background: var(--bs-gold-soft);
 }
 
 /* ── 分頁 ────────────────────────────────────────────── */
@@ -149,7 +215,8 @@
   padding: 14px 12px;
   border: 1px solid var(--bs-border);
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(11, 15, 20, 0.55), rgba(10, 17, 40, 0.72));
+  /* 局部浅色：白卡片底 */
+  background: var(--bs-bg);
 }
 
 /* 空狀態 */
@@ -190,6 +257,68 @@
   color: var(--bs-text-dim);
 }
 
+/* ── 快速提問卡：依類別分組（ai.md §3.4）────────────────── */
+
+.questionCardGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 380px;
+  margin-top: 4px;
+  text-align: left;
+}
+
+.questionCardPlaceholder {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--bs-text-dim);
+  font-style: italic;
+}
+
+.questionCardGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.questionCardGroupTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: var(--bs-gold);
+}
+
+.questionCardList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ai.md §4：卡片文字字級 ≈13px、卡片底 #F7F8FA 淺灰白 */
+.questionCard {
+  width: 100%;
+  padding: 9px 12px;
+  text-align: left;
+  border-radius: 10px;
+  border: 1px solid var(--bs-border);
+  background: var(--bs-surface-2);
+  color: var(--bs-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.questionCard:hover {
+  border-color: var(--bs-gold-line);
+  background: var(--bs-gold-soft);
+}
+
+/* 舊版平鋪範例清單樣式（保留兼容，UI 已改用分組卡片） */
 .exampleList {
   display: flex;
   flex-direction: column;
@@ -205,7 +334,7 @@
   text-align: left;
   border-radius: 10px;
   border: 1px solid var(--bs-border);
-  background: rgba(16, 27, 54, 0.6);
+  background: var(--bs-surface-2);
   color: var(--bs-text);
   font-size: 12px;
   font-weight: 700;
@@ -246,8 +375,9 @@
 }
 
 .bubbleUser {
-  border-color: var(--bs-gold-line);
-  background: var(--bs-gold-soft);
+  /* ai.md §4：使用者氣泡 淺灰白底 #F2F3F5，左對齊（現況右對齊維持） */
+  border-color: var(--bs-border);
+  background: #f2f3f5;
   border-bottom-right-radius: 4px;
 }
 
@@ -284,12 +414,127 @@
   font-style: italic;
 }
 
+/* ── AI 答覆 Markdown 渲染（結論/重點/風險提醒，ai.md §8）────── */
+
+.mdContent {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--bs-text);
+  /* 保留原有 pre-wrap 行為（純文字答覆換行照樣呈現；表格/列表區塊由各自樣式接管） */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mdContent > * {
+  /* 區塊元素不繼承 pre-wrap，避免 <ul>/<table> 內部多餘換行 */
+  white-space: normal;
+}
+
+/* <span>（段落內換行節點）與行內元素維持 pre-wrap，保留純文字換行 */
+.mdContent p span,
+.mdContent .mdBold,
+.mdContent .mdItalic,
+.mdContent .mdCode {
+  white-space: pre-wrap;
+}
+
+.mdContent p {
+  margin: 0;
+}
+
+.mdContent h2,
+.mdContent h3,
+.mdContent h4 {
+  margin: 0;
+  color: var(--bs-text);
+  letter-spacing: 0.01em;
+}
+
+.mdContent h2 {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.mdContent h3 {
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.mdContent h4 {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mdContent .mdBold {
+  font-weight: 800;
+  color: var(--bs-text);
+}
+
+.mdContent .mdItalic {
+  font-style: italic;
+}
+
+.mdContent .mdCode {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--bs-gold-soft);
+  border: 1px solid var(--bs-gold-line);
+  font-family: var(--bs-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--bs-text);
+}
+
+.mdList {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 表格基礎子集：寬度自適應、細邊分隔、表頭淺金底 */
+.mdTableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--bs-border);
+  border-radius: 10px;
+}
+
+.mdTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.mdTable th,
+.mdTable td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--bs-border);
+  text-align: left;
+  color: var(--bs-text);
+}
+
+.mdTable th {
+  background: var(--bs-gold-soft);
+  color: var(--bs-text);
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.mdTable tbody tr:last-child td {
+  border-bottom: none;
+}
+
 /* ── 思考過程（可摺疊）────────────────────────────────── */
 
 .reasoningBox {
   border: 1px solid var(--bs-border);
   border-radius: 10px;
-  background: rgba(11, 15, 20, 0.55);
+  background: var(--bs-surface-2);
   padding: 8px 10px;
 }
 
@@ -333,7 +578,8 @@
   padding: 12px;
   border: 1px solid var(--bs-border);
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(11, 15, 20, 0.72), rgba(10, 17, 40, 0.86));
+  /* 局部浅色：白卡片底 */
+  background: var(--bs-bg);
 }
 
 .composerTextarea {
@@ -344,7 +590,7 @@
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--bs-border);
-  background: rgba(11, 15, 20, 0.7);
+  background: var(--bs-surface-2);
   color: var(--bs-text);
   font-family: inherit;
   /* 16px 可避免 iOS Safari 在聚焦時自動放大 */
@@ -407,7 +653,8 @@
   border-radius: 9px;
   border: 1px solid var(--bs-gold);
   background: var(--bs-gold);
-  color: #0a1128;
+  /* 局部浅色主題：按鈕文字改為深色 */
+  color: #ffffff;
   font-size: 13px;
   font-weight: 900;
   cursor: pointer;
@@ -478,7 +725,7 @@
   border: 1px solid var(--bs-gold-line);
   border-radius: 10px;
   background: var(--bs-gold-soft);
-  color: var(--bs-gold);
+  color: var(--bs-text);
   font-size: 12px;
   font-weight: 800;
 }
@@ -559,9 +806,10 @@
   display: flex;
   flex-direction: column;
   border-left: 1px solid var(--bs-border);
-  background: linear-gradient(180deg, rgba(11, 15, 20, 0.94), rgba(10, 17, 40, 0.98));
+  /* 局部浅色：白面板底 */
+  background: var(--bs-bg);
   backdrop-filter: blur(8px);
-  box-shadow: -24px 0 48px rgba(0, 0, 0, 0.35);
+  box-shadow: -24px 0 48px rgba(31, 41, 51, 0.12);
   animation: historySlideIn 0.22s ease-out;
 }
 
@@ -703,7 +951,7 @@
   padding: 8px 12px;
   border-radius: 10px;
   border: 1px solid var(--bs-border);
-  background: rgba(11, 15, 20, 0.7);
+  background: var(--bs-surface-2);
   color: var(--bs-text);
   font-size: 12px;
   font-weight: 800;
@@ -740,9 +988,10 @@
   padding: 6px;
   border: 1px solid var(--bs-gold-line);
   border-radius: 12px;
-  background: linear-gradient(180deg, rgba(11, 15, 20, 0.96), rgba(10, 17, 40, 0.98));
+  /* 局部浅色：白面板底 */
+  background: var(--bs-bg);
   backdrop-filter: blur(8px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 32px rgba(31, 41, 51, 0.18);
   list-style: none;
   z-index: 30;
   animation: modelMenuFadeIn 0.15s ease-out;
@@ -809,7 +1058,7 @@
   height: 38px;
   border-radius: 10px;
   border: 1px solid var(--bs-border);
-  background: rgba(11, 15, 20, 0.7);
+  background: var(--bs-surface-2);
   color: var(--bs-text-dim);
   cursor: pointer;
   transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
@@ -878,7 +1127,8 @@
   border-radius: 9px;
   border: 1px solid var(--bs-gold);
   background: var(--bs-gold);
-  color: #0a1128;
+  /* 局部浅色主題：按鈕文字改為深色 */
+  color: #ffffff;
   font-size: 13px;
   font-weight: 900;
   cursor: pointer;

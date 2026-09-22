@@ -82,12 +82,6 @@ function toneClass(value: number): string {
   return styles.flat;
 }
 
-/** YYYYMMDD → 'MM/DD'；格式異常回空字串。 */
-function toMonthDay(value: string): string {
-  if (!/^\d{8}$/.test(value)) return '';
-  return `${value.slice(4, 6)}/${value.slice(6, 8)}`;
-}
-
 export default function HomePage() {
   const [overview, setOverview] = useState<MarketOverview | null>(null);
   const [live, setLive] = useState<LiveItem[]>([]);

@@ -30,10 +30,10 @@ export type TaifexFuturesQuote = {
   name: string;
   /** 收盤價（EOD）。route 端空值（'-'/'NULL'/''）轉 null，前端以 lastPrice > 0 保護。 */
   lastPrice: number;
-  /** 漲跌點數（帶正負）；route 端空值轉 null 時前端顯示 '--'。 */
-  change: number;
-  /** 漲跌百分比（帶正負）；route 端空值轉 null 時前端顯示 '--'。 */
-  changePercent: number;
+  /** 漲跌點數（帶正負）；上游哨兵值（'-'/'NULL'/''）轉 null，前端顯示 '--'，不偽裝 0。 */
+  change: number | null;
+  /** 漲跌百分比（帶正負）；上游哨兵值轉 null，前端顯示 '--'，不偽裝 0。 */
+  changePercent: number | null;
   /** '收盤 MM/DD'——EOD 來源連日期一起顯示，避免誤以為即時。 */
   sourceLabel: string;
   source: 'taifex-openapi-close';
@@ -41,6 +41,8 @@ export type TaifexFuturesQuote = {
   date: string;
   /** 近月合約月，形如 'YYYY-MM'。 */
   contract: string;
+  /** ISO 時間戳（route 端填入，供運維追蹤快取新鮮度；前端顯示邏輯不使用）。 */
+  fetchedAt?: string;
 };
 
 /** 漲跌家數（取「股票」欄，非「整體市場」欄）。 */

@@ -326,7 +326,8 @@
 
 .indexRow {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* 3 格：加權 / 櫃買 / 台股期近月 */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -663,6 +664,15 @@
 
   .indexCell strong {
     font-size: 20px;
+  }
+
+  /* 3 格在 <420px 折為「2 + 1」：加權/櫃買第一列，台股期近月折到第二列全寬 */
+  .indexRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .indexRow .indexCell:last-child {
+    grid-column: 1 / -1;
   }
 
   .statRow {

@@ -2,26 +2,19 @@
  * chart.module.css — K 線圖頁（/chart）
  *
  * 【配色集中管理】
- * 沿用「股市大佬」視覺語彙（深藍 + 古銅金），與 diary.module.css 同源。
- * 刻意不動 globals.css，避免波及 /review 與 /ai。
+ * 所有通用 --bs-* 變數已在 globals.css 統一定義（對齊博主 token）。
+ * 本檔僅保留頁面專用擴充變數（若無則此區段留空，僅作文檔用途）。
  *
  * 注意：圖表元件（KLinePanel / CandlestickChart）本身使用 globals.css 既有的
  * `.kline-*` 全域樣式，本檔不重寫圖表樣式，只負責頁面外框。
  *
  * 【iOS 安全區域】
  * 底部功能列（AppTabBar）為 position: fixed，故底部內距必須讓開：
- * calc(88px + env(safe-area-inset-bottom))。
+ * calc(88px + env(safe-area-inset-bottom)).
  * ========================================================================== */
 
 .chartRoot {
-  /* ── 原版配色 ─────────────────────────────────────────────────── */
-  --bs-bg: #0a1128;             /* 品牌深藍（頁面底色） */
-  --bs-gold: var(--gold);           /* 金色強調 */
-  --bs-gold-soft: rgba(197, 160, 89, 0.16);
-  --bs-gold-line: rgba(197, 160, 89, 0.42);
-  --bs-border: #3a4a5e;         /* 邊框 */
-  --bs-text: var(--ink);           /* 主要文字 */
-  --bs-text-dim: var(--muted);       /* 次要文字 */
+  /* ── 頁面專用擴充色（目前無，全域已覆蓋） ───────────────────────── */
   /* ─────────────────────────────────────────────────────────────── */
 
   box-sizing: border-box;

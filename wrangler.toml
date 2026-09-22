@@ -10,3 +10,15 @@ binding = "ASSETS"
 [[services]]
 binding = "WORKER_SELF_REFERENCE"
 service = "skynet-dashboard"
+
+# 台股期近月 EOD 跨 isolate 冷啟動快取。
+# Free plan 下 806KB 整包 JSON.parse 冷啟動有 2-3% 機率越 10ms CPU 上限，
+# 故 KV 只存 ~200 字節的精簡對像（TaifexFuturesData），不存原表。
+#
+# 只寫 binding、不寫死 namespace_id：
+# 舊版 wrangler (4.107) 不認 namespace_id 欄位，寫了會被忽略並發出
+# "Unexpected fields" 警告，且會退回「自動在登入帳號下建立」邏輯。
+# 讓 wrangler 自行維護 namespace（首次 deploy 已建 043f75b7beb64c8b94bafcacee2c5ee6），
+# 後續 deploy 沿用同一個、不再漂移。
+[[kv_namespaces]]
+binding = "SKYNET_CACHE"

@@ -2,19 +2,50 @@
 @import "../styles/theme.css";
 
 :root {
-  /* 舊有語意變數 → 對齊「股市大佬」設計語彙（深藍金）。
-     命名保留以維持既有樣式相容；實際色值來自 src/styles/theme.css。 */
-  --background: var(--bg);
-  --foreground: var(--ink);
-  --glass-bg: var(--au-card);
-  --glass-border: var(--au-border);
-  --glass-blur: var(--blur-glass);
-  --accent-cyan: var(--accent);
-  --accent-cyan-dark: var(--accent-soft);
-  --accent-green: var(--down);
-  --accent-green-dark: rgba(47, 211, 154, 0.1);
-  --accent-purple: var(--violet);
-  --accent-red: var(--up);
+  /* ──「股市大佬」設計語彙 → 專案通用語意變數 (bs-*)
+     全量對齊 extracted/blackstock-tokens.css 與 src/styles/theme.css。
+     所有頁面、元件**禁止**再自行定義 --bs-*；統一引用此處。 */
+  --bs-bg: var(--bg);              /* #0a1128 主背景 */
+  --bs-surface: var(--surface);    /* #111a33 卡片面 */
+  --bs-surface-2: var(--surface-2);/* #1c2541 次級面 */
+  --bs-elevated: var(--elevated);  /* #232e52 浮起面 */
+  --bs-text: var(--ink);           /* #f3efe6 主文字（暖白） */
+  --bs-text-dim: var(--muted);     /* #b7c0d4 次要文字（藍灰） */
+  --bs-border: var(--line);        /* #3a3558 邊框/分割線 */
+  --bs-gold: var(--gold);          /* #c5a059 品牌金 */
+  --bs-gold-line: var(--gold-line);/* #c5a0598f 金色邊框 */
+  --bs-gold-soft: var(--gold-soft);/* #c5a05929 金色柔光背景 */
+  --bs-accent: var(--accent);      /* #c5a059 強調色（同 gold） */
+  --bs-accent-soft: var(--accent-soft);/* #c5a05929 */
+  --bs-violet: var(--violet);      /* #8d7bb8 輔紫 */
+  --bs-signal: var(--signal);      /* #ff3131 訊號紅 */
+  --bs-up: var(--up);              /* #ff4d5a 漲（紅） */
+  --bs-down: var(--down);          /* #2fd39a 跌（綠） */
+  --bs-error: var(--up);           /* 錯誤色 = 漲色 */
+  --bs-glass-bg: var(--au-card);   /* 玻璃面 */
+  --bs-glass-border: var(--au-border);/* 玻璃邊框 */
+  --bs-glass-blur: var(--blur-glass); /* 玻璃模糊 */
+  --bs-shadow-glass: var(--shadow-glass);
+  --bs-radius-panel: var(--radius-panel);
+  --bs-radius-control: var(--radius-control);
+  --bs-ease-premium: var(--ease-premium);
+  --bs-font-tech: var(--font-tech);
+  --bs-font-noto: var(--font-noto);
+  --bs-font-mono: var(--font-mono);
+  --bs-font-default: var(--default-font-family);
+
+  /* 兼容舊變數名 */
+  --background: var(--bs-bg);
+  --foreground: var(--bs-text);
+  --glass-bg: var(--bs-glass-bg);
+  --glass-border: var(--bs-glass-border);
+  --glass-blur: var(--bs-glass-blur);
+  --accent-cyan: var(--bs-accent);
+  --accent-cyan-dark: var(--bs-accent-soft);
+  --accent-green: var(--bs-down);
+  --accent-green-dark: var(--bs-gold-soft);
+  --accent-purple: var(--bs-violet);
+  --accent-red: var(--bs-up);
 }
 
 @theme inline {
@@ -1371,7 +1402,7 @@ html[data-theme='light'] .taskbar-active-pill {
 .wc-text  { font-size: 13px; color: var(--muted); line-height: 1.7; }
 
 .bull-bar-wrap { height: 8px; background: rgba(183, 192, 212, 0.1); border-radius: 999px; overflow: hidden; margin-bottom: 8px; }
-.bull-bar { height: 100%; background: linear-gradient(90deg, #5eead4, var(--accent)); border-radius: 999px; transition: width 0.8s ease; }
+.bull-bar { height: 100%; background: linear-gradient(90deg, var(--down), var(--accent)); border-radius: 999px; transition: width 0.8s ease; }
 .bull-value { font-family: var(--font-mono); font-size: 22px; font-weight: 900; color: var(--down); }
 
 .tag-cloud { display: flex; gap: 8px; flex-wrap: wrap; }

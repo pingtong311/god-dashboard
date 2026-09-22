@@ -1,17 +1,17 @@
 /**
  * SkyNet 盤勢觀測台（/skynet/day-trading-sim）
  *
- * 配色沿用「看盤日記」的深藍底 + 金色點綴，與 App 其他頁一致。
+ * 【配色集中管理】
+ * 所有通用 --bs-* 變數已在 globals.css 統一定義（對齊博主 token）。
+ * 本檔僅保留頁面專用擴充變數（目前無，全域已覆蓋）。
+ *
  * K 線圖本體（.kline-panel）自帶樣式，因此 .chartSection 僅作排版容器，不重複加框。
  * 底部保留 iOS 安全區域 + App 底部功能列高度，避免內容被遮住。
  */
 
 .root {
-  --bs-bg: #0a1128;
-  --bs-gold: var(--gold);
-  --bs-border: #3a4a5e;
-  --bs-text: var(--ink);
-  --bs-text-dim: var(--muted);
+  /* ── 頁面專用擴充色（目前無） ───────────────────────────────── */
+  /* ───────────────────────────────────────────────────────────── */
 
   min-height: 100vh;
   background: var(--bs-bg);
