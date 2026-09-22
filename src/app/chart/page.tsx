@@ -11,6 +11,11 @@
  * - onClose 不是 no-op：這是獨立頁而非覆蓋層，關閉＝清空選取回到輸入狀態，
  *   但搜尋框永遠保留，頁面不會變成空白。
  * - useSearchParams() 需以 <Suspense> 包住，否則靜態預渲染會報錯（Next.js App Router）。
+ *
+ * chart.md 對齊（§2/§4/§5/§6）：以 techPanel 模式渲染「技術分析」面板，
+ * 含 93 日視窗、圖層切換列、指標列、個股結構結論、白話版結論。
+ * 分點類（分點名測／分點驗證／分點排行）依 spec §8 結論：券商分點資料未入庫、
+ * 不造假，故不作為要複刻的功能，僅在頁面標「資料未入庫」。
  */
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
@@ -79,7 +84,15 @@ function ChartContent() {
 
         <div className={styles.content}>
           {selected ? (
-            <KLinePanel ticker={selected} onClose={handleClose} market="TW" />
+            <div className={styles.panelWrap}>
+              <KLinePanel ticker={selected} onClose={handleClose} market="TW" techPanel />
+              {/* chart.md §8：分點名測／分點驗證／分點排行＝付費券商分點 tick 資料，
+                  峰子無此資料源，依 chips.md 結論標「資料未入庫、不造假」，不作為要複刻的功能。 */}
+              <div className={styles.dataNotice} role="note">
+                <span className={styles.dataNoticeLabel}>分點名測／分點驗證／分點排行</span>
+                <span>券商分點 tick 資料未入庫，本頁不造假、不呈現數值（依 chips.md 結論）。</span>
+              </div>
+            </div>
           ) : (
             <div className={styles.placeholder}>
               <CandlestickChart size={30} />

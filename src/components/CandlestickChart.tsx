@@ -22,8 +22,11 @@ import {
   Cell,
   ReferenceLine,
 } from 'recharts';
-import type { ChartCandle } from '@/types/kline';
+import type { ChartCandle, ChartLayers, ZoomCommand } from '@/types/kline';
 import { getCandleColor, clampZoom } from '@/lib/klineUtils';
+
+// ── 預設圖層（未傳入 layers 時） ─────────────────────────
+const DEFAULT_LAYERS: ChartLayers = { ma: true, bb: true, macd: true, rsi: false, cdp: false };
 
 // ── Crosshair Context for synchronization across subcharts ───────────────────
 
@@ -603,9 +606,15 @@ interface CandlestickChartProps {
   activeTool?: 'none' | 'trendline' | 'horizontal' | 'fibonacci';
   onCandleHover?: (candle: ChartCandle | null) => void;
   onHoverPositionChange?: (pos: { x: number; y: number } | null) => void;
+  /** 圖層開關（chart.md §5.2：均線/布林/MACD/RSI/CDP） */
+  layers?: ChartLayers;
+  /** 縮放指令（chart.md §5.2：縮小/放大/全覽），nonce 遞增觸發 */
+  zoomCmd?: ZoomCommand;
+  /** 點擊 K 棒回傳（選中後驅動指標列 §5.3） */
+  onCandleSelect?: (candle: ChartCandle) => void;
 }
 
-export default function CandlestickChart({ candles, timeframe, target, stopLoss, drawings = [], onAddDrawing, activeTool = 'none', onCandleHover, onHoverPositionChange }: CandlestickChartProps) {
+export default function CandlestickChart({ candles, timeframe, target, stopLoss, drawings = [], onAddDrawing, activeTool = 'none', onCandleHover, onHoverPositionChange, layers = DEFAULT_LAYERS, zoomCmd, onCandleSelect }: CandlestickChartProps) {
   // 縮放與平移狀態
   const [visibleCount, setVisibleCount] = useState(() => Math.min(candles.length, 60));
   const [startIndex, setStartIndex] = useState(0);
@@ -625,8 +634,50 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
     setStartIndex(Math.max(0, candles.length - count));
   }, [candles]);
 
-  // 計算可見資料
+  // ── 縮放指令（chart.md §5.2：縮小/放大/全覽） ──────────
+  useEffect(() => {
+    if (!zoomCmd || zoomCmd.nonce === 0) return;
+    switch (zoomCmd.action) {
+      case 'in': // 縮小：顯示更多 K 棒
+        setVisibleCount((prev) => {
+          const next = clampZoom(prev + 20);
+          setStartIndex((si) => Math.min(si, Math.max(0, candles.length - next)));
+          return next;
+        });
+        break;
+      case 'out': // 放大：顯示更少 K 棒（錨定右端最新 K）
+        setVisibleCount((prev) => {
+          const next = clampZoom(prev - 20);
+          setStartIndex(Math.max(0, candles.length - next));
+          return next;
+        });
+        break;
+      case 'all': // 全覽：顯示全部
+        setVisibleCount(candles.length);
+        setStartIndex(0);
+        break;
+    }
+  }, [zoomCmd, candles.length]);
+
+  // 計算可見資料（先於點擊選中回調宣告，供 §5.3 指標列使用）
   const visibleCandles = useMemo(() => candles.slice(startIndex, startIndex + visibleCount), [candles, startIndex, visibleCount]);
+
+  // ── 點擊 K 棒選中（驅動指標列 §5.3） ────────────────────
+  const handleChartClick = useCallback((e: React.MouseEvent) => {
+    if (!onCandleSelect) return;
+    const container = chartContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const relX = e.clientX - rect.left;
+    const candleWidth = rect.width / Math.max(1, visibleCandles.length);
+    const index = Math.floor(relX / candleWidth);
+    const clampedIndex = Math.max(0, Math.min(visibleCandles.length - 1, index));
+    if (visibleCandles[clampedIndex]) {
+      onCandleSelect(visibleCandles[clampedIndex]);
+    }
+  }, [visibleCandles, onCandleSelect]);
+
+  // RSI 子圖 70/30 警戒參考線已在 RSI ComposedChart 內以 ReferenceLine 繪製
 
   // ── 滾輪縮放 ──────────────────────────────────────────
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -801,6 +852,9 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
   const macdMax = macdValues.length ? Math.max(...macdValues) : 1;
   const macdPad = (macdMax - macdMin) * 0.1 || 0.1;
 
+  // ── 動態版面高度（§5.2 圖層切換：副圖隨圖層開關增减） ──
+  const mainHeightPct = 100 - 12 - 10 - (layers.macd ? 12 : 0) - (layers.rsi ? 12 : 0);
+
   return (
     <CrosshairProvider visibleCandles={visibleCandles} timeframe={timeframe}>
       <div
@@ -810,6 +864,7 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onClick={onCandleSelect ? handleChartClick : undefined}
         onMouseLeave={handleChartMouseLeave}
         onTouchStart={(e) => { handleTouchStart(e); handleTouchStartForHover(e); }}
         onTouchMove={handleTouchMove}
@@ -817,8 +872,8 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
         onMouseEnter={handleChartMouseMove}
         style={{ cursor: isDraggingState ? 'grabbing' : 'crosshair', userSelect: 'none', position: 'relative' }}
       >
-        {/* 主圖（K 線 + SMA + Bollinger Bands + 水平線）68% */}
-        <div style={{ height: '68%', position: 'relative' }}>
+        {/* 主圖（K 線 + SMA + 布林 + 水平線），高度隨副圖開關動態調整 */}
+        <div style={{ height: `${mainHeightPct}%`, position: 'relative' }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={visibleCandles}
@@ -857,10 +912,23 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
                 onAddDrawing={onAddDrawing}
               />
 
-              {/* Bollinger Bands */}
-              <Line type="monotone" dataKey="bbUpper" stroke="rgba(59,130,246,0.5)" strokeWidth={1} dot={false} connectNulls={false} isAnimationActive={false} name="BB Upper" />
-              <Line type="monotone" dataKey="bbMiddle" stroke="rgba(148,163,184,0.6)" strokeWidth={1} dot={false} connectNulls={false} isAnimationActive={false} name="BB Middle" />
-              <Line type="monotone" dataKey="bbLower" stroke="rgba(59,130,246,0.5)" strokeWidth={1} dot={false} connectNulls={false} isAnimationActive={false} name="BB Lower" />
+              {/* Bollinger Bands（layers.bb） */}
+              {layers.bb && (
+                <>
+                  <Line type="monotone" dataKey="bbUpper" stroke="rgba(59,130,246,0.5)" strokeWidth={1} dot={false} connectNulls={false} isAnimationActive={false} name="BB Upper" />
+                  <Line type="monotone" dataKey="bbMiddle" stroke="rgba(148,163,184,0.6)" strokeWidth={1} dot={false} connectNulls={false} isAnimationActive={false} name="BB Middle" />
+                  <Line type="monotone" dataKey="bbLower" stroke="rgba(59,130,246,0.5)" strokeWidth={1} dot={false} connectNulls={false} isAnimationActive={false} name="BB Lower" />
+                </>
+              )}
+
+              {/* CDP 最佳終點覆蓋線（layers.cdp） */}
+              {layers.cdp && (
+                <>
+                  <Line type="monotone" dataKey="cdpUpper" stroke="rgba(236,72,153,0.6)" strokeWidth={1} dot={false} connectNulls={false} isAnimationActive={false} name="CDP Upper" />
+                  <Line type="monotone" dataKey="cdpMiddle" stroke="rgba(148,163,184,0.5)" strokeWidth={1} dot={false} connectNulls={false} isAnimationActive={false} name="CDP Middle" />
+                  <Line type="monotone" dataKey="cdpLower" stroke="rgba(34,197,94,0.6)" strokeWidth={1} dot={false} connectNulls={false} isAnimationActive={false} name="CDP Lower" />
+                </>
+              )}
 
               {/* 蠟燭實體 */}
               <Bar dataKey="bodyHeight" minPointSize={1} shape={<CandleShape />} isAnimationActive={false}>
@@ -869,11 +937,15 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
                 ))}
               </Bar>
 
-              {/* SMA 均線 */}
-              <Line type="monotone" dataKey="sma5" stroke="#eab308" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="SMA5" />
-              <Line type="monotone" dataKey="sma10" stroke="#f97316" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="SMA10" />
-              <Line type="monotone" dataKey="sma20" stroke="#a855f7" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="SMA20" />
-              <Line type="monotone" dataKey="sma60" stroke="#3b82f6" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="SMA60" />
+              {/* SMA 均線（layers.ma，§5.5 顏色：MA5 黃、MA10 綠、MA20 紫） */}
+              {layers.ma && (
+                <>
+                  <Line type="monotone" dataKey="sma5" stroke="#eab308" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="SMA5" />
+                  <Line type="monotone" dataKey="sma10" stroke="#22c55e" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="SMA10" />
+                  <Line type="monotone" dataKey="sma20" stroke="#a855f7" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="SMA20" />
+                  <Line type="monotone" dataKey="sma60" stroke="#3b82f6" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="SMA60" />
+                </>
+              )}
 
               {/* Target 水平線（綠色虛線） */}
               {target != null && (
@@ -911,8 +983,10 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
           </ResponsiveContainer>
         </div>
 
-        {/* MACD 子圖 10% */}
-        <div style={{ height: '10%', marginTop: '2px' }}>
+        {/* MACD 子圖 10%（§5.4 副圖 MACD；依圖層 layers.macd 開關） */}
+        {layers.macd && (
+        <div style={{ height: '12%', marginTop: '2px' }}>
+          <div style={{ position: 'absolute', top: 4, left: 4, fontSize: 10, fontWeight: 800, color: 'var(--muted)', letterSpacing: '0.1em' }}>MACD</div>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={visibleCandles} margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" />
@@ -924,11 +998,30 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
                   <Cell key={`hist-${index}`} fill={(entry.hist ?? 0) >= 0 ? '#ef4444' : '#22c55e'} />
                 ))}
               </Bar>
-              <Line type="monotone" dataKey="dif" stroke="#00f0ff" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="DIF" />
-              <Line type="monotone" dataKey="signal" stroke="#f97316" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="SIGNAL" />
+              {/* §5.5 顏色：DIF 粉、DEA 藍 */}
+              <Line type="monotone" dataKey="dif" stroke="#ec4899" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="DIF" />
+              <Line type="monotone" dataKey="signal" stroke="#3b82f6" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="DEA" />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+        )}
+
+        {/* RSI 子圖 12%（§5.2 圖層 RSI；依 layers.rsi 開關） */}
+        {layers.rsi && (
+        <div style={{ height: '12%', marginTop: '2px', position: 'relative' }}>
+          <div style={{ position: 'absolute', top: 4, left: 4, fontSize: 10, fontWeight: 800, color: 'var(--muted)', letterSpacing: '0.1em' }}>RSI</div>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={visibleCandles} margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.05)" />
+              <XAxis dataKey={xKey} tick={false} tickLine={false} axisLine={{ stroke: 'rgba(148,163,184,0.1)' }} />
+              <YAxis domain={[0, 100]} tick={{ fill: 'var(--muted)', fontSize: 9 }} tickLine={false} axisLine={false} width={56} ticks={[0, 30, 50, 70, 100]} />
+              <ReferenceLine y={70} stroke="rgba(239,68,68,0.35)" strokeDasharray="4 4" />
+              <ReferenceLine y={30} stroke="rgba(34,197,94,0.35)" strokeDasharray="4 4" />
+              <Line type="monotone" dataKey="rsi" stroke="#c084fc" strokeWidth={1.5} dot={false} connectNulls={false} isAnimationActive={false} name="RSI" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+        )}
 
         {/* KD 子圖 10% */}
         <div style={{ height: '10%', marginTop: '2px' }}>
@@ -944,16 +1037,35 @@ export default function CandlestickChart({ candles, timeframe, target, stopLoss,
           </ResponsiveContainer>
         </div>
 
-        {/* 圖例區域 */}
+        {/* 圖例區域（§5.5：MA5 MA10 MA20 DIF DEA，依圖層開關顯示） */}
         <div className="kline-legend">
-          <span style={{ color: '#eab308' }}>● SMA5</span>
-          <span style={{ color: '#f97316' }}>● SMA10</span>
-          <span style={{ color: '#a855f7' }}>● SMA20</span>
-          <span style={{ color: '#3b82f6' }}>● SMA60</span>
-          <span style={{ color: 'rgba(59,130,246,0.8)' }}>● BB Upper</span>
-          <span style={{ color: 'rgba(59,130,246,0.8)' }}>● BB Lower</span>
-          <span style={{ color: '#00f0ff' }}>● MACD DIF</span>
-          <span style={{ color: '#f97316' }}>● MACD SIG</span>
+          {layers.ma && (
+            <>
+              <span style={{ color: '#eab308' }}>● MA5</span>
+              <span style={{ color: '#22c55e' }}>● MA10</span>
+              <span style={{ color: '#a855f7' }}>● MA20</span>
+              <span style={{ color: '#3b82f6' }}>● MA60</span>
+            </>
+          )}
+          {layers.bb && (
+            <>
+              <span style={{ color: 'rgba(59,130,246,0.8)' }}>● BB Upper</span>
+              <span style={{ color: 'rgba(59,130,246,0.8)' }}>● BB Lower</span>
+            </>
+          )}
+          {layers.cdp && (
+            <>
+              <span style={{ color: 'rgba(236,72,153,0.8)' }}>● CDP 上</span>
+              <span style={{ color: 'rgba(34,197,94,0.8)' }}>● CDP 下</span>
+            </>
+          )}
+          {layers.macd && (
+            <>
+              <span style={{ color: '#ec4899' }}>● DIF</span>
+              <span style={{ color: '#3b82f6' }}>● DEA</span>
+            </>
+          )}
+          {layers.rsi && <span style={{ color: '#c084fc' }}>● RSI</span>}
           <span style={{ color: '#eab308' }}>● KD K</span>
           <span style={{ color: '#f97316' }}>● KD D</span>
         </div>

@@ -12,12 +12,12 @@
  * - framer-motion slide-down 動畫
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // import { motion } from 'framer-motion';
-import { X, Loader2, AlertTriangle, TrendingUp, Clock, BarChart2, Minus, Maximize2, GitBranch, Trash2, Undo2, Save } from 'lucide-react';
+import { X, Loader2, AlertTriangle, TrendingUp, Clock, BarChart2, Minus, Maximize2, GitBranch, Trash2, Undo2, Save, Share2, MessagesSquare, ZoomIn, ZoomOut, Scan } from 'lucide-react';
 import CandlestickChart, { CrosshairProvider, useCrosshair } from './CandlestickChart';
 import { calculateSMA } from '@/lib/sma';
-import { calculateMACD, calculateKD, calculateBollingerBands, calculateRSI, calculateBIAS } from '@/lib/indicators';
+import { calculateMACD, calculateKD, calculateBollingerBands, calculateRSI, calculateBIAS, calculateCDP } from '@/lib/indicators';
 import {
   isCacheValid,
   sliceCandles,
@@ -27,8 +27,16 @@ import {
   getCandleDirection,
   getChangeColor,
 } from '@/lib/klineUtils';
+import {
+  computeStructuralConclusion,
+  buildStructLines,
+  computePlainConclusion,
+  buildPlainLines,
+} from '@/lib/techConclusion';
 import type {
   ChartCandle,
+  ChartLayers,
+  ZoomCommand,
   QuoteResponse,
   CacheEntry,
   CandlesResponse,
@@ -36,17 +44,30 @@ import type {
 
 // ── 常數 ───────────────────────────────────────────────
 
-// 日期範圍選項（#9）
-export type DateRange = '1W' | '1M' | '3M' | '6M';
+// 日期範圍選項（#9；93D 為 chart.md §5「K 線 93 日」視窗）
+export type DateRange = '1W' | '1M' | '3M' | '6M' | '93D';
 // Timeframe 類型：支援日K、週K、月K、分K
 export type Timeframe = 'daily' | 'weekly' | 'monthly' | 'intraday';
 type MarketPreset = 'TW' | 'HK' | 'US';
+
+// chart.md §5.2 圖層切換列（均線 布林 MACD RSI CDP）
+export type LayerKey = 'ma' | 'bb' | 'macd' | 'rsi' | 'cdp';
+
+export const LAYER_OPTIONS: { key: LayerKey; label: string }[] = [
+  { key: 'ma', label: '均線' },
+  { key: 'bb', label: '布林' },
+  { key: 'macd', label: 'MACD' },
+  { key: 'rsi', label: 'RSI' },
+  { key: 'cdp', label: 'CDP' },
+];
 
 const DATE_RANGE_OPTIONS: { label: string; value: DateRange; days: number }[] = [
   { label: '1W', value: '1W', days: 7 },
   { label: '1M', value: '1M', days: 30 },
   { label: '3M', value: '3M', days: 90 },
   { label: '6M', value: '6M', days: 180 },
+  // 93 日視窗（chart.md §5：K 線 93 日；取曆日 93 天，交易日約 65 根）
+  { label: '93D', value: '93D', days: 93 },
 ];
 
 // Timeframe 切換選項（對應博主版面：日K 週K 月K 分K）
@@ -135,6 +156,20 @@ function toFiniteNumber(value: unknown, fallback = 0) {
   return fallback;
 }
 
+// ── 指標列格式化工具（§5.3，數值缺失顯示 '--'，不補腦） ──
+
+/** 價格欄位（開/高/低/收）：整數化顯示，缺失 '--' */
+function fmtNum(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '--';
+  return value.toFixed(2);
+}
+
+/** 均線欄位（MA5/10/20）：保留 2 位，缺失 '--' */
+function fmtNum2(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '--';
+  return value.toFixed(2);
+}
+
 // ── 資料轉換：API Candle → ChartCandle ────────────────
 
 function toChartCandle(
@@ -191,6 +226,7 @@ function injectIndicators(candles: ChartCandle[]): ChartCandle[] {
   const bb = calculateBollingerBands(closes);
   const rsi = calculateRSI(closes);
   const bias = calculateBIAS(closes);
+  const cdp = calculateCDP(highs, lows, closes);
 
   return candles.map((c, i) => ({
     ...c,
@@ -203,6 +239,9 @@ function injectIndicators(candles: ChartCandle[]): ChartCandle[] {
     bbMiddle: bb.middle[i],
     bbLower: bb.lower[i],
     rsi: rsi.rsi[i],
+    cdpUpper: cdp.upper[i],
+    cdpMiddle: cdp.middle[i],
+    cdpLower: cdp.lower[i],
     bias6: bias.bias6[i],
     bias12: bias.bias12[i],
     bias24: bias.bias24[i],
@@ -267,11 +306,17 @@ interface KLinePanelProps {
   target?: number;    // 目標價（來自 AnalysisCard）
   stopLoss?: number;  // 防守價（來自 AnalysisCard）
   market?: MarketPreset;
+  /**
+   * chart.md §2/§4/§5/§6 技術分析模式（/chart 專用）：
+   * 開啟後附加「技術分析」標題、個股結構結論、93 日視窗、圖層切換列、
+   * 指標列、白話版結論；不影響既有 /skynet/day-trading-sim 的用法。
+   */
+  techPanel?: boolean;
 }
 
-export default function KLinePanel({ ticker, onClose, target, stopLoss, market = 'TW' }: KLinePanelProps) {
+export default function KLinePanel({ ticker, onClose, target, stopLoss, market = 'TW', techPanel = false }: KLinePanelProps) {
   const [timeframe, setTimeframe] = useState<Timeframe>('daily');
-  const [dateRange, setDateRange] = useState<DateRange>('3M'); // #9 日期範圍
+  const [dateRange, setDateRange] = useState<DateRange>(techPanel ? '93D' : '3M'); // #9 日期範圍
   const [dailyCandles, setDailyCandles] = useState<ChartCandle[] | null>(null);
   const [weeklyCandles, setWeeklyCandles] = useState<ChartCandle[] | null>(null);
   const [monthlyCandles, setMonthlyCandles] = useState<ChartCandle[] | null>(null);
@@ -283,6 +328,19 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
   const [, setQuoteError] = useState(false);
   // 技術指標面板開關
   const [showIndicators, setShowIndicators] = useState(false);
+
+  // chart.md §5.2 圖層切換（預設：均線 + MACD 開，與博主幀一致）
+  const [layers, setLayers] = useState<ChartLayers>({ ma: true, bb: false, macd: true, rsi: false, cdp: false });
+  const [zoomNonce, setZoomNonce] = useState(0);
+  const zoomActionRef = useRef<'in' | 'out' | 'all'>('all');
+  const sendZoomCommand = useCallback((action: 'in' | 'out' | 'all') => {
+    zoomActionRef.current = action;
+    setZoomNonce((prev) => prev + 1);
+  }, []);
+  const zoomCmd: ZoomCommand = useMemo(
+    () => ({ action: zoomActionRef.current, nonce: zoomNonce }),
+    [zoomNonce]
+  );
 
   // 長按/懸停浮標狀態
   const [hoveredCandle, setHoveredCandle] = useState<ChartCandle | null>(null);
@@ -579,16 +637,16 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
     setQuote(null);
     setError(null);
     setTimeframe('daily');
-    setDateRange('3M');
+    setDateRange(techPanel ? '93D' : '3M');
 
     // 同時發出 daily + quote 請求
-    fetchDaily(ticker, controller.signal, '3M');
+    fetchDaily(ticker, controller.signal, techPanel ? '93D' : '3M');
     fetchQuote(ticker, controller.signal);
 
     return () => {
       controller.abort();
     };
-  }, [ticker, fetchDaily, fetchQuote]);
+  }, [ticker, fetchDaily, fetchQuote, techPanel]);
 
   useEffect(() => {
     if (!intradayAvailable && timeframe === 'intraday') {
@@ -664,6 +722,44 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
 
   const displayCandles = getCandlesForTimeframe(timeframe);
 
+  // chart.md §5.3 指標列：選中的 K 棒（預設最新一根，點擊 K 棒可切換）
+  const [selectedCandle, setSelectedCandle] = useState<ChartCandle | null>(null);
+  useEffect(() => {
+    // 切換 ticker / timeframe 時重置選中
+    setSelectedCandle(null);
+  }, [ticker, timeframe]);
+  useEffect(() => {
+    // K 棒資料更新後：若尚未選中，預設選最新一根
+    if (selectedCandle === null && displayCandles && displayCandles.length > 0) {
+      setSelectedCandle(displayCandles[displayCandles.length - 1]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayCandles]);
+  const handleCandleSelect = useCallback((candle: ChartCandle) => {
+    setSelectedCandle(candle);
+  }, []);
+  // 指標列顯示的 K 棒：選中棒仍在此資料集內則用選中棒，否則退回最新棒
+  const indicatorCandle: ChartCandle | null = useMemo(() => {
+    if (selectedCandle && displayCandles && displayCandles.includes(selectedCandle)) {
+      return selectedCandle;
+    }
+    return displayCandles && displayCandles.length > 0 ? displayCandles[displayCandles.length - 1] : null;
+  }, [selectedCandle, displayCandles]);
+
+  // ── 技術分析：個股結構結論（§4，公開 K 線可算，不硬編碼樣本數字） ──
+  const struct = useMemo(
+    () => (displayCandles && displayCandles.length > 0 ? computeStructuralConclusion(displayCandles) : null),
+    [displayCandles]
+  );
+  const structLines = useMemo(() => (struct ? buildStructLines(struct, quote?.name ?? ticker) : null), [struct, quote, ticker]);
+
+  // ── 白話版結論（§6，由均線/MACD/量數值產出，不補腦） ──
+  const plain = useMemo(
+    () => (displayCandles && displayCandles.length > 0 ? computePlainConclusion(displayCandles) : null),
+    [displayCandles]
+  );
+  const plainLines = useMemo(() => (plain ? buildPlainLines(plain) : null), [plain]);
+
   // 取得 timeframe 的中文標籤
   const getTimeframeLabel = (tf: Timeframe) => {
     const opt = TIMEFRAME_OPTIONS.find(o => o.value === tf);
@@ -684,7 +780,8 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
       <div className="kline-panel-header">
         <div className="kline-panel-title">
           <TrendingUp size={18} style={{ color: '#00f0ff' }} />
-          <span>K 線圖</span>
+          <span>{techPanel ? '技術分析' : 'K 線圖'}</span>
+          {techPanel && <span className="kline-tech-subtitle">輸入代號、名稱、大盤、籌碼、均線與高點結構</span>}
           {market !== 'TW' && <span className="kline-market-badge">{market}</span>}
         </div>
 
@@ -811,17 +908,114 @@ export default function KLinePanel({ ticker, onClose, target, stopLoss, market =
 
         {/* K 線圖 */}
         {!loading && !error && displayCandles && displayCandles.length > 0 && (
-          <CandlestickChart
-            candles={displayCandles}
-            timeframe={timeframe}
-            target={target}
-            stopLoss={stopLoss}
-            drawings={drawings}
-            onAddDrawing={addDrawing}
-            activeTool={activeTool}
-            onCandleHover={setHoveredCandle}
-            onHoverPositionChange={setHoverPosition}
-          />
+          <div className="kline-candle-card">
+            {/* K 線卡標題（§5.4）：`<代號> <名稱> 近 93 日K`（techPanel 時） */}
+            <div className="kline-candle-card-title">
+              <span className="kline-candle-card-ticker">{ticker}</span>
+              {quote?.name && <span className="kline-candle-card-name">{quote.name}</span>}
+              <span className="kline-candle-card-window">
+                {techPanel ? '近 93 日K' : `${TIMEFRAME_OPTIONS.find(o => o.value === timeframe)?.label ?? timeframe}`}
+              </span>
+              {/* 圖層切換列（§5.2：均線 布林 MACD RSI CDP ＋ 縮小 放大 全覽） */}
+              <div className="kline-layer-toggle" role="group" aria-label="圖層切換">
+                {LAYER_OPTIONS.map(opt => (
+                  <button
+                    key={opt.key}
+                    className={`kline-layer-btn ${layers[opt.key] ? 'active' : ''}`}
+                    onClick={() => setLayers((prev) => ({ ...prev, [opt.key]: !prev[opt.key] }))}
+                    aria-pressed={layers[opt.key]}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+                <span className="kline-layer-sep" aria-hidden="true" />
+                <button className="kline-zoom-btn" onClick={() => sendZoomCommand('in')} title="縮小">
+                  <ZoomIn size={14} />
+                </button>
+                <button className="kline-zoom-btn" onClick={() => sendZoomCommand('out')} title="放大">
+                  <ZoomOut size={14} />
+                </button>
+                <button className="kline-zoom-btn" onClick={() => sendZoomCommand('all')} title="全覽">
+                  <Scan size={14} />
+                </button>
+              </div>
+              {/* 分享（§5.1，純前端 UI：複製連結，不造假） */}
+              <button
+                className="kline-share-btn"
+                onClick={() => {
+                  const url = window.location.href;
+                  void navigator.clipboard?.writeText(url).catch(() => undefined);
+                }}
+                title="複製頁面連結"
+              >
+                <Share2 size={14} />
+                <span>分享</span>
+              </button>
+            </div>
+
+            {/* 指標列（§5.3：日期 開 高 低 收 MA5 MA10 MA20） */}
+            <div className="kline-indicator-row" role="list" aria-label="指標列">
+              <span className="kline-ind-item date">{indicatorCandle?.dateRaw ?? '--'}</span>
+              <span className="kline-ind-item">開 {fmtNum(indicatorCandle?.open)}</span>
+              <span className="kline-ind-item">高 {fmtNum(indicatorCandle?.high)}</span>
+              <span className="kline-ind-item">低 {fmtNum(indicatorCandle?.low)}</span>
+              <span className="kline-ind-item close">收 {fmtNum(indicatorCandle?.close)}</span>
+              <span className="kline-ind-item ma">MA5 {fmtNum2(indicatorCandle?.sma5)}</span>
+              <span className="kline-ind-item ma">MA10 {fmtNum2(indicatorCandle?.sma10)}</span>
+              <span className="kline-ind-item ma">MA20 {fmtNum2(indicatorCandle?.sma20)}</span>
+            </div>
+
+            {/* 技術分析「個股結構結論」（§4，依公開 K 線計算，不硬編碼） */}
+            {techPanel && structLines && (
+              <div className="kline-struct-conclusions">
+                <h3 className="kline-struct-title">個股結構結論</h3>
+                <ol className="kline-struct-list">
+                  {structLines.map((line, i) => (
+                    <li key={i} className="kline-struct-item">{line.text}</li>
+                  ))}
+                </ol>
+              </div>
+            )}
+
+            <CandlestickChart
+              candles={displayCandles}
+              timeframe={timeframe}
+              target={target}
+              stopLoss={stopLoss}
+              drawings={drawings}
+              onAddDrawing={addDrawing}
+              activeTool={activeTool}
+              onCandleHover={setHoveredCandle}
+              onHoverPositionChange={setHoverPosition}
+              layers={layers}
+              zoomCmd={zoomCmd}
+              onCandleSelect={handleCandleSelect}
+            />
+
+            {/* 白話版結論（§6，數字由均線/MACD 即時產出，不補腦） */}
+            {techPanel && plainLines && (
+              <div className="kline-plain-conclusion">
+                <h3 className="kline-plain-title">{plainLines.heading}</h3>
+                <div className="kline-plain-body">
+                  {plainLines.body.map((line, i) => (
+                    <p key={i}>{line}</p>
+                  ))}
+                </div>
+                <div className="kline-plain-note">
+                  這些數字是均線 20、MA5 與 20 日線算出來的。你不用懂公式，看懂「誰在上面、誰在下面、誰在放、誰在縮」就夠了。
+                </div>
+                <a
+                  className="kline-ask-ai"
+                  href={`/ai?ticker=${encodeURIComponent(ticker)}`}
+                  title="問 AI"
+                  aria-label="問 AI"
+                >
+                  <MessagesSquare size={16} />
+                  <span>問 AI</span>
+                </a>
+              </div>
+            )}
+          </div>
         )}
 
         {/* 長按/懸停浮標提示 */}

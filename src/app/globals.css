@@ -2005,6 +2005,264 @@ html[data-theme='light'] .taskbar-active-pill {
   flex-shrink: 0;
 }
 
+/* ── chart.md 對齊：技術分析面板 / 圖層切換 / 指標列 / 結論 ── */
+
+/* 面板副標（§3.1「輸入代號、名稱、大盤、籌碼、均線與高點結構」） */
+.kline-tech-subtitle {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+/* K 線卡（§5：把 K 線圖＋標題＋圖層＋指標列＋結論包成一張卡） */
+.kline-candle-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(197, 160, 89, 0.14);
+  border-radius: 12px;
+  background: rgba(3, 6, 16, 0.45);
+}
+
+.kline-candle-card-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.kline-candle-card-ticker {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--ink);
+  letter-spacing: 0.03em;
+}
+
+.kline-candle-card-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.kline-candle-card-window {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  letter-spacing: 0.04em;
+}
+
+/* 圖層切換列（§5.2：均線 布林 MACD RSI CDP ＋ 縮小 放大 全覽） */
+.kline-layer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.kline-layer-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(183, 192, 212, 0.18);
+  color: var(--muted);
+  background: rgba(3, 6, 16, 0.6);
+  transition: all 0.15s;
+}
+
+.kline-layer-btn.active {
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #2fd39a;
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.kline-layer-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(183, 192, 212, 0.25);
+  margin: 0 4px;
+}
+
+.kline-zoom-btn {
+  width: 28px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px solid rgba(183, 192, 212, 0.18);
+  background: rgba(3, 6, 16, 0.6);
+  color: var(--muted);
+  transition: all 0.15s;
+}
+
+.kline-zoom-btn:hover {
+  color: var(--accent-cyan);
+  border-color: rgba(197, 160, 89, 0.4);
+}
+
+/* 分享鈕（§5.1） */
+.kline-share-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(197, 160, 89, 0.3);
+  background: rgba(197, 160, 89, 0.08);
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 800;
+  transition: all 0.15s;
+}
+
+.kline-share-btn:hover {
+  background: rgba(197, 160, 89, 0.16);
+}
+
+/* 指標列（§5.3：日期 開 高 低 收 MA5 MA10 MA20） */
+.kline-indicator-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 8px 10px;
+  border: 1px solid rgba(197, 160, 89, 0.12);
+  border-radius: 8px;
+  background: rgba(4, 12, 28, 0.5);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kline-ind-item {
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.kline-ind-item.date {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.kline-ind-item.close {
+  color: var(--accent-cyan);
+}
+
+.kline-ind-item.ma {
+  color: var(--gold);
+}
+
+/* 個股結構結論（§4，三條） */
+.kline-struct-conclusions {
+  border: 1px solid rgba(197, 160, 89, 0.16);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(197, 160, 89, 0.05), rgba(4, 12, 28, 0.4));
+  padding: 12px 14px;
+}
+
+.kline-struct-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: var(--accent-cyan);
+}
+
+.kline-struct-list {
+  margin: 0;
+  padding: 0 0 0 4px;
+  list-style: none;
+  counter-reset: struct;
+  display: grid;
+  gap: 6px;
+}
+
+.kline-struct-item {
+  position: relative;
+  padding-left: 24px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.kline-struct-item::before {
+  counter-increment: struct;
+  content: counter(struct) ".";
+  position: absolute;
+  left: 4px;
+  top: 0;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  color: var(--gold);
+}
+
+/* 白話版結論（§6） */
+.kline-plain-conclusion {
+  position: relative;
+  border: 1px solid rgba(197, 160, 89, 0.16);
+  border-radius: 10px;
+  background: rgba(4, 12, 28, 0.5);
+  padding: 12px 14px 12px 14px;
+}
+
+.kline-plain-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: var(--accent-cyan);
+}
+
+.kline-plain-body {
+  display: grid;
+  gap: 6px;
+}
+
+.kline-plain-body p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--ink);
+}
+
+.kline-plain-note {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(183, 192, 212, 0.12);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* 右側浮標「問 AI」（§6） */
+.kline-ask-ai {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  background: rgba(0, 240, 255, 0.1);
+  color: var(--accent-cyan);
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+
+.kline-ask-ai:hover {
+  background: rgba(0, 240, 255, 0.2);
+}
+
 /* ── #10 每日績效摘要 ───────────────────────────────── */
 
 .perf-grid {

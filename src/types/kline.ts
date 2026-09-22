@@ -95,6 +95,25 @@ export interface ErrorResponse {
     | 'api_key_not_configured';
 }
 
+// ── 圖層與縮放指令（chart.md §5.2 對齊）─────────────────
+
+/** 可切換圖層（均線/布林/MACD/RSI/CDP） */
+export type LayerKey = 'ma' | 'bb' | 'macd' | 'rsi' | 'cdp';
+
+export interface ChartLayers {
+  ma: boolean;   // 均線（SMA5/10/20/60）
+  bb: boolean;   // 布林通道
+  macd: boolean; // MACD 副圖
+  rsi: boolean;  // RSI 副圖
+  cdp: boolean;  // CDP 最佳終點覆蓋線
+}
+
+/** 縮放指令（縮小/放大/全覽），nonce 遞增觸發 effect */
+export interface ZoomCommand {
+  action: 'in' | 'out' | 'all';
+  nonce: number; // 0 = 尚未下過指令（初始 no-op）
+}
+
 // ── 元件狀態 ───────────────────────────────────────────
 
 /** KLinePanel 內部狀態 */

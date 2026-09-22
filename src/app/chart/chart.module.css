@@ -139,6 +139,33 @@
   gap: 18px;
 }
 
+/* 技術分析面板外包覆（KLinePanel + 分點資料未入庫提示） */
+.panelWrap {
+  display: grid;
+  gap: 12px;
+}
+
+/* chart.md §8：分點類資料未入庫提示（不造假、不作為要複刻功能） */
+.dataNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px 14px;
+  border: 1px dashed var(--bs-gold-line);
+  border-radius: 10px;
+  background: var(--bs-gold-soft);
+  color: var(--bs-text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.dataNoticeLabel {
+  font-weight: 900;
+  color: var(--bs-gold);
+  letter-spacing: 0.04em;
+}
+
 .placeholder,
 .loading {
   min-height: 46vh;
