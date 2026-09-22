@@ -6,6 +6,12 @@ import {
   buildFusionStocks,
 } from '@/lib/fusionCore';
 import type { BattleReport, ExtremeResponse, FusionStock, LiaoCandidate, Position, Sniper } from '@/lib/fusionCore';
+import {
+  FUGLE_UPSTREAM_TIMEOUT_MS,
+  buildFugleCacheKey,
+  fetchFugleCached,
+  type FugleAttempt,
+} from '@/lib/fugleCache';
 
 const N8N_BASE = process.env.SKYNET_N8N_BASE_URL || 'https://skynet-cmd.duckdns.org';
 const DASHBOARD_WEBHOOK = `${N8N_BASE}/webhook/skynet-dashboard`;
@@ -121,17 +127,6 @@ let memoryCachedPayload: FusionPayload | null = null;
 let memoryCandidateState: CandidateStateStore = {};
 const memoryIntradaySeries: Record<string, IntradaySeriesPoint[]> = {};
 
-type FugleQuoteResponse = {
-  name?: string;
-  closePrice?: number;
-  lastPrice?: number;
-  previousClose?: number;
-  change?: number;
-  changePercent?: number;
-  lastChange?: number;
-  lastChangePercent?: number;
-};
-
 type YahooChartResponse = {
   chart?: {
     result?: Array<{
@@ -155,7 +150,7 @@ type YahooChartResponse = {
   };
 };
 
-type FugleHistoricalResponse = {
+type FugleCandlesResponse = {
   data?: HistoricalCandle[];
   candles?: HistoricalCandle[];
   sort?: 'asc' | 'desc';
@@ -284,38 +279,48 @@ async function fetchMarketQuote(ticker: string): Promise<{ quote: MarketQuote | 
   const apiKey = process.env.FUGLE_API_KEY || '';
 
   if (apiKey) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5_000);
-    try {
-      const response = await fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/${ticker}`, {
-        headers: { Accept: 'application/json', 'X-API-KEY': apiKey },
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (response.ok) {
-        const raw = await response.json() as FugleQuoteResponse;
+    // §2-C Fugle 請求層 cache：inflight 去重 + 60s TTL + stale-on-error（redirect:'manual' + AbortSignal.timeout(4000)）
+    const cached = await fetchFugleCached<Record<string, unknown>>(buildFugleCacheKey('fusion', ['quote', ticker]), async (): Promise<FugleAttempt<Record<string, unknown>>> => {
+      const signal = AbortSignal.timeout(FUGLE_UPSTREAM_TIMEOUT_MS);
+      try {
+        const response = await fetch(`https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/${ticker}`, {
+          headers: { Accept: 'application/json', 'X-API-KEY': apiKey },
+          signal,
+          redirect: 'manual',
+        });
+        if (!response.ok) return { kind: 'upstream-failure', status: response.status };
+        const raw = (await response.json()) as Record<string, unknown>;
+        // 形狀斷言：無有效價格 → 失敗（不寫 cache、不補零）
         const price = normalizeFinite(raw.closePrice ?? raw.lastPrice);
-        const previousClose = normalizeFinite(raw.previousClose);
-        const change = normalizeFinite(raw.change ?? raw.lastChange);
-        const changePercent = normalizeFinite(raw.changePercent ?? raw.lastChangePercent);
-        if (price !== null) {
-          return {
-            ok: true,
-            latencyMs: Date.now() - startedAt,
-            quote: {
-              ticker,
-              name: raw.name,
-              price,
-              change: change ?? (previousClose !== null ? price - previousClose : 0),
-              changePercent: changePercent ?? (previousClose ? ((price - previousClose) / previousClose) * 100 : 0),
-              source: 'fugle',
-              fetchedAt: new Date().toISOString(),
-            },
-          };
-        }
+        if (price === null) return { kind: 'upstream-failure' };
+        return { kind: 'data', data: raw };
+      } catch {
+        // 逾時 / 網路錯誤 / JSON 解析失敗：一律失敗（不寫 cache）；signal.aborted 判定逾時
+        return { kind: 'upstream-failure', timeout: signal.aborted };
       }
-    } catch {
-      clearTimeout(timer);
+    });
+
+    if (cached.data !== null) {
+      const raw = cached.data;
+      const price = normalizeFinite(raw.closePrice ?? raw.lastPrice);
+      const previousClose = normalizeFinite(raw.previousClose);
+      const change = normalizeFinite(raw.change ?? raw.lastChange);
+      const changePercent = normalizeFinite(raw.changePercent ?? raw.lastChangePercent);
+      if (price !== null) {
+        return {
+          ok: true,
+          latencyMs: Date.now() - startedAt,
+          quote: {
+            ticker,
+            name: raw.name as string | undefined,
+            price,
+            change: change ?? (previousClose !== null ? price - previousClose : 0),
+            changePercent: changePercent ?? (previousClose ? ((price - previousClose) / previousClose) * 100 : 0),
+            source: 'fugle',
+            fetchedAt: cached.fetchedAt ?? new Date().toISOString(),
+          },
+        };
+      }
     }
   }
 
@@ -363,7 +368,7 @@ async function fetchMarketQuote(ticker: string): Promise<{ quote: MarketQuote | 
   }
 }
 
-function normalizeHistoricalCandles(raw: FugleHistoricalResponse): HistoricalCandle[] {
+function normalizeHistoricalCandles(raw: FugleCandlesResponse): HistoricalCandle[] {
   const source = raw.data ?? raw.candles ?? [];
   const sorted = raw.sort === 'desc' ? [...source].reverse() : source;
   return sorted
@@ -386,22 +391,36 @@ async function fetchHistoricalKlines(ticker: string): Promise<{ candles: Histori
   const apiKey = process.env.FUGLE_API_KEY || '';
 
   if (apiKey) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8_000);
-    try {
-      const response = await fetch(
-        `https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/${ticker}?timeframe=D`,
-        { headers: { Accept: 'application/json', 'X-API-KEY': apiKey }, signal: controller.signal }
-      );
-      clearTimeout(timer);
-      if (response.ok) {
-        const candles = normalizeHistoricalCandles(await response.json() as FugleHistoricalResponse);
-        if (candles.length >= 21) {
-          return { candles, ok: true, source: 'fugle', latencyMs: Date.now() - startedAt };
-        }
+    // §2-C Fugle 請求層 cache：inflight 去重 + 60s TTL + stale-on-error（redirect:'manual' + AbortSignal.timeout(4000)）
+    const cached = await fetchFugleCached<Record<string, unknown>>(buildFugleCacheKey('fusion', ['kline', ticker]), async (): Promise<FugleAttempt<Record<string, unknown>>> => {
+      const signal = AbortSignal.timeout(FUGLE_UPSTREAM_TIMEOUT_MS);
+      try {
+        const response = await fetch(
+          `https://api.fugle.tw/marketdata/v1.0/stock/historical/candles/${ticker}?timeframe=D`,
+          { headers: { Accept: 'application/json', 'X-API-KEY': apiKey }, signal, redirect: 'manual' }
+        );
+        if (!response.ok) return { kind: 'upstream-failure', status: response.status };
+        const raw = (await response.json()) as Record<string, unknown>;
+        // 形狀斷言：`data` / `candles` 必須是陣列（可為空——合法「無資料」，緩衝額度；缺失視同失敗）
+        const array = Array.isArray(raw.data) ? raw.data : Array.isArray(raw.candles) ? raw.candles : null;
+        if (array === null) return { kind: 'upstream-failure' };
+        return { kind: 'data', data: raw };
+      } catch {
+        // 逾時 / 網路錯誤 / JSON 解析失敗：一律失敗（不寫 cache）；signal.aborted 判定逾時
+        return { kind: 'upstream-failure', timeout: signal.aborted };
       }
-    } catch {
-      clearTimeout(timer);
+    });
+
+    if (cached.data !== null) {
+      const candles = normalizeHistoricalCandles({
+        data: cached.data.data as HistoricalCandle[] | undefined,
+        candles: cached.data.candles as HistoricalCandle[] | undefined,
+        sort: cached.data.sort as 'asc' | 'desc' | undefined,
+      });
+      if (candles.length >= 21) {
+        return { candles, ok: true, source: 'fugle', latencyMs: Date.now() - startedAt };
+      }
+      // < 21 根：與現況一致落 Yahoo 回退（快照已寫 cache，Yahoo 回退成功不污染 Fugle 快照）
     }
   }
 

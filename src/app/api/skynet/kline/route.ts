@@ -9,10 +9,24 @@
  * - 代理 Fugle API 請求並標準化回應格式
  * - ETF 備援：Fugle 不支援時自動 fallback 到 Yahoo Finance
  * - 統一錯誤處理
+ *
+ * §2-C Fugle 請求層 cache（src/lib/fugleCache.ts，防爆 100 req/hr + 5 req/min）：
+ * - per-(ticker, fetchType, from) inflight 去重 + 60s TTL cache
+ * - redirect:'manual' + AbortSignal.timeout(4000)（比對 futures/route.ts 架構）
+ * - stale-on-error：上游掛了 → 回快取快照 + X-Skynet-Stale: true
+ * - 全掛無快取 → 200 + { ok:false, error }（不 5xx）
+ * - 純包 cache 層：不改 Fugle 端點、不改回傳 shape（對前端透明）；
+ *   缺失一律 null（不補零、不硬編碼）
  */
 
 
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  FUGLE_UPSTREAM_TIMEOUT_MS,
+  buildFugleCacheKey,
+  fetchFugleCached,
+  type FugleAttempt,
+} from '@/lib/fugleCache';
 
 // ── Fugle API 端點 ─────────────────────────────────────
 
@@ -411,10 +425,6 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 3. 建立 AbortController（10 秒 timeout）
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10_000);
-
   try {
     const yahooDirect = market === 'HK' || market === 'US';
     if (yahooDirect) {
@@ -443,7 +453,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'upstream_error' }, { status: 502 });
     }
 
-    // TW：先走 Fugle，失敗再 Yahoo fallback
+    // TW：先走 Fugle（§2-C 請求層 cache：inflight 去重 + 60s TTL + stale-on-error），失敗再 Yahoo fallback
     const apiKey = process.env.FUGLE_API_KEY ?? '';
     if (!apiKey) {
       return NextResponse.json(
@@ -452,40 +462,95 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 對於 weekly/monthly，我們需要先取得 daily 資料再重採樣
+    // 對於 weekly/monthly，我們需要先取得 daily 資料再重採樣（cache key 也照 fetchType 收斂）
     const fetchType = (type === 'weekly' || type === 'monthly') ? 'daily' : type;
-    const url = getFugleUrl(cleanTicker, fetchType, from);
+    const cacheKey = buildFugleCacheKey('kline', [cleanTicker, fetchType, fetchType === 'daily' ? (from ?? '') : '']);
 
-    const fugleRes = await fetch(url, {
-      headers: {
-        'X-API-KEY': apiKey,
-        'Accept': 'application/json',
-      },
-      signal: controller.signal,
-    });
+    // Fugle 上游嘗試（helper 內含 inflight 去重 + 60s TTL；redirect:'manual' + AbortSignal.timeout(4000)）
+    const attemptFugle = async (): Promise<FugleAttempt<Record<string, unknown>>> => {
+      const res = await fetch(getFugleUrl(cleanTicker, fetchType, from), {
+        headers: {
+          'X-API-KEY': apiKey,
+          'Accept': 'application/json',
+        },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(FUGLE_UPSTREAM_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        return { kind: 'upstream-failure', status: res.status };
+      }
+      let raw: unknown;
+      try {
+        raw = await res.json();
+      } catch {
+        // JSON 解析失敗絕不寫 cache（不補零、不造假數字）
+        return { kind: 'upstream-failure' };
+      }
+      // 形狀斷言：非物件一律失敗（不寫 cache）
+      if (raw === null || typeof raw !== 'object') return { kind: 'upstream-failure' };
+      const record = raw as Record<string, unknown>;
+      if (fetchType === 'quote') {
+        // quote 回應是單一物件（closePrice/lastPrice 等），非 data/candles 陣列
+        return { kind: 'data', data: record };
+      }
+      // candles 型（daily/intraday）：`data` 或 `candles` 陣列必須存在（可為空陣列——
+      // 合法「無資料」狀態，緩衝額度；僅缺欄位視為失敗，不補零）
+      const hasArray = Array.isArray(record.data) || Array.isArray(record.candles);
+      if (!hasArray) return { kind: 'upstream-failure' };
+      return { kind: 'data', data: record };
+    };
 
-    clearTimeout(timeoutId);
+    const cachedRaw = await fetchFugleCached<Record<string, unknown>>(cacheKey, attemptFugle);
 
-    if (!fugleRes.ok) {
-      if (fugleRes.status === 429) {
+    // ── Fugle 命中（fresh / cache / stale 快照）：shape 對前端透明 ──
+    if (cachedRaw.data !== null) {
+      const rawData = cachedRaw.data;
+      let normalized;
+      if (type === 'daily') {
+        normalized = normalizeDaily(rawData as unknown as FugleHistoricalResponse);
+      } else if (type === 'weekly') {
+        const dailyNormalized = normalizeDaily(rawData as unknown as FugleHistoricalResponse);
+        normalized = resampleToWeekly(dailyNormalized.candles);
+      } else if (type === 'monthly') {
+        const dailyNormalized = normalizeDaily(rawData as unknown as FugleHistoricalResponse);
+        normalized = resampleToMonthly(dailyNormalized.candles);
+      } else if (type === 'intraday') {
+        normalized = normalizeIntraday(rawData as unknown as FugleIntradayResponse);
+      } else {
+        normalized = normalizeQuote(rawData as unknown as FugleQuoteResponse);
+      }
+      // stale-on-error：上游掛了 → 回快取快照 + X-Skynet-Stale: true（純標記，body shape 不變）
+      return NextResponse.json(normalized, {
+        status: 200,
+        headers: cachedRaw.source === 'fugle-stale' ? { 'X-Skynet-Stale': 'true' } : {},
+      });
+    }
+
+    // ── Fugle 全掛無快取（fugle-miss）：200 + ok:false，不 5xx（futures 模式）──
+    if (cachedRaw.source === 'fugle-miss') {
+      // 429：額度用罄（100 req/hr + 5 req/min）→ 可操作錯誤，保留 rate_limit_exceeded 代碼
+      if (cachedRaw.upstreamStatus === 429) {
         return NextResponse.json(
-          { error: 'rate_limit_exceeded' },
-          { status: 429 }
+          { ok: false, error: 'rate_limit_exceeded' },
+          { status: 200, headers: { 'X-Skynet-Data-Source': 'fugle-rate-limited' } }
         );
       }
-      // 將 Fugle intraday 401/403 映射為明確錯誤代碼
-      if (type === 'intraday' && (fugleRes.status === 401 || fugleRes.status === 403)) {
+      // intraday 401/403：需付費訂閱 → 保留 intraday_not_subscribed 代碼（可操作）
+      if (type === 'intraday' && (cachedRaw.upstreamStatus === 401 || cachedRaw.upstreamStatus === 403)) {
         return NextResponse.json(
-          { error: 'intraday_not_subscribed' },
-          { status: fugleRes.status }
+          { ok: false, error: 'intraday_not_subscribed' },
+          { status: 200, headers: { 'X-Skynet-Data-Source': 'fugle-not-subscribed' } }
         );
       }
-      if (type === 'intraday') {
+      // 逾時且無快照：保留 upstream_timeout 代碼（ok:false，不 5xx）
+      if (cachedRaw.upstreamTimeout) {
         return NextResponse.json(
-          { error: 'upstream_error' },
-          { status: fugleRes.status }
+          { ok: false, error: 'upstream_timeout' },
+          { status: 200, headers: { 'X-Skynet-Data-Source': 'fugle-timeout' } }
         );
       }
+
+      // Yahoo tertiary（daily/weekly/monthly/quote；intraday 無 Yahoo 路徑）
       const yahooController = new AbortController();
       const yahooTimeout = setTimeout(() => yahooController.abort(), 8_000);
       try {
@@ -512,45 +577,27 @@ export async function GET(request: NextRequest) {
       } catch {
         clearTimeout(yahooTimeout);
       }
+      // Fugle + Yahoo 全掛無快取：200 + ok:false（前端 allSettled 顯示 '--'，不 5xx 帶崩頁面）
       return NextResponse.json(
-        { error: 'upstream_error' },
-        { status: fugleRes.status }
+        { ok: false, error: 'upstream_error' },
+        { status: 200, headers: { 'X-Skynet-Data-Source': 'yahoo-fallback-missed' } }
       );
     }
 
-    const rawData = await fugleRes.json();
-    let normalized;
-    if (type === 'daily') {
-      normalized = normalizeDaily(rawData as FugleHistoricalResponse);
-    } else if (type === 'weekly') {
-      const dailyNormalized = normalizeDaily(rawData as FugleHistoricalResponse);
-      normalized = resampleToWeekly(dailyNormalized.candles);
-    } else if (type === 'monthly') {
-      const dailyNormalized = normalizeDaily(rawData as FugleHistoricalResponse);
-      normalized = resampleToMonthly(dailyNormalized.candles);
-    } else if (type === 'intraday') {
-      normalized = normalizeIntraday(rawData as FugleIntradayResponse);
-    } else {
-      normalized = normalizeQuote(rawData as FugleQuoteResponse);
-    }
-
-    return NextResponse.json(normalized, { status: 200 });
+    // 理論上不會走到（miss 已在上面處理）
+    return NextResponse.json({ ok: false, error: 'upstream_error' }, { status: 200 });
 
   } catch (err) {
-    clearTimeout(timeoutId);
-
-    // AbortController 觸發（超時）
+    // 未預期錯誤兜底（yahoo 路徑的 abort 等）
     if (err instanceof Error && err.name === 'AbortError') {
       return NextResponse.json(
-        { error: 'upstream_timeout' },
-        { status: 504 }
+        { ok: false, error: 'upstream_timeout' },
+        { status: 200 }
       );
     }
-
-    // 其他網路錯誤
     return NextResponse.json(
-      { error: 'upstream_error' },
-      { status: 502 }
+      { ok: false, error: 'upstream_error' },
+      { status: 200 }
     );
   }
 }
