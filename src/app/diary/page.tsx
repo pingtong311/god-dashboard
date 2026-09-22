@@ -35,6 +35,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import type { MarketOverview, TaifexFuturesQuote } from '@/types/market';
+import type { ChannelData } from '@/types/channel';
+import { useChannelData } from '@/hooks/useChannelData';
 import styles from './diary.module.css';
 import SectorMap from '@/components/SectorMap';
 import Treemap from '@/components/Treemap';
@@ -125,6 +127,12 @@ export default function DiaryPage() {
   const [showToast, setShowToast] = useState(false);
   const pullStartRef = useRef<number | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // 分點資料源 flag（spec §2-B）：快捷入口「籌碼研究 → /chips/2330」的分點明細是否已入庫。
+  // 探測代號 = 該卡片連結的 target ticker（2330，資料驅動、不硬編碼他牌）；
+  // false/未載入 → 卡片誠實標「分點未入庫」；true → 標「分點有來源」。
+  const channel: ChannelData | null = useChannelData('2330');
+  const hasChannelData: boolean = channel?.hasChannelData === true;
 
   // 下拉觸發閾值
   const PULL_THRESHOLD = 80;
@@ -730,7 +738,13 @@ export default function DiaryPage() {
                     <PieChart size={20} aria-hidden="true" />
                     <div>
                       <strong>籌碼研究</strong>
-                      <span>分點明細、集保級距、法人歷史</span>
+                      {/* 分點明細依 hasChannelData 分支（spec §2-B）：false → 誠實標「分點未入庫」；
+                          true（日後 FinMind Sponsor 開通）→ 標「分點明細」可用。 */}
+                      <span>
+                        {hasChannelData
+                          ? '分點明細、集保級距、法人歷史'
+                          : '分點未入庫、集保級距、法人歷史'}
+                      </span>
                     </div>
                   </Link>
                 </div>

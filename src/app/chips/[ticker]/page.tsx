@@ -32,6 +32,8 @@ import {
 } from 'recharts';
 import { ChevronLeft, Download, RefreshCw, Share2, TrendingUp, Users } from 'lucide-react';
 import styles from './chips.module.css';
+import { useChannelData } from '@/hooks/useChannelData';
+import type { ChannelData } from '@/types/channel';
 
 // ── recharts 專用色票 ────────────────────────────────────
 // recharts 的 stroke / fill 不吃 CSS 變數，故集中定義實際色碼。
@@ -163,6 +165,13 @@ function exportCsv(filename: string, header: string[], rows: Array<Array<string 
   URL.revokeObjectURL(url);
 }
 
+// ── 分點資料分支（spec §2-B）────────────────────────────
+// 券商分點逐筆 = FinMind Sponsor-only 付費資料。useChannelData 抓
+// /api/skynet/channel?ticker=... 的 hasChannelData flag：
+// - false（現況恆定值）→ 誠實「資料未入庫」文案
+// - true（日後 FinMind Sponsor 開通）→ 分點分析區塊（現況無資料，只留 skeleton + TODO，不補腦）
+// channel === null（載入中／route 回 ok:false／非法代號）一律當「無資料」走未入庫分支。
+
 // ── 主元件 ──────────────────────────────────────────────
 
 export default function ChipsPage() {
@@ -184,6 +193,9 @@ export default function ChipsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [mounted, setMounted] = useState(false);
+
+  // 分點資料源 flag（spec §2-B：false → 誠實「未入庫」；true → 分點分析區塊）
+  const channel: ChannelData | null = useChannelData(ticker);
 
   useEffect(() => {
     setMounted(true);
@@ -467,13 +479,21 @@ export default function ChipsPage() {
                     賣超前 20
                   </button>
                 </div>
-                <div className={styles.emptyState}>
-                  <Share2 size={26} />
-                  <div className={styles.emptyTitle}>資料未入庫</div>
-                  <div className={styles.emptyDesc}>
-                    此區塊需券商分點逐筆資料（付費資料源），目前未接。
+                {/* 依 hasChannelData 分支（spec §2-B）：false/未載入 → 誠實「未入庫」；true → 分點分析區塊 */}
+                {channel?.hasChannelData === true ? (
+                  // TODO(channel-data)：FinMind Sponsor 開通後，在此依 channel.source / channel.asOfDate
+                  // 渲染分點逐筆表（分點名、買張、賣張、買賣超），資料由 /api/skynet/channel 回傳；
+                  // 現況無真資料，先留 skeleton，絕不補腦、不造假分點名稱與張數。
+                  <div className={styles.chartSkeleton} aria-busy="true" />
+                ) : (
+                  <div className={styles.emptyState}>
+                    <Share2 size={26} />
+                    <div className={styles.emptyTitle}>資料未入庫</div>
+                    <div className={styles.emptyDesc}>
+                      券商分點逐筆為付費資料源（FinMind Sponsor），目前未接。
+                    </div>
                   </div>
-                </div>
+                )}
               </section>
             ) : null}
 
@@ -830,13 +850,20 @@ export default function ChipsPage() {
             {activeTab === 'holders' ? (
               <section className={styles.section} aria-label="關鍵大股東">
                 <h2 className={styles.sectionTitle}>關鍵大股東</h2>
-                <div className={styles.emptyState}>
-                  <Users size={26} />
-                  <div className={styles.emptyTitle}>資料未入庫</div>
-                  <div className={styles.emptyDesc}>
-                    董監持股比例與千張大戶變動需付費或申報明細資料源，目前未接。
+                {/* 依 hasChannelData 分支（spec §2-B）：分點/大股東同源（付費資料源），false/未載入 → 誠實「未入庫」 */}
+                {channel?.hasChannelData === true ? (
+                  // TODO(channel-data)：FinMind Sponsor 開通後，在此渲染關鍵大股東/千張大戶明細；
+                  // 現況無真資料，先留 skeleton，絕不補腦、不造假持股比例。
+                  <div className={styles.chartSkeleton} aria-busy="true" />
+                ) : (
+                  <div className={styles.emptyState}>
+                    <Users size={26} />
+                    <div className={styles.emptyTitle}>資料未入庫</div>
+                    <div className={styles.emptyDesc}>
+                      董監持股比例與千張大戶變動需付費或申報明細資料源，目前未接。
+                    </div>
                   </div>
-                </div>
+                )}
               </section>
             ) : null}
 

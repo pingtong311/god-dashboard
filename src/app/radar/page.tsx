@@ -26,6 +26,8 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import type { RadarRow, RadarSort } from '@/app/api/skynet/radar/route';
+import { useChannelData } from '@/hooks/useChannelData';
+import type { ChannelData } from '@/types/channel';
 import styles from './radar.module.css';
 
 /** 固定列高（px），虛擬滾動據此換算可見區間。 */
@@ -266,6 +268,13 @@ export default function RadarPage() {
   // 表頭排序；null = 沿用 API 回傳的自然排序。
   const [tableSort, setTableSort] = useState<TableSort | null>(null);
 
+  // 分點資料源 flag（spec §2-B：false → 誠實「未入庫」；true → 分點有來源）。
+  // 分點資料源是「來源層級」可用性（是否接了 FinMind Sponsor），不是逐標的差異，
+  // 故以首行代號做探測（資料驅動、不硬編碼）；代號非法時 hook 回 null → 走未入庫分支。
+  const channelProbeTicker = rows[0]?.symbol ?? '';
+  const channel: ChannelData | null = useChannelData(channelProbeTicker);
+  const hasChannelData: boolean = channel?.hasChannelData === true;
+
   // 虛擬滾動狀態。
   const bodyRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -374,6 +383,9 @@ export default function RadarPage() {
     window.setTimeout(() => {
       try {
         const header = ['代號', '名稱', '市場', '指標', '漲跌%', '法人買賣超(張)', '分點'];
+        // 分點欄依 hasChannelData 分支（spec §2-B）：false →「未入庫」（誠實）；
+        // true → 僅標「有分點來源」（來源層級 flag，非逐標的數字；不補腦、不造分點張數）。
+        const branchCell = hasChannelData ? '有分點來源' : '未入庫';
         const lines = displayRows.map((row) => [
           row.symbol,
           row.name,
@@ -381,7 +393,7 @@ export default function RadarPage() {
           formatMetric(row, sort),
           row.changePercent.toFixed(2),
           row.totalNet === null ? '未入庫' : String(row.totalNet),
-          '未入庫',
+          branchCell,
         ]);
         // 開頭加 BOM，讓 Excel 正確辨識 UTF-8 中文。
         const csv =
@@ -400,7 +412,7 @@ export default function RadarPage() {
         setExporting(false);
       }
     }, 120);
-  }, [displayRows, sort, tradeDate, exporting]);
+  }, [displayRows, sort, tradeDate, exporting, hasChannelData]);
 
   const renderSortIcon = (key: SortKey) => {
     const active = tableSort?.key === key;
@@ -569,7 +581,13 @@ export default function RadarPage() {
                           >
                             {formatLots(row.totalNet)}
                           </span>
-                          <span className={`${styles.cell} ${styles.branch}`}>未入庫</span>
+                          {/* 分點欄依 hasChannelData 分支（spec §2-B）：true → 標「有分點來源」（來源層級 flag）；
+                              false/未載入 → 誠實「未入庫」。現況無免費分點資料源，恆走「未入庫」。 */}
+                          {hasChannelData ? (
+                            <span className={`${styles.cell} ${styles.branch}`}>有分點來源</span>
+                          ) : (
+                            <span className={`${styles.cell} ${styles.branch}`}>未入庫</span>
+                          )}
                         </div>
                       );
                     })}

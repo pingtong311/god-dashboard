@@ -5,8 +5,8 @@
  * 複刻：https://blackstockai.com/s/2330/
  *
  * BlackScore v1.0 公開層計分邏輯（博主 /methodology/ 公開）：
- * - 分點資金 25% → 無資料源 →「未入庫」
- * - 買方集中 15% → 無資料源 →「未入庫」
+ * - 分點資金 25% → 依 hasChannelData 分支（spec §2-B）：無付費來源 →「未入庫」
+ * - 買方集中 15% → 依 hasChannelData 分支（spec §2-B）：無付費來源 →「未入庫」
  * - 法人動向 20% → /api/skynet/twse (T86) 可算
  * - 技術結構 15% → /api/skynet/kline (日K) 可算：20MA、位階
  * - 量能動能 15% → /api/skynet/kline (日K) 可算：當日量/20日均量
@@ -16,6 +16,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import type { ChannelData, ChannelResponse } from '@/types/channel';
 import styles from './stock.module.css';
 
 // ── 型別定義 ────────────────────────────────────────────
@@ -141,10 +142,33 @@ export interface FactorResult {
   color: 'green' | 'red' | 'purple' | 'blue';
 }
 
+/**
+ * 依 hasChannelData 分支（spec §2-B）：分點資金 / 買方集中兩項。
+ * - channel.hasChannelData === true（日後 FinMind Sponsor 開通）→ 依真實分點資料計分（現況無真資料，
+ *   只留 skeleton 註解，絕不補腦、不造假分點張數）
+ * - false / null（未接付費來源，現況恆定值）→ 誠實標「未入庫」，不計分
+ */
+function branchFactor(
+  channel: ChannelData | null,
+  key: 'branchCapital' | 'buyConcentration',
+  label: string,
+  weight: number,
+  color: 'blue' | 'purple',
+  noSourceFact: string
+): FactorResult {
+  if (channel?.hasChannelData === true) {
+    // TODO(channel-data)：FinMind Sponsor 開通後，在此依 channel 回傳的分點逐筆/集中度真實數字計分；
+    // 現況無真資料，先給中性的「已接分點來源，明細計算中」暫占（不補腦、不捏造分數），日後換成實算。
+    return { key, label, weight, fact: '分點來源已接，明細計分計算中', score: null, color };
+  }
+  return { key, label, weight, fact: noSourceFact, score: null, color };
+}
+
 export function computeBlackScore(
   twseData: TWSEItem | null,
   candles: KLineCandle[],
-  t86Data: T86Row[]
+  t86Data: T86Row[],
+  channel?: ChannelData | null
 ): { total: number; factors: FactorResult[] } {
   const weights = {
     'branchCapital': 25,      // 分點資金
@@ -157,25 +181,32 @@ export function computeBlackScore(
 
   const factors: FactorResult[] = [];
 
-  // 1. 分點資金 — 無資料源
-  factors.push({
-    key: 'branchCapital',
-    label: '分點資金',
-    weight: weights.branchCapital,
-    fact: '無分點明細資料源，暫不計分',
-    score: null,
-    color: 'blue',
-  });
+  // 未傳入 channel（undefined）一律當 null 處理 → 走「未入庫」誠實分支。
+  const ch = channel ?? null;
 
-  // 2. 買方集中 — 無資料源
-  factors.push({
-    key: 'buyConcentration',
-    label: '買方集中',
-    weight: weights.buyConcentration,
-    fact: '無分點集中度資料源，暫不計分',
-    score: null,
-    color: 'purple',
-  });
+  // 1. 分點資金 — 依 hasChannelData 分支（spec §2-B）
+  factors.push(
+    branchFactor(
+      ch,
+      'branchCapital',
+      '分點資金',
+      weights.branchCapital,
+      'blue',
+      '無分點明細資料源（券商分點逐筆為付費來源，目前未接），暫不計分'
+    )
+  );
+
+  // 2. 買方集中 — 依 hasChannelData 分支（spec §2-B）
+  factors.push(
+    branchFactor(
+      ch,
+      'buyConcentration',
+      '買方集中',
+      weights.buyConcentration,
+      'purple',
+      '無分點集中度資料源（券商分點逐筆為付費來源，目前未接），暫不計分'
+    )
+  );
 
   // 3. 法人動向 — 可算（T86 三大法人）
   let institutionalFact = '無三大法人資料';
@@ -294,6 +325,7 @@ export function StockPageContent({ ticker }: StockPageContentProps) {
   const [candles, setCandles] = useState<KLineCandle[]>([]);
   const [t86Data, setT86Data] = useState<T86Row[]>([]);
   const [fundamental, setFundamental] = useState<FundamentalData | null>(null);
+  const [channel, setChannel] = useState<ChannelData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -305,13 +337,15 @@ export function StockPageContent({ ticker }: StockPageContentProps) {
       setError(null);
 
       try {
-        // 並行抓取四個資料源（基本面失敗不影響其他區塊，逐欄「未入庫」）
-        const [twseRes, klineRes, t86Res, fundamentalRes] = await Promise.allSettled([
+        // 並行抓取五個資料源（各自失敗不影響其他區塊，逐欄「未入庫」）
+        const [twseRes, klineRes, t86Res, fundamentalRes, channelRes] = await Promise.allSettled([
           fetch(`/api/skynet/twse?tickers=${ticker}`).then(r => r.json()),
           fetch(`/api/skynet/kline?type=daily&ticker=${ticker}`).then(r => r.json()),
           // T86 資料從 market-overview 取得（已包含 institutionalBuy）
           fetch('/api/skynet/market-overview').then(r => r.json()),
           fetch(`/api/skynet/fundamental?ticker=${ticker}`).then(r => r.json()),
+          // 分點資料源 flag（spec §2-B；誠實骨架，現況 hasChannelData 恆 false）
+          fetch(`/api/skynet/channel?ticker=${ticker}`).then(r => r.json()),
         ]);
 
         if (cancelled) return;
@@ -341,6 +375,12 @@ export function StockPageContent({ ticker }: StockPageContentProps) {
         // 基本面（route 回 { ok: true, data } 或 { ok: false }；缺失欄已為 null，不補腦）
         if (fundamentalRes.status === 'fulfilled' && fundamentalRes.value.ok && fundamentalRes.value.data) {
           setFundamental(fundamentalRes.value.data);
+        }
+
+        // 分點 flag（spec §2-B；ok:false / 網路失敗 → 維持 null，走「未入庫」誠實分支）
+        if (channelRes.status === 'fulfilled') {
+          const body = channelRes.value as ChannelResponse;
+          if (body.ok && body.data) setChannel(body.data);
         }
 
         if (cancelled) return;
@@ -380,7 +420,7 @@ export function StockPageContent({ ticker }: StockPageContentProps) {
     );
   }
 
-  const { total: score, factors } = computeBlackScore(twseData, candles, t86Data);
+  const { total: score, factors } = computeBlackScore(twseData, candles, t86Data, channel);
   const tradeDate = twseData.tradeDate ? formatDate(twseData.tradeDate) : '最新交易日';
 
   return (
