@@ -60,6 +60,30 @@ export interface T86Row {
   netLots: number;
 }
 
+// ── 基本面資料（/api/skynet/fundamental 回傳；缺失欄一律 null）─────────────
+
+export interface FundamentalData {
+  ticker: string;
+  name: string | null;
+  monthlyRevenue: number | null;
+  monthlyRevenueYoY: number | null;
+  eps: number | null;
+  grossMargin: number | null;
+  roe: number | null;
+  debtRatio: number | null;
+  peRatio: number | null;
+  pbRatio: number | null;
+  dividendYield: number | null;
+  asOfDate: string | null;
+  fetchedAt: string;
+}
+
+export interface FundamentalApiResponse {
+  ok: boolean;
+  data?: FundamentalData;
+  message?: string;
+}
+
 // ── 工具函式 ────────────────────────────────────────────
 
 export function formatDate(ymd: string): string {
@@ -92,6 +116,18 @@ export function toneClass(change: number): string {
   if (change > 0) return 'up';
   if (change < 0) return 'down';
   return '';
+}
+
+/** 基本面數值格式化：null → 「未入庫」（誠實標記，不補腦、不顯示 0）。 */
+export function formatFundamental(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return '未入庫';
+  return n.toLocaleString('zh-TW', { maximumFractionDigits: 2 });
+}
+
+/** 百分比分格式化：null → 「未入庫」，否則帶正負號與 %。 */
+export function formatFundamentalPct(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return '未入庫';
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
 }
 
 // ── BlackScore 計分邏輯 ────────────────────────────────
@@ -257,6 +293,7 @@ export function StockPageContent({ ticker }: StockPageContentProps) {
   const [twseData, setTwseData] = useState<TWSEItem | null>(null);
   const [candles, setCandles] = useState<KLineCandle[]>([]);
   const [t86Data, setT86Data] = useState<T86Row[]>([]);
+  const [fundamental, setFundamental] = useState<FundamentalData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -268,12 +305,13 @@ export function StockPageContent({ ticker }: StockPageContentProps) {
       setError(null);
 
       try {
-        // 並行抓取三個資料源
-        const [twseRes, klineRes, t86Res] = await Promise.allSettled([
+        // 並行抓取四個資料源（基本面失敗不影響其他區塊，逐欄「未入庫」）
+        const [twseRes, klineRes, t86Res, fundamentalRes] = await Promise.allSettled([
           fetch(`/api/skynet/twse?tickers=${ticker}`).then(r => r.json()),
           fetch(`/api/skynet/kline?type=daily&ticker=${ticker}`).then(r => r.json()),
           // T86 資料從 market-overview 取得（已包含 institutionalBuy）
           fetch('/api/skynet/market-overview').then(r => r.json()),
+          fetch(`/api/skynet/fundamental?ticker=${ticker}`).then(r => r.json()),
         ]);
 
         if (cancelled) return;
@@ -298,6 +336,11 @@ export function StockPageContent({ ticker }: StockPageContentProps) {
             netLots: item.netLots,
           }));
           setT86Data(mapped);
+        }
+
+        // 基本面（route 回 { ok: true, data } 或 { ok: false }；缺失欄已為 null，不補腦）
+        if (fundamentalRes.status === 'fulfilled' && fundamentalRes.value.ok && fundamentalRes.value.data) {
+          setFundamental(fundamentalRes.value.data);
         }
 
         if (cancelled) return;
@@ -381,6 +424,42 @@ export function StockPageContent({ ticker }: StockPageContentProps) {
           </span>
         </div>
       </div>
+
+      {/* 基本面卡片（/api/skynet/fundamental：TWSE BWIBBU + MOPS + FinMind，逐欄誠實顯示） */}
+      <section className={styles.fundamentalSection} aria-labelledby="fundamental-title">
+        <div className={styles.fundamentalHeader}>
+          <h2 id="fundamental-title" className={styles.sectionTitle}>基本面</h2>
+          <span className={styles.fundamentalAsOf}>
+            {fundamental?.asOfDate ? `截至 ${fundamental.asOfDate}` : '尚未入庫'}
+          </span>
+        </div>
+        <div className={styles.fundamentalGrid} role="list" aria-label="基本面欄位">
+          {([
+            { label: '月營收', value: fundamental ? formatFundamental(fundamental.monthlyRevenue) : null, hint: fundamental?.monthlyRevenueYoY != null ? `YoY ${formatFundamentalPct(fundamental.monthlyRevenueYoY)}` : null },
+            { label: 'EPS', value: fundamental ? formatFundamental(fundamental.eps) : null, hint: null },
+            { label: '毛利率', value: fundamental ? formatFundamentalPct(fundamental.grossMargin) : null, hint: null },
+            { label: 'ROE', value: fundamental ? formatFundamentalPct(fundamental.roe) : null, hint: null },
+            { label: '負債比', value: fundamental ? formatFundamentalPct(fundamental.debtRatio) : null, hint: null },
+            { label: 'PE', value: fundamental ? formatFundamental(fundamental.peRatio) : null, hint: null },
+            { label: 'PB', value: fundamental ? formatFundamental(fundamental.pbRatio) : null, hint: null },
+            { label: '現金股利殖利率', value: fundamental ? formatFundamentalPct(fundamental.dividendYield) : null, hint: null },
+          ] as Array<{ label: string; value: string | null; hint: string | null }>).map((item) => (
+            <div key={item.label} className={styles.fundamentalItem} role="listitem">
+              <div className={styles.fundamentalLabel}>
+                {item.label}
+                {item.hint ? <span className="weight"> {item.hint}</span> : null}
+              </div>
+              <div className={`${styles.fundamentalValue} ${item.value === '未入庫' ? styles.fundamentalMissing : ''}`}>
+                {item.value ?? '未入庫'}
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className={styles.fundamentalNote}>
+          資料來源：TWSE BWIBBU（估值）、MOPS 月營收/財報、FinMind（EPS 備援）；
+          「未入庫」代表該欄目前無來源資料，不補零。
+        </p>
+      </section>
 
       {/* BlackScore 研究熱度分數 */}
       <section className={styles.scoreSection} aria-labelledby="score-title">

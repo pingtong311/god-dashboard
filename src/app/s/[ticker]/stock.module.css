@@ -444,6 +444,77 @@
   opacity: 0.9;
 }
 
+/* 基本面卡片 */
+.fundamentalSection {
+  padding: 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.fundamentalHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.fundamentalAsOf {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-family: var(--font-tech);
+}
+
+.fundamentalGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.fundamentalItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-panel);
+  border-left: 3px solid var(--line);
+}
+
+.fundamentalLabel {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fundamentalLabel .weight {
+  font-family: var(--font-tech);
+  font-size: var(--text-xs);
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.fundamentalValue {
+  font-family: var(--font-tech);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.fundamentalValue.fundamentalMissing {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.fundamentalNote {
+  margin-top: 12px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: var(--leading-relaxed);
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .metrics {
@@ -458,5 +529,8 @@
   }
   .factor {
     padding: 10px;
+  }
+  .fundamentalGrid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
