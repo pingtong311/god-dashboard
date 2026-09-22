@@ -356,11 +356,13 @@
 }
 
 .bubbleRowUser {
-  justify-content: flex-end;
+  /* ai.md §2.6.1/§4：使用者氣泡左對齊（淺灰白底 #F2F3F5） */
+  justify-content: flex-start;
 }
 
 .bubbleRowAi {
-  justify-content: flex-start;
+  /* ai.md §2.6.2/§4：AI 答覆氣泡右對齊 */
+  justify-content: flex-end;
 }
 
 .bubble {
@@ -375,13 +377,14 @@
 }
 
 .bubbleUser {
-  /* ai.md §4：使用者氣泡 淺灰白底 #F2F3F5，左對齊（現況右對齊維持） */
+  /* ai.md §4：使用者氣泡 淺灰白底 #F2F3F5、左對齊（右下尖角，指向發話方） */
   border-color: var(--bs-border);
   background: #f2f3f5;
   border-bottom-right-radius: 4px;
 }
 
 .bubbleAi {
+  /* ai.md §4：AI 氣泡白底＋細邊 #E5E7EB、右對齊（左下尖角，指向發話方） */
   background: var(--bs-ai-bubble);
   border-bottom-left-radius: 4px;
 }
@@ -613,18 +616,8 @@
   color: var(--bs-text-dim);
 }
 
-.composerActions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.composerRight {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+/* .composerActions / .composerRight 在下方「作曲區：語音、圖片按鈕、預覽條」節
+   有完整定義（含 flex-wrap），舊的簡化重複區塊已移除，無行為差異。 */
 
 .clearBtn {
   padding: 8px 12px;
@@ -1121,25 +1114,5 @@
   color: var(--bs-gold);
 }
 
-/* 調整送出按鈕在有圖片時的行為 */
-.sendBtn {
-  padding: 9px 20px;
-  border-radius: 9px;
-  border: 1px solid var(--bs-gold);
-  background: var(--bs-gold);
-  /* 局部浅色主題：按鈕文字改為深色 */
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 900;
-  cursor: pointer;
-  transition: filter 0.18s ease, opacity 0.18s ease;
-}
-
-.sendBtn:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.sendBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+/* .sendBtn / .sendBtn:hover / .sendBtn:disabled 已在上方「輸入區」節完整定義，
+   舊重覆區塊已移除（兩塊內容完全相同，純樣式重複，無行為差異）。 */
