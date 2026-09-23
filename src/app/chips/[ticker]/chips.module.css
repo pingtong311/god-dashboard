@@ -499,6 +499,84 @@
   color: var(--muted);
 }
 
+/* ── 券商分點活躍度小卡（spec §2-D「B3」：TPEX 上櫃分點營業金額彙總 top N）── */
+/* 誠實定位：全上櫃市場分點彙總（不分 ticker）、收盤後批次、僅分點營業金額彙總、
+   非逐股分點買賣；語彙沿用深藍金（--accent / --gold-line / --surface-2 / --line）。 */
+
+.brokerCard {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+}
+
+.brokerCardHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.brokerCardTitle {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.brokerCardDate {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  font-family: var(--font-tech);
+}
+
+.brokerEmpty {
+  padding: 14px 4px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  text-align: center;
+}
+
+.brokerTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.brokerTable th,
+.brokerTable td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.brokerTable th {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.brokerTable td {
+  color: var(--ink);
+}
+
+.brokerTable tr:last-child td {
+  border-bottom: none;
+}
+
+.brokerNote {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: var(--leading-relaxed);
+}
+
 /* 交叉連結 */
 .crossLinks {
   display: flex;

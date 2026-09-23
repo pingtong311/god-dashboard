@@ -23,6 +23,11 @@
 # production
 /build
 
+# Cloudflare Workers build artifacts (deploy:cf 產出；勿入 git，會把 build 檔掃進 commit)
+.open-next/
+open-next.config.mjs
+cf-template/
+
 # misc
 .DS_Store
 *.pem

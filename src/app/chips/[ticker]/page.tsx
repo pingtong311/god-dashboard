@@ -33,6 +33,7 @@ import {
 import { ChevronLeft, Download, RefreshCw, Share2, TrendingUp, Users } from 'lucide-react';
 import styles from './chips.module.css';
 import { useChannelData } from '@/hooks/useChannelData';
+import { useTpxBrokerActivity } from '@/hooks/useTpxBrokerActivity';
 import type { ChannelData } from '@/types/channel';
 
 // ── recharts 專用色票 ────────────────────────────────────
@@ -196,6 +197,10 @@ export default function ChipsPage() {
 
   // 分點資料源 flag（spec §2-B：false → 誠實「未入庫」；true → 分點分析區塊）
   const channel: ChannelData | null = useChannelData(ticker);
+
+  // 券商分點活躍度（spec §2-D「B3」：TPEX 上櫃分點營業金額彙總 top N，全上櫃不分 ticker；
+  // 收盤後批次、僅分點營業金額彙總、非逐股分點買賣）
+  const tpxBroker = useTpxBrokerActivity();
 
   useEffect(() => {
     setMounted(true);
@@ -494,6 +499,52 @@ export default function ChipsPage() {
                     </div>
                   </div>
                 )}
+
+                {/* 券商分點活躍度小卡（spec §2-D「B3」：TPEX 上櫃分點營業金額彙總 top N）
+                    ⚠ 誠實定位：全上櫃市場分點彙總（不分 ticker）、收盤後批次、僅分點營業金額彙總，
+                    非逐股分點買賣；渲染前顯示在上方「未入庫」提示下方，補上「籌碼背景濾網」視角。 */}
+                <div className={styles.brokerCard}>
+                  <div className={styles.brokerCardHead}>
+                    <span className={styles.brokerCardTitle}>券商分點活躍度（TPEX 上櫃）</span>
+                    {tpxBroker?.asOfDate ? (
+                      <span className={styles.brokerCardDate}>收盤 {tpxBroker.asOfDate}</span>
+                    ) : null}
+                  </div>
+
+                  {tpxBroker === null ? (
+                    <div className={styles.brokerEmpty}>資料未入庫（TPEX 分點營業金額彙總暫無資料）</div>
+                  ) : tpxBroker.hasBrokerActivity && tpxBroker.topBrokers.length > 0 ? (
+                    <>
+                      <table className={styles.brokerTable}>
+                        <thead>
+                          <tr>
+                            <th>分點</th>
+                            <th className={styles.right}>營業金額</th>
+                            <th className={styles.right}>當日止占比</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tpxBroker.topBrokers.map((row, idx) => (
+                            <tr key={`${row.code || 'x'}-${idx}`}>
+                              <td>
+                                <span className={styles.num}>{row.code}</span> {row.name}
+                              </td>
+                              <td className={`${styles.right} ${styles.num}`}>
+                                {row.tradingAmount !== null ? formatInteger(row.tradingAmount) : '--'}
+                              </td>
+                              <td className={`${styles.right} ${styles.num}`}>{row.dayClosingRatio ?? '--'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div className={styles.brokerNote}>
+                        {tpxBroker.note}；收盤後批次，非盤中即時。
+                      </div>
+                    </>
+                  ) : (
+                    <div className={styles.brokerEmpty}>今日無有效分點營業金額筆數（資料未入庫）</div>
+                  )}
+                </div>
               </section>
             ) : null}
 
