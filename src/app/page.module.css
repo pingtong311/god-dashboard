@@ -282,6 +282,417 @@
   font-weight: 700;
 }
 
+/* ── 0. 未登入態首屏（複刻博主「台股籌碼與當沖戰情室」） ──────── */
+
+/* 第一屏：Hero + 先查一檔看看 */
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 20px 14px;
+  border: 1px solid var(--bs-border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(11, 15, 20, 0.62), rgba(10, 17, 40, 0.82));
+}
+
+.heroLogo {
+  margin-bottom: 12px;
+  line-height: 0;
+}
+
+.heroTitle {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--bs-text);
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+}
+
+.heroSub {
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--bs-gold);
+}
+
+.heroDesc {
+  margin: 10px 0 16px;
+  max-width: 480px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--bs-text-dim);
+}
+
+.queryCard {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--bs-border);
+  border-radius: 14px;
+  background: rgba(11, 15, 20, 0.55);
+  text-align: left;
+}
+
+.queryTitle {
+  display: block;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--bs-text);
+}
+
+.querySub {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--bs-text-dim);
+}
+
+.queryRow {
+  display: flex;
+  gap: 8px;
+}
+
+.queryInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--bs-border);
+  background: rgba(11, 15, 20, 0.72);
+  color: var(--bs-text);
+  font-size: 14px;
+  font-weight: 800;
+  font-family: var(--font-tech);
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+
+.queryInput:focus {
+  border-color: var(--bs-gold-line);
+}
+
+.queryBtn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--bs-gold);
+  background: var(--bs-gold);
+  color: #0a1128;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: filter 0.18s ease;
+}
+
+.queryBtn:hover {
+  filter: brightness(1.08);
+}
+
+/* 第二屏：介面示例 */
+.exampleCard {
+  padding: 16px;
+  border: 1px solid var(--bs-border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(11, 15, 20, 0.55), rgba(10, 17, 40, 0.72));
+}
+
+.exampleKicker {
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: var(--bs-gold);
+  margin-bottom: 6px;
+}
+
+.exampleTitle {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--bs-text);
+}
+
+.exampleDesc {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--bs-text-dim);
+}
+
+.exampleList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.exampleList li {
+  position: relative;
+  padding-left: 14px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--bs-text);
+}
+
+.exampleList li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--bs-gold);
+  font-weight: 900;
+}
+
+/* 第三屏：第一次用三卡 + 常用工具 */
+.quickSection,
+.toolsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quickTitle,
+.toolsTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--bs-text);
+}
+
+.toolsSub {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--bs-text-dim);
+}
+
+.quickCards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quickCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--bs-border);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(11, 15, 20, 0.55), rgba(10, 17, 40, 0.65));
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.quickCard:hover {
+  border-color: var(--bs-gold-line);
+  background: var(--bs-gold-soft);
+}
+
+.quickCard strong {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--bs-text);
+}
+
+.quickCard span {
+  font-size: 11px;
+  color: var(--bs-text-dim);
+}
+
+.toolsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.toolCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--bs-border);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(11, 15, 20, 0.55), rgba(10, 17, 40, 0.65));
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.toolCard:hover {
+  border-color: var(--bs-gold-line);
+  background: var(--bs-gold-soft);
+}
+
+.toolHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.toolHead strong {
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--bs-text);
+}
+
+.toolCard p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--bs-text-dim);
+}
+
+.toolTag {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--bs-border);
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--bs-text-dim);
+}
+
+/* 「免登入」金色標籤 */
+.toolTagFree {
+  border-color: var(--bs-gold-line);
+  color: var(--bs-gold);
+  background: var(--bs-gold-soft);
+}
+
+/* 第四屏：資料從哪來 */
+.sourceCard {
+  padding: 16px;
+  border: 1px solid var(--bs-border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(11, 15, 20, 0.55), rgba(10, 17, 40, 0.72));
+}
+
+.sourceTitle {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--bs-text);
+}
+
+.sourceList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sourceList li {
+  position: relative;
+  padding-left: 14px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--bs-text);
+}
+
+.sourceList li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--bs-gold);
+  font-weight: 900;
+}
+
+/* 第五屏：常見問題 */
+.faqSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.faqTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--bs-text);
+}
+
+.faqList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.faqItem {
+  padding: 12px 14px;
+  border: 1px solid var(--bs-border);
+  border-radius: 12px;
+  background: rgba(11, 15, 20, 0.5);
+}
+
+.faqQuestion {
+  display: block;
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--bs-text);
+  margin-bottom: 4px;
+}
+
+.faqAnswer {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--bs-text-dim);
+}
+
+/* 第六屏：公司與客服 */
+.companyCard {
+  padding: 16px;
+  border: 1px solid var(--bs-border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(11, 15, 20, 0.55), rgba(10, 17, 40, 0.72));
+}
+
+.companyTitle {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--bs-text);
+}
+
+.companyAnswer {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--bs-text-dim);
+}
+
+.companyLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.companyLinks a {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--bs-gold);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s ease;
+}
+
+.companyLinks a:hover {
+  border-color: var(--bs-gold-line);
+}
+
 /* ── 1. 盤前資訊卡 ─────────────────────────────────────── */
 
 .preCard {
@@ -685,5 +1096,26 @@
 
   .panel {
     padding: 10px;
+  }
+
+  /* 未登入態首屏：極窄螢幕折為單欄 */
+  .heroTitle {
+    font-size: 22px;
+  }
+
+  .quickCards {
+    grid-template-columns: 1fr;
+  }
+
+  .toolsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .queryRow {
+    flex-direction: column;
+  }
+
+  .queryBtn {
+    width: 100%;
   }
 }

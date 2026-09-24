@@ -82,6 +82,124 @@ function toneClass(value: number): string {
   return styles.flat;
 }
 
+/** 常用工具卡資料（2 欄 × 3 列）。tag 為「免登入」時用金色標籤。 */
+type ToolCardItem = {
+  title: string;
+  suitable: string;
+  willSee: string;
+  tag: string;
+  free: boolean;
+  href: string;
+};
+
+const TOOL_CARDS: readonly ToolCardItem[] = [
+  {
+    title: '新手導覽',
+    suitable: '適合：第一次來',
+    willSee: '會看到：今天先看哪三頁',
+    tag: '免登入',
+    free: true,
+    href: '/guide',
+  },
+  {
+    title: '台股學堂',
+    suitable: '適合：名詞看不懂',
+    willSee: '會看到：分點、集中度、量比白話',
+    tag: '免登入',
+    free: true,
+    href: '/school',
+  },
+  {
+    title: '個股盯盤',
+    suitable: '適合：想查一檔',
+    willSee: '會看到：走勢、籌碼、分點、風險',
+    tag: '要登入',
+    free: false,
+    href: '/s/2330',
+  },
+  {
+    title: '今日戰情',
+    suitable: '適合：想看今天盤勢',
+    willSee: '會看到：漲跌家數與資料日',
+    tag: '要登入',
+    free: false,
+    href: '/diary',
+  },
+  {
+    title: '台股日報',
+    suitable: '適合：想看盤後整理',
+    willSee: '會看到：當日客觀摘要',
+    tag: '要登入',
+    free: false,
+    href: '/diary',
+  },
+  {
+    title: '文章',
+    suitable: '適合：想看盤後解讀',
+    willSee: '會看到：每天更新的教學長文',
+    tag: '免登入',
+    free: true,
+    href: '/learn',
+  },
+];
+
+/** 第一次用三卡（橫排）。 */
+type QuickCardItem = {
+  title: string;
+  hint: string;
+  href: string;
+};
+
+const QUICK_CARDS: readonly QuickCardItem[] = [
+  { title: '今天市場怎麼了', hint: '先讀新手導覽', href: '/diary' },
+  { title: '查一檔股票', hint: '登入後看 2330', href: '/s/2330' },
+  { title: '先學一個名詞', hint: '台股學堂白話', href: '/school' },
+];
+
+/** 常見問題 4 題（逐字）。 */
+type FaqItem = {
+  question: string;
+  answer: string;
+};
+
+const FAQ_ITEMS: readonly FaqItem[] = [
+  {
+    question: '股市大佬是什麼？',
+    answer:
+      '股市大佬 TradeBoss 是台灣股票市場的公開籌碼與量價研究站。把券商分點買賣超、三大法人、日 K 結構與歷史統計整理成好讀的教學與工具。免登入可讀學堂與文章；登入後可查個股與日報。不是投顧、不代客操作、不構成投資建議。',
+  },
+  {
+    question: '免登入可以看什麼？',
+    answer:
+      '公開教學文章、台股學堂、新手導覽、使用手冊、方案說明與法遵頁都可以直接讀。下面有 2330 的介面示例，說明登入後會看到哪幾塊。會員區的個股完整資料要登入後才開。',
+  },
+  {
+    question: '這裡的數字是不是買賣建議？',
+    answer:
+      '不是。全站整理的是已發生的公開資料與歷史樣本。支撐壓力、均線與回撤價位是公式算出來的結構帶，不是進出場指令。投資有風險，請自行判斷。',
+  },
+  {
+    question: '現在要付多少錢？',
+    answer: '目前全站免費開放，不收月費。公開教學免登入就能讀；會員研究區註冊後即可使用。',
+  },
+];
+
+/** 公司與客服底部連結列（7 個，金棕色小字）。 */
+type CompanyLink = {
+  label: string;
+  href: string;
+};
+
+const COMPANY_LINKS: readonly CompanyLink[] = [
+  { label: '關於本站', href: '/about' },
+  { label: '新手導覽', href: '/guide' },
+  { label: '隱私權政策', href: '/privacy' },
+  { label: '服務條款', href: '/terms' },
+  { label: 'AI 資料處理', href: '/methodology' },
+  { label: '法遵說明', href: '/legal' },
+  { label: '使用回饋/刪帳', href: '/about' },
+];
+
 export default function HomePage() {
   const [overview, setOverview] = useState<MarketOverview | null>(null);
   const [live, setLive] = useState<LiveItem[]>([]);
@@ -90,6 +208,10 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+
+  // 未登入態「先查一檔看看」輸入代號（預填 2330）
+  const [queryTicker, setQueryTicker] = useState('2330');
+  const queryTickerHref = `/s/${queryTicker.trim() || '2330'}`;
 
   // 日期切換器相關
   const [tradingDates, setTradingDates] = useState<string[]>([]);
@@ -362,6 +484,137 @@ export default function HomePage() {
         )}
 
         <div className={styles.content} ref={contentRef}>
+          {/* 0. 未登入態首屏（複刻博主「台股籌碼與當沖戰情室」逐字規格） */}
+
+          {/* 第一屏：Hero + 先查一檔看看 */}
+          <section className={styles.hero}>
+            <div className={styles.heroLogo} aria-hidden="true">
+              <svg viewBox="0 0 64 64" width="56" height="56" role="img" aria-label="TradeBoss 標誌占位">
+                <circle cx="32" cy="32" r="30" fill="#0a1128" stroke="var(--bs-gold)" strokeWidth="2.5" />
+                {/* 燭台 icon：陰燭 + 影線 */}
+                <line x1="24" y1="14" x2="24" y2="50" stroke="var(--bs-gold)" strokeWidth="2" />
+                <rect x="18" y="22" width="12" height="20" rx="2" fill="none" stroke="var(--bs-gold)" strokeWidth="2" />
+                <line x1="40" y1="18" x2="40" y2="46" stroke="var(--bs-text-dim)" strokeWidth="2" />
+                <rect x="34" y="24" width="12" height="16" rx="2" fill="var(--bs-gold)" />
+              </svg>
+            </div>
+            <h1 className={styles.heroTitle}>台股籌碼與當沖戰情室</h1>
+            <p className={styles.heroSub}>打開就知道今天發生什麼</p>
+            <p className={styles.heroDesc}>
+              用公開資料整理這支股票最近的走勢、分點集中與基本面；每個結論都應附資料日與限制。不是投顧、不構成投資建議。
+            </p>
+
+            <div className={styles.queryCard}>
+              <div>
+                <strong className={styles.queryTitle}>先查一檔看看</strong>
+                <span className={styles.querySub}>
+                  輸入代號。完整個股資料要登入；沒登入也可先看下面 2330 會出現哪些區塊。
+                </span>
+              </div>
+              <div className={styles.queryRow}>
+                <input
+                  className={styles.queryInput}
+                  value={queryTicker}
+                  onChange={(event) => setQueryTicker(event.target.value.replace(/[^0-9]/g, ''))}
+                  inputMode="numeric"
+                  maxLength={4}
+                  aria-label="股票代號"
+                />
+                <Link className={styles.queryBtn} href={queryTickerHref}>
+                  免費查看示例 →
+                </Link>
+              </div>
+            </div>
+          </section>
+
+          {/* 第二屏：介面示例 */}
+          <section className={styles.exampleCard}>
+            <span className={styles.exampleKicker}>介面示例 · 非即時行情 · 非正式分析</span>
+            <h2 className={styles.exampleTitle}>如果查 2330,登入後會看到什麼</h2>
+            <p className={styles.exampleDesc}>
+              這張卡只說明畫面結構，不是對台積電的研判或買賣建議。真實價格、分點與法人數字以登入後、頁上顯示的資料日為準。
+            </p>
+            <ul className={styles.exampleList}>
+              <li>資料狀態：現價或收盤、資料時間、盤中或盤後</li>
+              <li>一句摘要：已發生的走勢／籌碼整理，標「歷史資料」</li>
+              <li>風險：處置、除權息、流動性等資料缺口</li>
+              <li>波段／當沖：同一檔要看的东西不同，先選研究時間</li>
+            </ul>
+          </section>
+
+          {/* 第三屏：第一次用 + 常用工具 */}
+          <section className={styles.quickSection}>
+            <h2 className={styles.quickTitle}>第一次用,走這三條</h2>
+            <div className={styles.quickCards}>
+              {QUICK_CARDS.map((card) => (
+                <Link key={card.title} href={card.href} className={styles.quickCard}>
+                  <strong>{card.title}</strong>
+                  <span>{card.hint}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          <section className={styles.toolsSection}>
+            <div>
+              <h2 className={styles.toolsTitle}>常用工具</h2>
+              <p className={styles.toolsSub}>只列最常用。完整功能在登入後搜尋列。</p>
+            </div>
+            <div className={styles.toolsGrid}>
+              {TOOL_CARDS.map((card) => (
+                <Link key={card.title} href={card.href} className={styles.toolCard}>
+                  <div className={styles.toolHead}>
+                    <strong>{card.title}</strong>
+                    <span className={card.free ? `${styles.toolTag} ${styles.toolTagFree}` : styles.toolTag}>
+                      {card.tag}
+                    </span>
+                  </div>
+                  <p>{card.suitable}</p>
+                  <p>{card.willSee}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          {/* 第四屏：資料從哪來 */}
+          <section className={styles.sourceCard}>
+            <h2 className={styles.sourceTitle}>資料從哪來、多久更新</h2>
+            <ul className={styles.sourceList}>
+              <li>行情／日線：證交所、櫃買公開資料</li>
+              <li>籌碼／分點／法人：盤後結算（收盤後才出）</li>
+              <li>盤中報價：第三方快照，可能有數秒延遲</li>
+              <li>各頁會標資料日與下次更新</li>
+            </ul>
+          </section>
+
+          {/* 第五屏：常見問題 */}
+          <section className={styles.faqSection}>
+            <h2 className={styles.faqTitle}>常見問題</h2>
+            <div className={styles.faqList}>
+              {FAQ_ITEMS.map((item) => (
+                <div key={item.question} className={styles.faqItem}>
+                  <strong className={styles.faqQuestion}>{item.question}</strong>
+                  <p className={styles.faqAnswer}>{item.answer}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* 第六屏：公司與客服 */}
+          <section className={styles.companyCard}>
+            <h2 className={styles.companyTitle}>公司與客服</h2>
+            <p className={styles.companyAnswer}>
+              營運識別：TradeBoss 團隊。客服用 Telegram 或會員中心「使用回饋」。本站不會私訊要驗證碼、也不會要你匯款。法人登記資料尚未公開前，請以法遵頁為準。
+            </p>
+            <nav className={styles.companyLinks} aria-label="站內連結">
+              {COMPANY_LINKS.map((link) => (
+                <Link key={link.label} href={link.href}>
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          </section>
+
           {error ? (
             <div className={styles.errorBanner}>
               <span>{error}</span>

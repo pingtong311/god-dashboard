@@ -4,18 +4,25 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { shouldShowAppTabBar } from '@/lib/shellRoutes';
+import { X } from 'lucide-react';
 import {
-  CandlestickChart,
-  Crosshair,
-  Gamepad2,
-  MessageCircle,
-  MoreHorizontal,
-  NotebookPen,
-  PieChart,
-  Radar,
-  Star,
-  X,
-} from 'lucide-react';
+  PhosphorNotebook,
+  PhosphorNotebookFill,
+  PhosphorRadar,
+  PhosphorRadarFill,
+  PhosphorCrosshair,
+  PhosphorCrosshairFill,
+  PhosphorChart,
+  PhosphorChartFill,
+  PhosphorChat,
+  PhosphorChatFill,
+  PhosphorGamepad,
+  PhosphorStar,
+  PhosphorPie,
+  PhosphorMore,
+  PhosphorMoreFill,
+  type PhosphorIconProps,
+} from './icons/phosphor';
 import styles from './AppTabBar.module.css';
 
 /**
@@ -37,20 +44,21 @@ import styles from './AppTabBar.module.css';
 /** 底部列主要分頁鍵值。 */
 type TabKey = '/diary' | '/radar' | '/review' | '/chart' | '/ai';
 
-/** 單一分頁定義。icon 型別沿用 review/page.tsx 的 `typeof <icon>` 慣例。 */
+/** 單一分頁定義。icon 型別：Phosphor 圖示元件（regular + fill 兩套）。 */
 type TabItem = {
   key: TabKey;
   label: string;
-  icon: typeof NotebookPen;
+  icon: (props: PhosphorIconProps) => React.ReactElement;
+  iconActive: (props: PhosphorIconProps) => React.ReactElement;
 };
 
 /** 左→右：看盤日記、資金雷達、戰情室、圖表、AI 問答。 */
 const TABS: TabItem[] = [
-  { key: '/diary', label: '看盤日記', icon: NotebookPen },
-  { key: '/radar', label: '資金雷達', icon: Radar },
-  { key: '/review', label: '戰情室', icon: Crosshair },
-  { key: '/chart', label: '圖表', icon: CandlestickChart },
-  { key: '/ai', label: 'AI 問答', icon: MessageCircle },
+  { key: '/diary', label: '看盤日記', icon: PhosphorNotebook, iconActive: PhosphorNotebookFill },
+  { key: '/radar', label: '資金雷達', icon: PhosphorRadar, iconActive: PhosphorRadarFill },
+  { key: '/review', label: '戰情室', icon: PhosphorCrosshair, iconActive: PhosphorCrosshairFill },
+  { key: '/chart', label: '圖表', icon: PhosphorChart, iconActive: PhosphorChartFill },
+  { key: '/ai', label: 'AI 問答', icon: PhosphorChat, iconActive: PhosphorChatFill },
 ];
 
 /** 「更多」抽屜中的次要入口。 */
@@ -58,14 +66,14 @@ type MoreItem = {
   href: string;
   label: string;
   hint: string;
-  icon: typeof NotebookPen;
+  icon: (props: PhosphorIconProps) => React.ReactElement;
 };
 
 const MORE_ITEMS: MoreItem[] = [
-  { href: '/sim', label: '模擬練習', hint: '虛擬資金 1,000,000 練手感', icon: Gamepad2 },
-  { href: '/watchlist', label: '我的關注', hint: '自選股分群與漲跌提醒', icon: Star },
-  { href: '/chips/2330', label: '籌碼研究', hint: '分點明細、集保級距、法人歷史', icon: PieChart },
-  { href: '/', label: '首頁', hint: '今日精華與產業地圖', icon: CandlestickChart },
+  { href: '/sim', label: '模擬練習', hint: '虛擬資金 1,000,000 練手感', icon: PhosphorGamepad },
+  { href: '/watchlist', label: '我的關注', hint: '自選股分群與漲跌提醒', icon: PhosphorStar },
+  { href: '/chips/2330', label: '籌碼研究', hint: '分點明細、集保級距、法人歷史', icon: PhosphorPie },
+  { href: '/', label: '首頁', hint: '今日精華與產業地圖', icon: PhosphorChart },
 ];
 
 /** 需要底部列的頁面（App 主分頁）一律交由 @/lib/shellRoutes 的
@@ -139,8 +147,8 @@ export default function AppTabBar() {
 
       <nav className={styles.tabBar} aria-label="底部功能列">
         {TABS.map((tab) => {
-          const Icon = tab.icon;
           const isActive = mountedPath === tab.key;
+          const Icon = isActive ? tab.iconActive : tab.icon;
           return (
             <Link
               key={tab.key}
@@ -148,7 +156,7 @@ export default function AppTabBar() {
               className={`${styles.tabItem} ${isActive ? styles.active : ''}`}
               aria-current={isActive ? 'page' : undefined}
             >
-              <Icon size={20} aria-hidden="true" />
+              <Icon size={isActive ? 21 : 22} aria-hidden="true" />
               <span>{tab.label}</span>
             </Link>
           );
@@ -162,7 +170,11 @@ export default function AppTabBar() {
           aria-expanded={moreOpen}
           aria-haspopup="menu"
         >
-          <MoreHorizontal size={20} aria-hidden="true" />
+          {moreActive || moreOpen ? (
+            <PhosphorMoreFill size={21} aria-hidden="true" />
+          ) : (
+            <PhosphorMore size={22} aria-hidden="true" />
+          )}
           <span>更多</span>
         </button>
       </nav>
