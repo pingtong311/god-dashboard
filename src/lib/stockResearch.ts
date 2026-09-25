@@ -10,6 +10,20 @@
  *   無 `Math.random()`、無硬編碼樣本值。
  */
 
+import {
+  buildRiskPanel,
+  buildScenarioPanel,
+  buildTechPanel,
+  type DailyCandle,
+  type RiskCard,
+  type RiskPanel,
+  type RiskTone,
+  type ScenarioPanel,
+  type TechPanel,
+} from './stockTechnical';
+
+export type { DailyCandle, RiskCard, RiskPanel, RiskTone, ScenarioPanel, TechPanel };
+
 // ── 型別 ────────────────────────────────────────────────
 
 /** 漲跌色調（對應 Tailwind text-up / text-down / text-ink）。 */
@@ -84,7 +98,8 @@ export interface RawStockInputs {
   tdcc: TdccRow[] | null;
   concentration: number | null;
   fundamental: FundamentalInput | null;
-  dailyCloses: ClosePoint[] | null;
+  /** 日 K（完整 OHLCV；供走勢／技術／風險／情境推導）。 */
+  dailyCandles: DailyCandle[] | null;
 }
 
 /** 連續買/賣超結果（張）。 */
@@ -171,6 +186,12 @@ export interface StockResearchData {
   cum6dPct: number | null;
   /** 近 6 日累計計算所用的交易日數（樣本不足時 < 6）。 */
   cum6dSamples: number;
+  /** 風險分頁 view model。 */
+  risk: RiskPanel;
+  /** 技術分頁 view model。 */
+  technical: TechPanel;
+  /** 情境分頁 view model。 */
+  scenario: ScenarioPanel;
   /** 供頁面使用的來源標註。 */
   sources: string[];
 }
@@ -569,16 +590,41 @@ export function buildStockResearchData(
     elapsedMinutes: elapsedSessionMinutes(now),
   });
 
-  const cum = computeCumulativePct(raw.dailyCloses, 6);
+  const cum = computeCumulativePct(
+    raw.dailyCandles?.map((c) => ({ date: c.date, close: c.close })) ?? null,
+    6
+  );
 
   const amountTwd =
     q && q.price !== null && q.volumeLots !== null ? q.price * q.volumeLots * 1000 : null;
 
   const f = raw.fundamental;
 
+  const foreignStreak = computeStreak(inst, (row) => row.foreignNet);
+  const trustStreak = computeStreak(inst, (row) => row.trustNet);
+
+  // 風險 / 技術 / 情境三分頁（由日 K + 法人 + 融資推導；無來源欄位回 null）
+  const techInput = {
+    candles: raw.dailyCandles,
+    price: q?.price ?? null,
+    changePct: q?.changePct ?? null,
+    volumeLots: q?.volumeLots ?? null,
+    foreignStreak,
+    trustStreak,
+    marginLots: margLatest?.marginBalance ?? null,
+    dataDate: q?.tradeDate ?? instLatest?.date ?? null,
+  };
+  const risk = buildRiskPanel(techInput);
+  if (risk.history) {
+    risk.history.cum6d = cum.pct !== null ? `${cum.pct > 0 ? '+' : ''}${cum.pct.toFixed(2)}%` : null;
+  }
+  const technical = buildTechPanel(techInput);
+  const scenario = buildScenarioPanel(techInput);
+
   const sources: string[] = ['本站行情管線（盤中）', '交易所公開資料（盤後統計）'];
   if (raw.tdcc) sources.push('TDCC 集保戶股權分散表');
   if (f) sources.push('TWSE BWIBBU / MOPS 月營收');
+  if (raw.dailyCandles) sources.push('日 K（Fugle / Yahoo）');
 
   return {
     ticker,
@@ -595,8 +641,8 @@ export function buildStockResearchData(
       trustNet: instLatest?.trustNet ?? null,
       dealerNet: instLatest?.dealerNet ?? null,
       totalNet: instLatest?.totalNet ?? null,
-      foreignStreak: computeStreak(inst, (row) => row.foreignNet),
-      trustStreak: computeStreak(inst, (row) => row.trustNet),
+      foreignStreak,
+      trustStreak,
     },
 
     margin: {
@@ -632,6 +678,10 @@ export function buildStockResearchData(
 
     cum6dPct: cum.pct,
     cum6dSamples: cum.samples,
+
+    risk,
+    technical,
+    scenario,
 
     sources,
   };

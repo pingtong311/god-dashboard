@@ -10,7 +10,7 @@
 
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import StockPage from '@/app/stock/page';
-import { buildStockResearchData, type RawStockInputs } from '@/lib/stockResearch';
+import { buildStockResearchData, type DailyCandle, type RawStockInputs } from '@/lib/stockResearch';
 
 // jsdom 未實作 scrollIntoView
 beforeAll(() => {
@@ -22,6 +22,24 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock, back: jest.fn() }),
   useSearchParams: () => new URLSearchParams('id=2330'),
 }));
+
+/** 產生 60 根日 K（每 6 根一浪、淨 +6；高點與低點同步墊高），供技術／風險／情境推導。 */
+function makeDailyCandles(count = 60): DailyCandle[] {
+  const out: DailyCandle[] = [];
+  let price = 2380;
+  for (let i = 0; i < count; i += 1) {
+    price += i % 6 < 3 ? 4 : -2;
+    out.push({
+      date: `2026-07-${String((i % 28) + 1).padStart(2, '0')}`,
+      open: price - 4,
+      high: price + 10,
+      low: price - 12,
+      close: price,
+      volume: 9000 + i * 100,
+    });
+  }
+  return out;
+}
 
 const RAW: RawStockInputs = {
   quote: {
@@ -54,15 +72,7 @@ const RAW: RawStockInputs = {
     monthlyRevenueYoY: 10.1,
     asOfDate: '2026-08',
   },
-  dailyCloses: [
-    { date: '2026-09-16', close: 2400 },
-    { date: '2026-09-17', close: 2410 },
-    { date: '2026-09-18', close: 2420 },
-    { date: '2026-09-19', close: 2430 },
-    { date: '2026-09-22', close: 2440 },
-    { date: '2026-09-23', close: 2500 },
-    { date: '2026-09-24', close: 2475 },
-  ],
+  dailyCandles: makeDailyCandles(),
 };
 
 const DATA = buildStockResearchData('2330', RAW, new Date('2026-09-24T06:00:00Z'));
@@ -205,5 +215,49 @@ describe('/stock?id=2330 頁面', () => {
     ) as unknown as typeof fetch;
     render(<StockPage />);
     expect(await screen.findByText('個股研究資料暫時無法取得，請稍後重試。')).toBeTruthy();
+  });
+
+  it('P1 風險分頁：風險體檢 5 格 + 處置制度歷史（不再只有 NotIndexed）', async () => {
+    await renderPage();
+    const nav = screen.getByRole('navigation', { name: '個股研究區塊' });
+    fireEvent.click(within(nav).getByText('風險'));
+    await waitFor(() => {
+      expect(screen.getByText('風險體檢')).toBeTruthy();
+    });
+    for (const k of ['波動風險（日晃幅）', '流動性（日成交量）', '融資壓力', '大戶動向（週）', '支撐距離']) {
+      expect(screen.getByText(k)).toBeTruthy();
+    }
+    // 大戶動向（週）本站無來源 → 誠實標示未入庫
+    expect(screen.getByText('處置制度歷史資料')).toBeTruthy();
+    expect(screen.getByText('近 20 日平均量')).toBeTruthy();
+  });
+
+  it('P1 技術分頁：技術分析解讀 + 均線水位 + 未入庫欄位（不再只有 NotIndexed）', async () => {
+    await renderPage();
+    const nav = screen.getByRole('navigation', { name: '個股研究區塊' });
+    fireEvent.click(within(nav).getByText('技術'));
+    await waitFor(() => {
+      expect(screen.getByText('技術分析解讀')).toBeTruthy();
+    });
+    expect(screen.getByText('價格行為結構')).toBeTruthy();
+    expect(screen.getByText('均線水位')).toBeTruthy();
+    expect(screen.getByText('20 日（近月）')).toBeTruthy();
+    // 博主自建模型欄位 → 誠實標示未入庫
+    expect(screen.getByText('結構線')).toBeTruthy();
+    expect(screen.getByText('趨勢明確度')).toBeTruthy();
+  });
+
+  it('P1 情境分頁：持有情境與風險 6 格 + 條列 + AI 按鈕（不再只有 NotIndexed）', async () => {
+    await renderPage();
+    const nav = screen.getByRole('navigation', { name: '個股研究區塊' });
+    fireEvent.click(within(nav).getByText('情境'));
+    await waitFor(() => {
+      expect(screen.getByText('持有情境與風險')).toBeTruthy();
+    });
+    expect(screen.getByText('外資')).toBeTruthy();
+    expect(screen.getAllByText('連賣 2 日').length).toBeGreaterThan(0);
+    expect(screen.getByText('近日低點')).toBeTruthy();
+    expect(screen.getByText('用 AI 白話解讀（扣 1 次）')).toBeTruthy();
+    expect(screen.getByText('同族群')).toBeTruthy();
   });
 });

@@ -22,7 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   buildStockResearchData,
-  type ClosePoint,
+  type DailyCandle,
   type FundamentalInput,
   type InstitutionalRow,
   type MarginRow,
@@ -158,15 +158,30 @@ function normalizeFundamental(body: unknown): FundamentalInput | null {
   };
 }
 
-function normalizeKline(body: unknown): ClosePoint[] | null {
+/** kline route → 完整 OHLCV 日 K（供走勢／技術／風險／情境推導）。 */
+function normalizeKline(body: unknown): DailyCandle[] | null {
   if (!body || typeof body !== 'object') return null;
   const candles = (body as { candles?: unknown }).candles;
   if (!Array.isArray(candles) || candles.length === 0) return null;
-  const points: ClosePoint[] = [];
+  const points: DailyCandle[] = [];
   for (const c of candles as Record<string, unknown>[]) {
     const date = toIsoDate(c.date);
     const close = num(c.close);
-    if (date && close !== null && close > 0) points.push({ date, close });
+    if (date && close !== null && close > 0) {
+      // 缺 OHLC 時以收盤回填（僅用於避免 NaN；不無中生有波動）。
+      const open = num(c.open);
+      const high = num(c.high);
+      const low = num(c.low);
+      const volume = num(c.volume);
+      points.push({
+        date,
+        open: open ?? close,
+        high: high ?? close,
+        low: low ?? close,
+        close,
+        volume: volume ?? 0,
+      });
+    }
   }
   return points.length >= 2 ? points : null;
 }
@@ -194,7 +209,7 @@ export async function GET(req: NextRequest) {
   const quote = quoteRes.ok ? normalizeQuote(quoteRes.body) : null;
   const chips = chipsRes.ok ? normalizeChips(chipsRes.body) : { institutionalHistory: [], marginHistory: [], tdcc: null, concentration: null };
   const fundamental = fundRes.ok ? normalizeFundamental(fundRes.body) : null;
-  const dailyCloses = klineRes.ok ? normalizeKline(klineRes.body) : null;
+  const dailyCandles = klineRes.ok ? normalizeKline(klineRes.body) : null;
 
   const hasAnyData =
     quote !== null ||
@@ -202,7 +217,7 @@ export async function GET(req: NextRequest) {
     chips.marginHistory.length > 0 ||
     chips.tdcc !== null ||
     fundamental !== null ||
-    dailyCloses !== null;
+    dailyCandles !== null;
 
   if (!hasAnyData) {
     return NextResponse.json({ ok: false, reason: 'stock_research_unavailable' }, { status: 200 });
@@ -215,7 +230,7 @@ export async function GET(req: NextRequest) {
     tdcc: chips.tdcc,
     concentration: chips.concentration,
     fundamental,
-    dailyCloses,
+    dailyCandles,
   };
 
   const data: StockResearchData = buildStockResearchData(ticker, raw);

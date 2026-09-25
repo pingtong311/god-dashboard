@@ -31,6 +31,8 @@ import {
   formatSigned,
   formatSignedPct,
   toneOf,
+  type RiskCard,
+  type RiskTone,
   type StockResearchData,
 } from '@/lib/stockResearch';
 
@@ -799,24 +801,340 @@ function TabPanel({
     );
   }
 
-  // risk / tech / broker / scenario：本站尚無公開來源
-  const titleMap: Record<string, string> = {
-    risk: '風險',
-    tech: '技術',
-    broker: '分點',
-    scenario: '情境',
-  };
-  const reasonMap: Record<string, string> = {
-    risk: '處置／注意股狀態需交易所公告來源，本站未接。',
-    tech: '技術指標（均線／KD／MACD）本站未提供公開來源。',
-    broker: '逐股券商分點買賣超為付費資料源，本站未接。',
-    scenario: '情境分岔需自建模型，本站不提供推測。',
-  };
+  if (tab === 'risk') return <RiskTab data={data} />;
+  if (tab === 'tech') return <TechTab data={data} />;
+  if (tab === 'scenario') return <ScenarioTab data={data} />;
+
+  // 分點：逐股券商分點買賣超為付費資料源，本站未接（誠實標示）
   return (
-    <section className="mt-3" aria-label={titleMap[tab] ?? tab}>
-      <SectionHead title={titleMap[tab] ?? tab} />
+    <section className="mt-3" aria-label="分點">
+      <SectionHead title="分點" />
       <NotIndexed label="資料未入庫" />
-      <p className="mt-2 text-[12px] text-muted">{reasonMap[tab] ?? ''}</p>
+      <p className="mt-2 text-[12px] text-muted">逐股券商分點買賣超為付費資料源，本站未接。</p>
+    </section>
+  );
+}
+
+/** 風險色調 → Tailwind 類別（綠＝相對安全、金＝普通、紅＝要留意）。 */
+function riskToneClass(tone: RiskTone): string {
+  if (tone === 'safe') return 'text-down';
+  if (tone === 'warn') return 'text-up';
+  return 'text-accent';
+}
+
+/** 風險體檢單格。 */
+function RiskCardView({ card }: { card: RiskCard }) {
+  return (
+    <div className="data-panel hud-panel glass rounded-2xl p-3.5">
+      <p className="text-[12px] font-black text-muted">{card.title}</p>
+      {card.available ? (
+        <>
+          <div className="mt-1 flex flex-wrap items-baseline gap-2">
+            {card.grade ? (
+              <span className={`text-[15px] font-black ${riskToneClass(card.tone)}`}>{card.grade}</span>
+            ) : null}
+            {card.value ? (
+              <span className={`num text-[15px] font-black ${riskToneClass(card.tone)}`}>{card.value}</span>
+            ) : null}
+          </div>
+          {card.desc ? <p className="mt-1 text-[12px] leading-snug text-muted">{card.desc}</p> : null}
+        </>
+      ) : (
+        <>
+          <p className="mt-1 text-[15px] font-black text-muted">資料未入庫</p>
+          {card.desc ? <p className="mt-1 text-[12px] leading-snug text-muted">{card.desc}</p> : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** 風險分頁（風險體檢 5 格 + 處置制度歷史資料）。 */
+function RiskTab({ data }: { data: StockResearchData }) {
+  const panel = data.risk;
+  return (
+    <section className="mt-3" aria-label="風險">
+      <SectionHead title="風險體檢" />
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {panel.cards.map((card) => (
+          <RiskCardView key={card.key} card={card} />
+        ))}
+      </div>
+      <p className="mt-3 text-[12px] leading-relaxed text-muted">{panel.note}</p>
+
+      {panel.history ? (
+        <details className="mt-4 rounded-2xl border border-line bg-surface px-4 py-3" open>
+          <summary className="cursor-pointer text-[13px] font-black text-ink">處置制度歷史資料</summary>
+          <dl className="mt-3 grid grid-cols-2 gap-3 text-[13px] sm:grid-cols-3">
+            <Metric label="資料日" value={data.dataDate ?? '--'} />
+            <Metric label="資料日收盤" value={panel.history.close ?? '--'} />
+            <Metric
+              label="近 6 日累積漲跌"
+              value={panel.history.cum6d ?? '--'}
+              tone={toneOf(data.cum6dPct)}
+            />
+            <Metric
+              label="資料日成交量"
+              value={panel.history.volume ? `${panel.history.volume} 張` : '--'}
+            />
+            <Metric
+              label="近 20 日平均量"
+              value={panel.history.avg20Volume ? `${panel.history.avg20Volume} 張` : '--'}
+            />
+          </dl>
+          <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
+            資料日期與口徑：日 K（Fugle / Yahoo）、法人進出、融資券。級距沒入庫就留空。
+          </p>
+        </details>
+      ) : null}
+    </section>
+  );
+}
+
+/** 技術分頁（技術分析解讀）。 */
+function TechTab({ data }: { data: StockResearchData }) {
+  const t = data.technical;
+  if (!t.available) {
+    return (
+      <section className="mt-3" aria-label="技術">
+        <SectionHead title="技術分析解讀" />
+        <NotIndexed label="日 K 未入庫，無法計算技術指標" />
+      </section>
+    );
+  }
+  return (
+    <section className="mt-3" aria-label="技術">
+      <SectionHead title="技術分析解讀" />
+
+      {/* 結論 */}
+      <div className="data-panel hud-panel glass rounded-2xl p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`text-[15px] font-black ${riskToneClass(t.conclusionTone)}`}>{t.conclusion}</span>
+          {t.dataDate ? <span className="text-[12px] text-muted">資料日 {t.dataDate}</span> : null}
+        </div>
+        <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{t.intro}</p>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{t.atmosphere}</p>
+      </div>
+
+      {/* 價格行為結構 */}
+      {t.structure ? (
+        <div className="data-panel hud-panel glass rounded-2xl mt-3 p-4">
+          <p className="text-[12px] font-black text-muted">價格行為結構</p>
+          <p className="mt-1 text-[15px] font-black text-ink">{t.structure.title}</p>
+          <p className="mt-1 text-[12px] text-muted">{t.structure.desc}</p>
+        </div>
+      ) : null}
+
+      {/* 支撐與壓力 */}
+      {t.support || t.resistance ? (
+        <div className="data-panel hud-panel glass rounded-2xl mt-3 p-4">
+          <p className="text-[12px] font-black text-muted">支撐與壓力</p>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            {t.support ? (
+              <div className="rounded-xl border border-line/70 bg-surface-2/50 px-3 py-2">
+                <p className="text-[12px] text-muted">支撐（近期低點一帶）</p>
+                <p className="num mt-0.5 text-[15px] font-black text-ink">{t.support.price}</p>
+                <p className="mt-0.5 text-[11.5px] text-muted">
+                  區間 {t.support.zone}・{t.support.tests}
+                </p>
+              </div>
+            ) : null}
+            {t.resistance ? (
+              <div className="rounded-xl border border-line/70 bg-surface-2/50 px-3 py-2">
+                <p className="text-[12px] text-muted">壓力（近期高點一帶）</p>
+                <p className="num mt-0.5 text-[15px] font-black text-ink">{t.resistance.price}</p>
+                <p className="mt-0.5 text-[11.5px] text-muted">
+                  區間 {t.resistance.zone}・{t.resistance.tests}
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <p className="mt-2 text-[11.5px] leading-relaxed text-muted">
+            被測試次數越多、又都守住的區域，市場越把它當一回事；支撐壓力是「一帶」不是一個點。
+          </p>
+        </div>
+      ) : null}
+
+      {/* 最多人成交的價 */}
+      {t.poc ? (
+        <div className="data-panel hud-panel glass rounded-2xl mt-3 p-4">
+          <p className="text-[12px] font-black text-muted">最多人成交的價</p>
+          <p className="num mt-1 text-[15px] font-black text-ink">{t.poc}</p>
+          <p className="mt-1 text-[12px] text-muted">這附近籌碼最厚，常有人守</p>
+        </div>
+      ) : null}
+
+      {/* 回檔常見接手區（斐波那契） */}
+      {t.fib.length > 0 ? (
+        <div className="data-panel hud-panel glass rounded-2xl mt-3 p-4">
+          <p className="text-[12px] font-black text-muted">回檔常見接手區</p>
+          <dl className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {t.fib.map((f) => (
+              <div key={f.level}>
+                <dt className="text-[11px] font-bold text-muted">{f.level}</dt>
+                <dd className="num mt-0.5 font-black text-ink">{f.price}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+
+      {/* 均線水位 */}
+      <div className="data-panel hud-panel glass rounded-2xl mt-3 p-4">
+        <p className="text-[12px] font-black text-muted">均線水位</p>
+        <dl className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {t.ma.map((row) => (
+            <div key={row.period}>
+              <dt className="text-[11px] font-bold text-muted">{row.label}</dt>
+              <dd className="num mt-0.5 font-black text-ink">{row.value ?? '--'}</dd>
+              <dd className="mt-0.5 text-[11px] text-muted">{row.note}</dd>
+            </div>
+          ))}
+        </dl>
+        {t.priceVsMa20 ? (
+          <p className="mt-3 text-[12.5px] text-ink">
+            比近月均線：<b className="text-accent">{t.priceVsMa20.label}</b>　{t.priceVsMa20.delta}
+            <span className="ml-2 text-[11.5px] text-muted">{t.priceVsMa20.note}</span>
+          </p>
+        ) : null}
+        {t.rangePos20 ? (
+          <p className="mt-1 text-[12.5px] text-ink">
+            近 20 日位置：<b className="text-accent">{t.rangePos20.label}</b>　{t.rangePos20.pct}
+            <span className="ml-2 text-[11.5px] text-muted">{t.rangePos20.note}</span>
+          </p>
+        ) : null}
+      </div>
+
+      {/* 人氣、量能與通道 */}
+      <div className="data-panel hud-panel glass rounded-2xl mt-3 p-4">
+        <p className="text-[12px] font-black text-muted">人氣、量能與通道</p>
+        <dl className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {t.rsi ? <Metric label={`人氣（${t.rsi.label}）`} value={t.rsi.value} /> : null}
+          {t.volumeRatio ? (
+            <Metric label={`成交量（${t.volumeRatio.label}）`} value={t.volumeRatio.value} />
+          ) : null}
+          {t.dayRange ? (
+            <Metric label="一天大概會晃" value={`${t.dayRange.pct}｜${t.dayRange.amount}`} />
+          ) : null}
+          {t.volPriceSync ? (
+            <Metric label="量有沒有跟上價" value={t.volPriceSync.label} />
+          ) : null}
+          {t.boll ? <Metric label="通道上緣" value={t.boll.upper} /> : null}
+          {t.boll ? <Metric label="通道中軸" value={t.boll.middle} /> : null}
+          {t.boll ? <Metric label="通道下緣" value={t.boll.lower} /> : null}
+          {t.kd ? <Metric label="短線溫度" value={t.kd.value} /> : null}
+          {t.macd ? <Metric label="動能" value={t.macd.value} /> : null}
+        </dl>
+        {t.macd ? <p className="mt-2 text-[11.5px] text-muted">{t.macd.note}</p> : null}
+      </div>
+
+      {/* 融資維持率試算 */}
+      {t.marginMaintenance ? (
+        <div className="data-panel hud-panel glass rounded-2xl mt-3 p-4">
+          <p className="text-[12px] font-black text-muted">融資維持率試算</p>
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <Metric label="若用收盤當成本" value={t.marginMaintenance.cost} />
+            <Metric label="追繳距離" value={`−${t.marginMaintenance.dropPct}%`} />
+          </div>
+          <p className="mt-2 text-[12px] text-muted">{t.marginMaintenance.note}</p>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-muted">
+            這是用資料日收盤當買進成本、單一部位的試算。實際維持率是整戶合併，還有利息與各券商規定，請以券商帳戶為準。
+          </p>
+        </div>
+      ) : null}
+
+      {/* 未入庫欄位（誠實標示） */}
+      {t.notIndexed.length > 0 ? (
+        <div className="mt-3 rounded-2xl border border-dashed border-line bg-surface/40 px-4 py-3">
+          <p className="text-[12px] font-bold text-muted">
+            以下欄位本站尚無公開來源，誠實標示未入庫：
+          </p>
+          <ul className="mt-1.5 flex flex-wrap gap-1.5">
+            {t.notIndexed.map((n) => (
+              <li
+                key={n}
+                className="rounded-md bg-surface-2 px-2 py-0.5 text-[11px] font-bold text-muted"
+              >
+                {n}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/** 情境分頁（持有情境與風險）。 */
+function ScenarioTab({ data }: { data: StockResearchData }) {
+  const s = data.scenario;
+  return (
+    <section className="mt-3" aria-label="情境">
+      <SectionHead title="持有情境與風險" />
+
+      {/* 6 格 */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {s.cards.map((card) => (
+          <div key={card.key} className="data-panel hud-panel glass rounded-2xl p-3.5">
+            <p className="text-[11px] font-black text-muted">{card.label}</p>
+            {card.available ? (
+              <>
+                <p className="mt-1 text-[14px] font-black text-ink">{card.value}</p>
+                {card.sub ? (
+                  <p className="num mt-0.5 text-[12px] font-bold text-muted">{card.sub}</p>
+                ) : null}
+              </>
+            ) : (
+              <p className="mt-1 text-[13px] font-black text-muted">資料未入庫</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* 條列說明 */}
+      <div className="data-panel hud-panel glass rounded-2xl mt-3 p-4">
+        <ul className="grid gap-1.5 text-[13px] leading-relaxed">
+          {s.bullets.map((b, i) => (
+            <li key={`${b.text}-${i}`} className={b.available ? 'text-ink' : 'text-muted'}>
+              {b.text}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* AI 白話解讀 */}
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-accent/45 bg-accent/10 px-4 text-[13px] font-black text-accent transition active:scale-[0.97]"
+        >
+          {s.ai.label}
+        </button>
+        <span className="text-[12px] text-muted">{s.ai.quotaNote}</span>
+      </div>
+
+      {/* 依據／期間／樣本 */}
+      <details className="mt-3 rounded-2xl border border-line/70 bg-surface px-4 py-3">
+        <summary className="cursor-pointer text-[12.5px] font-black text-muted">
+          依據／期間／樣本（點開）
+        </summary>
+        <dl className="mt-2 grid gap-1 text-[12px] leading-relaxed">
+          <div>
+            <dt className="inline font-black text-ink">依據：</dt>
+            <dd className="inline text-muted">日 K、法人進出、融資券、集保級距</dd>
+          </div>
+          <div>
+            <dt className="inline font-black text-ink">期間：</dt>
+            <dd className="inline text-muted">資料日 {s.dataDate ?? '未入庫'}</dd>
+          </div>
+          <div>
+            <dt className="inline font-black text-ink">樣本：</dt>
+            <dd className="inline text-muted">依本頁已載入欄位；缺欄位時對應列標示未入庫</dd>
+          </div>
+        </dl>
+      </details>
+
+      {s.dataDate ? <p className="mt-3 text-[12px] text-muted">資料日 {s.dataDate}</p> : null}
     </section>
   );
 }

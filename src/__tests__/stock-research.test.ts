@@ -197,14 +197,14 @@ const RAW: RawStockInputs = {
     monthlyRevenueYoY: 10.1,
     asOfDate: '2026-08',
   },
-  dailyCloses: [
-    { date: '2026-09-16', close: 2400 },
-    { date: '2026-09-17', close: 2410 },
-    { date: '2026-09-18', close: 2420 },
-    { date: '2026-09-19', close: 2430 },
-    { date: '2026-09-22', close: 2440 },
-    { date: '2026-09-23', close: 2500 },
-    { date: '2026-09-24', close: 2475 },
+  dailyCandles: [
+    { date: '2026-09-16', open: 2390, high: 2410, low: 2385, close: 2400, volume: 9000 },
+    { date: '2026-09-17', open: 2400, high: 2420, low: 2395, close: 2410, volume: 9100 },
+    { date: '2026-09-18', open: 2410, high: 2430, low: 2405, close: 2420, volume: 9200 },
+    { date: '2026-09-19', open: 2420, high: 2440, low: 2415, close: 2430, volume: 9300 },
+    { date: '2026-09-22', open: 2430, high: 2450, low: 2425, close: 2440, volume: 9400 },
+    { date: '2026-09-23', open: 2440, high: 2520, low: 2430, close: 2500, volume: 12000 },
+    { date: '2026-09-24', open: 2480, high: 2490, low: 2470, close: 2475, volume: 12989 },
   ],
 };
 
@@ -248,7 +248,7 @@ describe('buildStockResearchData', () => {
       tdcc: null,
       concentration: null,
       fundamental: null,
-      dailyCloses: null,
+      dailyCandles: null,
     });
     expect(empty.institutional.foreignNet).toBeNull();
     expect(empty.margin.marginLots).toBeNull();
