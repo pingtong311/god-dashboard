@@ -447,7 +447,7 @@ export function buildRiskPanel(input: TechnicalInput): RiskPanel {
   // 處置制度歷史資料
   const avg20Volume =
     candles && candles.length >= 1
-      ? candles.slice(-20).reduce((a, k) => a + k.volume, 0) / Math.min(20, candles.length)
+      ? candles.slice(-20).reduce((a, k) => a + k.volume, 0) / Math.min(20, candles.length) / 1000 // 股 → 張
       : null;
 
   const history =
@@ -576,11 +576,12 @@ export function buildTechPanel(input: TechnicalInput): TechPanel {
 
   // 近 20 日位置
   const rp = rangePosition(candles, 20);
+  const rpLabel = rp ? (rp.pct >= 80 ? '區間高段' : rp.pct <= 30 ? '區間低段' : '區間中段') : null;
   const rangePos20 = rp
     ? {
-        label: rp.pct >= 70 ? '區間高段' : rp.pct <= 30 ? '區間低段' : '區間中段',
+        label: rpLabel!,
         pct: `${Math.round(rp.pct)}%`,
-        note: '區間中段 · 0%＝這 20 天最低、100%＝最高',
+        note: `${rpLabel} · 0%＝這 20 天最低、100%＝最高`,
       }
     : null;
 
