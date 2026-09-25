@@ -253,14 +253,17 @@ export async function GET(req: NextRequest) {
     fetchInternal(`${origin}/api/skynet/twse?tickers=${enc}`),
     fetchInternal(`${origin}/api/skynet/chips?ticker=${enc}&days=${CHIPS_DAYS}`),
     fetchInternal(`${origin}/api/skynet/fundamental?ticker=${enc}`),
-    fetchInternal(`${origin}/api/skynet/kline?ticker=${enc}&type=daily`),
+    fetchInternal(`${origin}/api/skynet/kline?ticker=${enc}&type=daily&from=${new Date(Date.now() - 300 * 86400000).toISOString().slice(0, 10)}`),
     fetchInternal(`${origin}/api/skynet/treemap`),
   ]);
 
   const quote = quoteRes.ok ? normalizeQuote(quoteRes.body) : null;
   const chips = chipsRes.ok ? normalizeChips(chipsRes.body) : { institutionalHistory: [], marginHistory: [], tdcc: null, concentration: null };
   const fundamental = fundRes.ok ? normalizeFundamental(fundRes.body) : null;
-  const dailyCandles = klineRes.ok ? normalizeKline(klineRes.body) : null;
+  const rawCandles = klineRes.ok ? normalizeKline(klineRes.body) : null;
+  // 去除當日未完成 K 線（盤中快照會汙染日線推導）。
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const dailyCandles = rawCandles?.filter((c) => c.date !== todayStr) ?? null;
   const sectorPeers = treemapRes.ok ? normalizeSectorPeers(treemapRes.body, ticker) : null;
 
   const hasAnyData =
