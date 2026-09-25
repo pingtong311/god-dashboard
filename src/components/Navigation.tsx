@@ -138,7 +138,7 @@ const MEMBER_MENUS: readonly MemberMenu[] = [
       { title: '我的持股', desc: '記下成本，看配置與大致損益', href: '#' },
       { title: '戰情室警報', desc: '管理推播：想收什麼、不想收什麼', href: '/notify/' },
       { title: '大佬席位', desc: '帳戶、回饋、邀請碼與專屬設定', href: '#' },
-      { title: '全部工具', desc: '所有功能一頁看，長按加入捷徑', href: '#' },
+      { title: '全部工具', desc: '所有功能一頁看，長按加入捷徑', href: '/hub/' },
       { title: 'App 安裝', desc: 'iPhone、Android 與加入主畫面', href: '#' },
       { title: '品牌合作', desc: '合作品牌的服務與活動，清楚標示廣告', href: '#' },
       { title: '社群聊天', desc: '會員討論、即時聊天與戰績榜', href: '#' },
