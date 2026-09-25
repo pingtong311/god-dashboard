@@ -560,7 +560,7 @@ function StockBody({
       <div id="stock-panel-start" />
       <nav
         aria-label="個股研究區塊"
-        className="sticky top-16 z-20 -mx-4 mt-4 border-b border-line bg-bg/95 px-2 backdrop-blur-xl"
+        className="sticky top-[var(--stock-header-height)] z-20 -mx-4 mt-4 border-b border-line bg-bg/95 px-2 backdrop-blur-xl"
       >
         <div className="tab-track flex min-w-0 max-w-full flex-nowrap items-end gap-0.5 overflow-x-auto pr-4">
           {TABS.map((t) => {

@@ -152,6 +152,16 @@ button:hover .mi-pop {
   transform: scale(0.9);
 }
 
+/* --- sticky 偏移：對齊實站 --stock-header-height（site-header min-h-16 = 4rem） ---
+ * 實站規則：.stock-browse-toolbar{top:var(--stock-header-height,64px)}；
+ * 子分頁列實站為 top-16，同樣以本變數統一驅動。 */
+:root {
+  --stock-header-height: 4rem;
+}
+.stock-browse-toolbar {
+  top: var(--stock-header-height, 64px);
+}
+
 /* --- 橫向分頁列：隱藏 scrollbar（複刻博主 [scrollbar-width:none] + ::-webkit-scrollbar） --- */
 .tab-track {
   scrollbar-width: none;
