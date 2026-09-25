@@ -1,0 +1,316 @@
+/* ============================================================================
+ * /ranking 分點排行 — 博主自訂類別（逐字複刻 captured/login-capture/css/*.css）
+ * ----------------------------------------------------------------------------
+ * 博主把下列類別定義在「全域樣式表」（非 Tailwind），故本檔以一般 CSS 定義，
+ * 只由本頁 import。刻意不改 src/app/globals.css / src/styles/theme.css（避免與
+ * 外殼工程衝突）。色彩一律取 src/styles/theme.css 的 CSS 變數，不寫死色碼。
+ * ========================================================================== */
+
+/* --- .page-enter：進場動效（page-enter-in） --- */
+.page-enter {
+  animation: 0.2s ease-out both page-enter-in;
+}
+@keyframes page-enter-in {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter {
+    animation: none;
+  }
+}
+
+/* --- .hud-panel：頂部金色細線 + 過場 --- */
+.hud-panel {
+  transition: border-color 0.25s, box-shadow 0.25s;
+  position: relative;
+}
+.hud-panel::before {
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--gold-line), transparent);
+  opacity: 0.75;
+  height: 1px;
+  transition: opacity 0.28s, left 0.28s, right 0.28s;
+  position: absolute;
+  top: -1px;
+  left: 12%;
+  right: 12%;
+}
+button:hover > .hud-panel::before {
+  opacity: 0.95;
+  left: 2%;
+  right: 2%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-panel::before {
+    transition: none;
+  }
+}
+
+/* --- .glass：玻璃擬態卡片面 --- */
+.glass {
+  border: 1px solid var(--au-border);
+  background: linear-gradient(145deg, var(--gold-soft), transparent 42%), var(--au-card);
+  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(118%);
+  backdrop-filter: blur(var(--blur-glass)) saturate(118%);
+  box-shadow: inset 0 1px 0 #ffffff14, var(--shadow-glass);
+  position: relative;
+}
+
+/* --- .section-mark：金色漸層豎條（章節標題左側） --- */
+.section-mark {
+  background: linear-gradient(180deg, var(--gold), var(--gold-line));
+  width: 0.375rem;
+  height: 1.15em;
+  box-shadow: 0 0 10px var(--gold-soft);
+  border-radius: 999px;
+  flex: none;
+}
+
+/* --- .display：顯示級標題（字距壓縮 + 微光暈） --- */
+.display {
+  letter-spacing: -0.026em;
+  text-wrap: balance;
+  font-kerning: normal;
+  font-feature-settings: "palt" 1;
+  text-shadow: 0 0 24px #38bdf812;
+}
+.display .text-accent,
+h1 .text-accent {
+  text-shadow: 0 0 16px #38bdf833;
+}
+
+/* --- .term-tip / .term-mark：術語底線小問號（逐字複刻實站全域樣式） --- */
+.term-tip {
+  font: inherit;
+  color: inherit;
+  text-underline-offset: 3px;
+  -webkit-text-decoration: underline dotted;
+  text-decoration: underline dotted;
+  -webkit-text-decoration-color: color-mix(in oklab, var(--accent) 65%, transparent);
+  text-decoration-color: color-mix(in oklab, var(--accent) 65%, transparent);
+  padding: 0;
+  display: inline;
+  cursor: help;
+}
+.term-tip:hover,
+.term-tip:focus-visible {
+  color: var(--accent);
+}
+.term-mark {
+  vertical-align: 0.08em;
+  background: color-mix(in oklab, var(--accent) 18%, transparent);
+  border-radius: 50%;
+  place-items: center;
+  width: 0.95em;
+  height: 0.95em;
+  margin-left: 0.22em;
+  display: inline-grid;
+  color: var(--accent);
+  font-size: 0.72em;
+  font-weight: 900;
+  line-height: 1;
+}
+/* --- .term-tip__pop：術語氣泡說明（本站補充：實站氣泡由 JS 注入，未入靜態截圖） --- */
+.term-tip__pop {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 30;
+  width: max-content;
+  max-width: min(74vw, 20rem);
+  border-radius: 0.75rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 0.6rem 0.75rem;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  box-shadow: var(--shadow-glass);
+}
+
+/* ============================================================================
+ * .twmap__*：台灣分點燈火圖（逐字複刻實站全域樣式，含 prefers-reduced-motion）
+ * ========================================================================== */
+.twmap {
+  isolation: isolate;
+  aspect-ratio: 725/1000;
+  position: relative;
+}
+.twmap__svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+.twmap__haze {
+  fill: color-mix(in srgb, var(--accent) 26%, transparent);
+  opacity: 0.5;
+}
+.twmap__land {
+  fill: #0a1526;
+  stroke: #0a1526;
+  stroke-width: 2.4px;
+  stroke-linejoin: round;
+}
+.twmap__coast {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 62%, transparent);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+.twmap__border {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 13%, transparent);
+  stroke-width: 0.8px;
+  stroke-linejoin: round;
+}
+.twmap__bloom[data-tone="buy"] {
+  --light: var(--up);
+}
+.twmap__bloom[data-tone="sell"] {
+  --light: var(--down);
+}
+.twmap__spark {
+  fill: var(--light);
+  opacity: calc(var(--lum, 0.7) * 0.9);
+  transform-box: fill-box;
+  transform-origin: 50%;
+  animation:
+    twmap-in 0.62s cubic-bezier(0.22, 1, 0.36, 1) var(--in-delay, 0s) backwards,
+    twmap-twinkle 5.5s ease-in-out var(--live-delay, 0s) infinite;
+}
+.twmap__core {
+  fill: #eafcff;
+  opacity: calc(var(--lum, 0.7) * 0.95);
+  transform-box: fill-box;
+  transform-origin: 50%;
+  animation: twmap-in 0.62s cubic-bezier(0.22, 1, 0.36, 1) var(--in-delay, 0s) backwards;
+  transition:
+    transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s;
+}
+.twmap__core.is-on {
+  opacity: 1;
+  transform: scale(2.2);
+}
+.twmap__hit {
+  z-index: 3;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  background: 0 0;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+.twmap__hit::after {
+  content: "";
+  border: 1px solid #0000;
+  border-radius: 50%;
+  transition:
+    border-color 0.18s,
+    transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  position: absolute;
+  inset: 28%;
+}
+.twmap__hit.is-on::after {
+  border-color: #eafcffb3;
+  transform: scale(1.5);
+}
+.twmap__hit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.twmap__pending {
+  background: radial-gradient(
+    circle at 50% 40%,
+    color-mix(in srgb, var(--accent) 12%, transparent) 0%,
+    transparent 70%
+  );
+  border-radius: 48% 52% 44% 56%;
+  position: absolute;
+  inset: 12% 18%;
+  pointer-events: none;
+  animation: 2.4s ease-in-out infinite twmap-breathe;
+}
+.twmap__cap {
+  min-height: 4.4rem;
+}
+.twmap__toggle {
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  border-radius: 10px;
+  padding: 2px;
+  display: inline-flex;
+}
+.twmap__toggle-btn {
+  min-height: 30px;
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 0 0.7rem;
+  font-size: 13.5px;
+  font-weight: 800;
+  transition:
+    color 0.16s,
+    background-color 0.16s;
+}
+.twmap__toggle-btn:hover {
+  color: var(--ink);
+}
+.twmap__toggle-btn[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--surface-2) 90%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 80%, transparent);
+}
+.twmap__toggle-btn[aria-pressed="true"][data-tone="buy"] {
+  color: var(--up);
+}
+.twmap__toggle-btn[aria-pressed="true"][data-tone="sell"] {
+  color: var(--down);
+}
+.twmap__toggle-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+@keyframes twmap-in {
+  0% {
+    opacity: 0;
+  }
+}
+@keyframes twmap-twinkle {
+  0%,
+  to {
+    transform: scale(0.92);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+@keyframes twmap-breathe {
+  0%,
+  to {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .twmap__spark,
+  .twmap__core,
+  .twmap__pending {
+    animation: none !important;
+  }
+  .twmap__core,
+  .twmap__hit::after {
+    transition: none;
+  }
+}
