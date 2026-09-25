@@ -283,6 +283,102 @@
   }
 }
 
+/* ============================================================================
+ * 會員態下拉選單（6 組：今天 / 股票 / 選股 / 我的 / 教學 / 更多）
+ * ----------------------------------------------------------------------------
+ * 面板：深色卡片背景、圓角、細邊框、玻璃陰影；顏色全走 theme.css token。
+ * ========================================================================== */
+
+/* 任一下拉開啟時的全螢幕變暗背景（層級低於面板、高於頁面內容；點擊關閉） */
+.dropdownBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(3, 6, 16, 0.45);
+}
+
+/* 下拉面板外框（貼在按鈕下方 8px；預設左對齊） */
+.dropdownPanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 50;
+  min-width: 21rem; /* 336px；1 欄「更多」另覆寫 */
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-glass);
+}
+
+/* 靠右對齊（最右側的「更多」，避免溢出視口） */
+.dropdownPanelRight {
+  left: auto;
+  right: 0;
+  min-width: 18rem; /* 288px，單欄窄面板 */
+}
+
+/* 面板頂部副標（小字、次要色） */
+.dropdownSubtitle {
+  margin: 0;
+  padding: 0.25rem 0.625rem 0.5rem;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* 項目格線 */
+.dropdownGrid {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.dropdownCols1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.dropdownCols2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dropdownCols3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* 單一項目連結：標題（粗、主色）＋說明（小、次要色） */
+.dropdownItem {
+  display: block;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.dropdownItem:hover {
+  background: var(--surface-2);
+}
+
+.dropdownItem:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.dropdownItemTitle {
+  display: block;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.dropdownItemDesc {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 /* 無障礙隱藏文字（對應 Tailwind sr-only） */
 .srOnly {
   position: absolute;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { isMemberShell, shouldShowHeader } from '@/lib/shellRoutes';
@@ -51,8 +51,128 @@ const NAV_ITEMS: readonly NavItem[] = [
   { name: '登入', path: '/login/' },
 ];
 
-/** 博主會員態桌面導覽六個下拉鈕（左→右，逐字照抄）。 */
-const MEMBER_NAV_LABELS: readonly string[] = ['今天', '股票', '選股', '我的', '教學', '更多'];
+/** 會員態下拉選單單一項目（標題＋白話說明＋路徑）。 */
+type MemberMenuItem = {
+  readonly title: string;
+  readonly desc: string;
+  /** 站內路由（含尾斜線）；尚無對應頁面者為 '#'（點擊時 preventDefault）。 */
+  readonly href: string;
+};
+
+/** 會員態下拉選單定義（標籤、副標、欄數、對齊、項目）。 */
+type MemberMenu = {
+  readonly label: string;
+  readonly subtitle: string;
+  /** 項目格線欄數（「更多」為 1 欄窄面板）。 */
+  readonly columns: 1 | 2 | 3;
+  /** 面板水平對齊（靠右的選單用 right 避免溢出視口）。 */
+  readonly align: 'left' | 'right';
+  readonly items: readonly MemberMenuItem[];
+};
+
+/**
+ * 會員態桌面導覽六組下拉選單（內容逐字照抄實站；順序左→右）。
+ * 路由映射依本專案現有頁面；無對應頁面者以 '#' 佔位。
+ */
+const MEMBER_MENUS: readonly MemberMenu[] = [
+  {
+    label: '今天',
+    subtitle: '今天盤怎麼走、日報、大環境',
+    columns: 2,
+    align: 'left',
+    items: [
+      { title: '今日戰情', desc: '今天大盤發生什麼事，一頁看完', href: '/warroom/' },
+      { title: '盤中戰情', desc: '開盤時間看自選現價與急拉急跌事件', href: '/liangjia-warroom/' },
+      { title: '台股日報', desc: '每晚幫你整理今天的盤，睡前看這篇就夠', href: '/review/' },
+      { title: '族群熱圖', desc: '錢今天流去哪個族群', href: '#' },
+      { title: '事件雷達', desc: '急漲急跌、漲跌停、處置股一次看', href: '/radar/' },
+      { title: '大盤與國際', desc: '台指期、外資動向與美股表現', href: '/terminal/' },
+      { title: '市場行事曆', desc: '月營收、ETF 與企業大事的日曆', href: '/diary/' },
+      { title: '美國政策題材', desc: '關稅與政策原文整理，來源與時間分開看', href: '#' },
+      { title: '期選盤後', desc: 'VIX、夜盤法人與大額未平倉', href: '/strategy/' },
+    ],
+  },
+  {
+    label: '股票',
+    subtitle: '查一檔：K線、籌碼、大單、技術結構',
+    columns: 2,
+    align: 'left',
+    items: [
+      { title: '個股盯盤', desc: '查一檔股票：K線、逐筆、大單、籌碼、持有情境', href: '/stock/' },
+      { title: '技術分析', desc: '輸入代號：支撐壓力、回檔價位、均線與白話解讀', href: '#' },
+      { title: '分點排行', desc: '今天哪些券商分點在大買大賣', href: '#' },
+      { title: '分點名冊', desc: '查一個券商分點過去的出手紀錄（不等於單一主力）', href: '#' },
+      { title: '分點驗證', desc: '看這個分點過去買了之後隔天怎麼樣', href: '#' },
+      { title: '研究中心', desc: '條件掃描、歷史驗證、多檔比較都在這', href: '#' },
+    ],
+  },
+  {
+    label: '選股',
+    subtitle: '用條件找股票：量價、型態、籌碼、估值',
+    columns: 3,
+    align: 'left',
+    items: [
+      { title: '量價觀察', desc: '盤後成交量、集中度與量比條件命中列表，不是推薦', href: '#' },
+      { title: '隔日沖分點股', desc: '被隔日沖分點大買的股票（隔天常有賣壓）', href: '#' },
+      { title: 'K線型態掃描', desc: '全市場掃 W 底、假突破等常見型態', href: '#' },
+      { title: '波段條件', desc: '符合歷史條件的列表，不是保證會漲的名單', href: '#' },
+      { title: '自訂條件選股', desc: '自己組條件挑股票，可以存起來每天看', href: '#' },
+      { title: '估值河流', desc: '這檔現在算貴還是便宜', href: '#' },
+      { title: '資券借券', desc: '融資融券、借券與官股行庫動向', href: '#' },
+      { title: '除權息', desc: '除權息日程與歷史填息', href: '#' },
+      { title: '處置股名單', desc: '被處置、分盤、停券與暫停先賣後買', href: '#' },
+      { title: '融資維持率', desc: '盤後個股與大盤維持率', href: '#' },
+      { title: '主動式ETF', desc: '主動式 ETF 持股與異動', href: '#' },
+      { title: '鉅額交易', desc: '盤後鉅額成交金額', href: '#' },
+      { title: '可轉債', desc: '可轉債溢價排行', href: '#' },
+    ],
+  },
+  {
+    label: '我的',
+    subtitle: '自選、持股、提醒、社群、帳號',
+    columns: 2,
+    align: 'left',
+    items: [
+      { title: '自選股', desc: '你追蹤的股票都在這', href: '/watchlist/' },
+      { title: '到價提醒', desc: '到價、爆量、法人轉向就通知你', href: '#' },
+      { title: '我的持股', desc: '記下成本，看配置與大致損益', href: '#' },
+      { title: '戰情室警報', desc: '管理推播：想收什麼、不想收什麼', href: '/notify/' },
+      { title: '大佬席位', desc: '帳戶、回饋、邀請碼與專屬設定', href: '#' },
+      { title: '全部工具', desc: '所有功能一頁看，長按加入捷徑', href: '#' },
+      { title: 'App 安裝', desc: 'iPhone、Android 與加入主畫面', href: '#' },
+      { title: '品牌合作', desc: '合作品牌的服務與活動，清楚標示廣告', href: '#' },
+      { title: '社群聊天', desc: '會員討論、即時聊天與戰績榜', href: '#' },
+    ],
+  },
+  {
+    label: '教學',
+    subtitle: '練功房、學堂、文章、問 AI',
+    columns: 2,
+    align: 'left',
+    items: [
+      { title: '問大佬AI', desc: '丟代號或問題，AI 用數據講白話並附資料依據', href: '/ai/' },
+      { title: '練功房', desc: '用歷史某天某檔練習進出，不是今日明牌', href: '/sim/' },
+      { title: '猜下一根', desc: '用歷史K線練盤感；結果用來理解機率，不是預測明天', href: '#' },
+      { title: '文章', desc: '每天更新的盤後解讀與教學長文，不是學堂名詞卡', href: '/learn/' },
+      { title: '台股學堂', desc: '專有名詞白話解釋', href: '/school/' },
+      { title: '新手導覽', desc: '第一次用，從這裡開始', href: '/guide/' },
+      { title: '使用手冊', desc: '每個功能怎麼用的完整說明', href: '/manual/' },
+    ],
+  },
+  {
+    label: '更多',
+    subtitle: '法遵與條款',
+    columns: 1,
+    align: 'right',
+    items: [{ title: '法遵與風險', desc: '免責聲明、隱私與條款', href: '/legal/' }],
+  },
+];
+
+/** hover 進出下拉選單的防抖延遲（毫秒），避免游標掠過時閃爍。 */
+const DROPDOWN_HOVER_DELAY_MS = 130;
+
+/** 下拉選單內容資料在測試中也需要，故 export。 */
+export { MEMBER_MENUS };
 
 /** 下拉鈕共用 class（未選取；實站以 bg-accent-soft text-accent 表示選取）。 */
 const MEMBER_NAV_BTN_CLASS =
@@ -156,6 +276,69 @@ export default function Navigation() {
   // 登入狀態（client-only，初始 false，mount 後才讀 localStorage）→ 決定 header 內容。
   const isLoggedIn = useIsLoggedIn();
 
+  // ── 會員態下拉選單狀態（僅 client 互動後改變，初始固定關閉 → hydration 安全）──
+  /** 目前開啟的下拉選單索引；無開啟為 null。 */
+  const [openMenu, setOpenMenu] = useState<number | null>(null);
+  /** hover 防抖計時器（進出互相清除）。 */
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 六個下拉鈕的 DOM ref（Escape 關閉時把焦點還給按鈕用）。 */
+  const menuBtnRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current !== null) clearTimeout(hoverTimerRef.current);
+    };
+  }, []);
+
+  /** 游標進入按鈕／面板：取消待關閉計時，（短暫延遲後）開啟。 */
+  const handleMenuEnter = useCallback((index: number) => {
+    if (hoverTimerRef.current !== null) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => {
+      setOpenMenu(index);
+      hoverTimerRef.current = null;
+    }, DROPDOWN_HOVER_DELAY_MS);
+  }, []);
+
+  /** 游標離開按鈕／面板：延遲關閉，其間重新進入即取消。 */
+  const handleMenuLeave = useCallback(() => {
+    if (hoverTimerRef.current !== null) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => {
+      setOpenMenu(null);
+      hoverTimerRef.current = null;
+    }, DROPDOWN_HOVER_DELAY_MS);
+  }, []);
+
+  /** 關閉目前下拉選單；`focusBtn` 為真時把焦點還給該下拉鈕（Escape 用）。 */
+  const closeMenu = useCallback((focusBtn?: number) => {
+    setOpenMenu(null);
+    if (typeof focusBtn === 'number') menuBtnRefs.current[focusBtn]?.focus();
+  }, []);
+
+  /** 面板內鍵盤導航：Escape 關閉；↓/↑ 在項目間移動；Home/End 跳首尾。 */
+  const handlePanelKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>, index: number) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeMenu(index);
+        return;
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const links = Array.from(
+        event.currentTarget.querySelectorAll<HTMLAnchorElement>('a[role="menuitem"]'),
+      );
+      if (links.length === 0) return;
+      const current = links.indexOf(document.activeElement as HTMLAnchorElement);
+      let next = current;
+      if (event.key === 'ArrowDown') next = current + 1 >= links.length ? 0 : current + 1;
+      else if (event.key === 'ArrowUp') next = current - 1 < 0 ? links.length - 1 : current - 1;
+      else if (event.key === 'Home') next = 0;
+      else next = links.length - 1;
+      links[next].focus();
+    },
+    [closeMenu],
+  );
+
   useEffect(() => {
     setMountedPath(pathname);
   }, [pathname]);
@@ -241,22 +424,87 @@ export default function Navigation() {
 
         {isMember ? (
           <>
-            {/* 會員態桌面導覽（lg 以上顯示）：6 個下拉鈕（內容暫不展開） */}
+            {/* 會員態桌面導覽（lg 以上顯示）：6 個下拉鈕＋下拉面板 */}
             <nav className="ml-1 hidden min-w-0 items-center gap-0.5 lg:flex">
-              {MEMBER_NAV_LABELS.map((label) => (
-                <div key={label} className="relative">
-                  <button
-                    type="button"
-                    aria-expanded="false"
-                    aria-haspopup="menu"
-                    className={MEMBER_NAV_BTN_CLASS}
+              {MEMBER_MENUS.map((menu, index) => {
+                const isOpen = openMenu === index;
+                return (
+                  <div
+                    key={menu.label}
+                    className="relative"
+                    onMouseEnter={() => handleMenuEnter(index)}
+                    onMouseLeave={handleMenuLeave}
                   >
-                    {label}
-                    <CaretDownGlyph />
-                  </button>
-                </div>
-              ))}
+                    <button
+                      ref={(el) => {
+                        menuBtnRefs.current[index] = el;
+                      }}
+                      type="button"
+                      aria-expanded={isOpen}
+                      aria-haspopup="menu"
+                      aria-controls={`member-menu-${index}`}
+                      className={MEMBER_NAV_BTN_CLASS}
+                      onClick={() => (isOpen ? closeMenu() : setOpenMenu(index))}
+                      onKeyDown={(event) => {
+                        if (event.key === 'ArrowDown') {
+                          event.preventDefault();
+                          setOpenMenu(index);
+                        }
+                      }}
+                    >
+                      {menu.label}
+                      <CaretDownGlyph />
+                    </button>
+                    {isOpen && (
+                      <div
+                        id={`member-menu-${index}`}
+                        role="menu"
+                        aria-label={menu.label}
+                        className={`${styles.dropdownPanel} ${
+                          menu.align === 'right' ? styles.dropdownPanelRight : ''
+                        }`}
+                        onKeyDown={(event) => handlePanelKeyDown(event, index)}
+                      >
+                        <p className={styles.dropdownSubtitle}>{menu.subtitle}</p>
+                        <div
+                          className={`${styles.dropdownGrid} ${
+                            menu.columns === 3
+                              ? styles.dropdownCols3
+                              : menu.columns === 2
+                                ? styles.dropdownCols2
+                                : styles.dropdownCols1
+                          }`}
+                        >
+                          {menu.items.map((item) => (
+                            <Link
+                              key={item.title}
+                              href={item.href}
+                              role="menuitem"
+                              className={styles.dropdownItem}
+                              onClick={(event) => {
+                                if (item.href === '#') event.preventDefault();
+                                closeMenu();
+                              }}
+                            >
+                              <span className={styles.dropdownItemTitle}>{item.title}</span>
+                              <span className={styles.dropdownItemDesc}>{item.desc}</span>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </nav>
+            {/* 任一下拉開啟時的轻微變暗背景（點擊關閉） */}
+            {openMenu !== null && (
+              <div
+                className={styles.dropdownBackdrop}
+                aria-hidden="true"
+                onClick={() => closeMenu()}
+              />
+            )}
 
             {/* 右側：全站搜尋 + 推播設定 + 功能抽屜 */}
             <div className="ml-auto flex min-w-0 items-center gap-1 pr-0.5 lg:gap-1.5 lg:pr-0">
