@@ -103,10 +103,10 @@ describe('BottomTabBar — 訪客態', () => {
       expect(links.map((a) => a.textContent)).toEqual(['首頁', '文章', '學堂', '導覽', '登入']);
       expect(links.map((a) => a.getAttribute('href'))).toEqual([
         '/',
-        '/learn',
-        '/school',
-        '/guide',
-        '/login',
+        '/learn/',
+        '/school/',
+        '/guide/',
+        '/login/',
       ]);
     } finally {
       cleanup(container, root);
@@ -168,11 +168,11 @@ describe('BottomTabBar — 會員態', () => {
       expect(links).toHaveLength(5);
       expect(links.map((a) => a.textContent)).toEqual(['戰情', '市場', '個股', '籌碼', '我的']);
       expect(links.map((a) => a.getAttribute('href'))).toEqual([
-        '/today',
-        '/market',
-        '/stock',
-        '/brokers',
-        '/member',
+        '/today/',
+        '/market/',
+        '/stock/',
+        '/brokers/',
+        '/member/',
       ]);
     } finally {
       cleanup(container, root);
@@ -231,11 +231,11 @@ describe('BottomTabBar — 會員態', () => {
     const { container, root } = renderAt('/stock', <BottomTabBar />);
     try {
       const links = tabbarLinks(container);
-      const stock = links.find((a) => a.getAttribute('href') === '/stock');
+      const stock = links.find((a) => a.getAttribute('href') === '/stock/');
       expect(stock?.getAttribute('aria-haspopup')).toBe('dialog');
       expect(stock?.getAttribute('aria-expanded')).toBe('false');
 
-      const others = links.filter((a) => a.getAttribute('href') !== '/stock');
+      const others = links.filter((a) => a.getAttribute('href') !== '/stock/');
       for (const a of others) {
         expect(a.getAttribute('aria-haspopup')).toBeNull();
         expect(a.getAttribute('aria-expanded')).toBeNull();

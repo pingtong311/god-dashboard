@@ -16,7 +16,8 @@ import type { ReactElement } from 'react';
  * 重複使用（例如 guide.html 內的流程圖示）。
  *
  * 每個圖示元件簽名一致：`({ size = 22, className })`，
- * 輸出 `<svg xmlns width height fill="currentColor" viewBox="0 0 256 256" aria-hidden>`。
+ * 輸出 `<svg xmlns width height fill="currentColor" viewBox="0 0 256 256">`。
+ * ⚠ **不**輸出 `aria-hidden`（實站底部列的主圖示 `<svg>` 沒有此屬性，逐字對齊）。
  */
 
 /** 所有 Phosphor 圖示共用的 props。 */
@@ -41,7 +42,6 @@ function PhosphorGlyph({
       fill="currentColor"
       viewBox="0 0 256 256"
       className={className}
-      aria-hidden="true"
     >
       <path d={path} />
     </svg>
