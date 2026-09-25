@@ -10,7 +10,7 @@
  *   2. 看股工具（預估量）
  *   3. 目前研究卡 + 動作列 + 狀態列 + 資料摘要 + 資料口徑
  *   4. 「我該怎麼看？」持有時間 playbook
- *   5. 10 個子分頁（<button> 切換，非路由）
+ *   5. 9 個子分頁（<button> 切換，非路由）
  *   6. 8 張事實卡（個股事實導航）
  *   7. 研究熱度 / 產業定位 / 戰情榜名次 / 分點量價條件 / 研究摘要 / 個股新聞
  *   8. 資料日期與口徑
@@ -45,8 +45,7 @@ type TabKey =
   | 'chips'
   | 'broker'
   | 'fundamental'
-  | 'scenario'
-  | 'volume';
+  | 'scenario';
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: 'overview', label: '總覽' },
@@ -58,16 +57,15 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: 'broker', label: '分點' },
   { key: 'fundamental', label: '基本面' },
   { key: 'scenario', label: '情境' },
-  { key: 'volume', label: '價量' },
 ];
 
 /** 事實卡 key → 對應分頁（點一格切到對應分頁）。 */
 const FACT_TO_TAB: Record<string, TabKey> = {
-  price: 'volume',
+  price: 'quote',
   institutional: 'chips',
   broker: 'broker',
   holder: 'chips',
-  daytrade: 'volume',
+  daytrade: 'quote',
   margin: 'chips',
   chipHealth: 'chips',
   regulatory: 'risk',
@@ -556,7 +554,7 @@ function StockBody({
         </div>
       </section>
 
-      {/* 10 個子分頁 */}
+      {/* 9 個子分頁 */}
       <div id="stock-panel-start" />
       <nav
         aria-label="個股研究區塊"
@@ -666,11 +664,11 @@ function TabPanel({
 }) {
   if (tab === 'overview') return <OverviewTab data={data} summary={summary} />;
 
-  if (tab === 'quote' || tab === 'volume') {
+  if (tab === 'quote') {
     const q = data.quote;
     return (
-      <section className="mt-3" aria-label={tab === 'quote' ? '盤口' : '價量'}>
-        <SectionHead title={tab === 'quote' ? '盤口' : '價量'} />
+      <section className="mt-3" aria-label="盤口">
+        <SectionHead title="盤口" />
         <div className="data-panel hud-panel glass rounded-2xl p-4">
           {q ? (
             <dl className="grid grid-cols-2 gap-3 text-[13px] sm:grid-cols-4">
@@ -687,11 +685,9 @@ function TabPanel({
             <NotIndexed label="即時報價未入庫" />
           )}
         </div>
-        {tab === 'quote' ? (
-          <div className="mt-3">
-            <NotIndexed label="五檔委買賣未入庫" />
-          </div>
-        ) : null}
+        <div className="mt-3">
+          <NotIndexed label="五檔委買賣未入庫" />
+        </div>
       </section>
     );
   }

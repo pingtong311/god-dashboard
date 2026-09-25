@@ -132,13 +132,16 @@ describe('/stock?id=2330 頁面', () => {
     }
   });
 
-  it('忠實度：10 個子分頁標籤齊全且總覽為預設選中', async () => {
+  it('忠實度：9 個子分頁標籤齊全且總覽為預設選中（實站無「價量」分頁）', async () => {
     await renderPage();
     const nav = screen.getByRole('navigation', { name: '個股研究區塊' });
-    const labels = ['總覽', '盤口', '風險', '走勢', '技術', '籌碼', '分點', '基本面', '情境', '價量'];
+    const labels = ['總覽', '盤口', '風險', '走勢', '技術', '籌碼', '分點', '基本面', '情境'];
     for (const l of labels) {
       expect(within(nav).getByText(l)).toBeTruthy();
     }
+    // 子分頁恰為 9 個（不含事實卡「價量」）
+    expect(within(nav).getAllByRole('button')).toHaveLength(9);
+    expect(within(nav).queryByText('價量')).toBeNull();
     expect(within(nav).getByText('總覽').closest('button')?.getAttribute('aria-current')).toBe('location');
     expect(within(nav).getByText('盤口').closest('button')?.getAttribute('aria-current')).toBeNull();
   });
@@ -174,6 +177,17 @@ describe('/stock?id=2330 頁面', () => {
     await waitFor(() => {
       expect(screen.getByText('逐股券商分點買賣超為付費資料源，本站未接。')).toBeTruthy();
     });
+  });
+
+  it('點事實卡「價量」→ 切到「盤口」分頁（事實卡≠子分頁）', async () => {
+    await renderPage();
+    const factNav = screen.getByRole('navigation', { name: '個股事實導航' });
+    fireEvent.click(within(factNav).getByText('價量'));
+    const tabNav = screen.getByRole('navigation', { name: '個股研究區塊' });
+    await waitFor(() => {
+      expect(within(tabNav).getByText('盤口').closest('button')?.getAttribute('aria-current')).toBe('location');
+    });
+    expect(screen.getByText('五檔委買賣未入庫')).toBeTruthy();
   });
 
   it('誠實原則：無公開來源的欄位標示未入庫', async () => {
