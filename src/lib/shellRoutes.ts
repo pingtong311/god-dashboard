@@ -214,23 +214,35 @@ export function shouldShowBottomTabBar(pathname: string): boolean {
 export type TabbarVariant = 'guest' | 'member';
 
 /**
- * 決定底部列該採用哪一組 items —— 全站單一事實來源。
+ * 是否屬於「會員態外殼」（登入後）—— 供底部列（決定 items）與頂部 header
+ * （決定內容）共用的單一事實來源，確保兩者永遠一致。
  *
  * 實站實測：**登入後所有頁面**（含 `/home` `/learn` `/school` 等 guest 路由）
- * 一律顯示會員態底部列（aria-label="手機主要導覽"）；未登入時一律顯示訪客態。
- * 因此本質上由「登入狀態」決定。
- *
+ * 一律顯示會員態（底部列 5 項 + 會員版 header）；未登入時一律訪客態。
  * 額外保險：登入後路由（`resolveShell(pathname) === 'app'`）本質屬會員區，
- * 即使登入態尚未就緒（例如 `warroom_token` 尚未寫入、或尚未實作登入流程），
- * 也一律採用會員態，避免 `/stock` 等頁面出現訪客列而前後不一致。
+ * 即使登入態尚未就緒（`warroom_token` 尚未寫入）也一律視為會員態。
+ *
+ * ⚠ 妥協說明：峰子目前**尚無真實登入流程**（`/login` 為靜態複刻頁），
+ *   故以「登入狀態驅動 + 登入後路由回退」的混合式；待接上真實登入後，
+ *   應收斂為「純登入狀態驅動」（移除路徑回退）。
+ *
+ * @param isLoggedIn 目前是否已登入（client 端由 `warroom_token` 判定）。
+ * @param pathname   目前路徑（選填；用於登入後路由的保險判定）。
+ */
+export function isMemberShell(isLoggedIn: boolean, pathname = ''): boolean {
+  if (resolveShell(pathname) === 'app') {
+    return true;
+  }
+  return isLoggedIn;
+}
+
+/**
+ * 決定底部列該採用哪一組 items —— 全站單一事實來源（委派 isMemberShell）。
  *
  * @param isLoggedIn 目前是否已登入（client 端由 `warroom_token` 判定）。
  * @param pathname   目前路徑（選填；用於登入後路由的保險判定）。
  * @returns `'guest'` | `'member'`
  */
 export function resolveTabbarVariant(isLoggedIn: boolean, pathname = ''): TabbarVariant {
-  if (resolveShell(pathname) === 'app') {
-    return 'member';
-  }
-  return isLoggedIn ? 'member' : 'guest';
+  return isMemberShell(isLoggedIn, pathname) ? 'member' : 'guest';
 }

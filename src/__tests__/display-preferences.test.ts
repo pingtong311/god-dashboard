@@ -71,11 +71,11 @@ beforeEach(() => {
 });
 
 describe("正規化：非法值一律回退預設", () => {
-  test("normalizeTheme：預設 dark，僅 light／dark 通過", () => {
-    expect(normalizeTheme(null)).toBe("dark");
-    expect(normalizeTheme(undefined)).toBe("dark");
-    expect(normalizeTheme("")).toBe("dark");
-    expect(normalizeTheme("Dark")).toBe("dark");
+  test("normalizeTheme：預設 light（對齊實站 var t='light'），僅 light／dark 通過", () => {
+    expect(normalizeTheme(null)).toBe("light");
+    expect(normalizeTheme(undefined)).toBe("light");
+    expect(normalizeTheme("")).toBe("light");
+    expect(normalizeTheme("Dark")).toBe("light");
     expect(normalizeTheme("light")).toBe("light");
     expect(normalizeTheme("dark")).toBe("dark");
   });
@@ -107,9 +107,13 @@ describe("正規化：非法值一律回退預設", () => {
 });
 
 describe("readDisplayPreferences：讀取與回退", () => {
-  test("空 storage → 預設值（主題為 dark）", () => {
+  test("空 storage → 預設值（主題為 light）", () => {
     expect(readDisplayPreferences(createStorage())).toEqual(DEFAULT_DISPLAY_PREFERENCES);
-    expect(readDisplayPreferences(createStorage()).theme).toBe("dark");
+    expect(readDisplayPreferences(createStorage()).theme).toBe("light");
+  });
+
+  test("DEFAULT_DISPLAY_PREFERENCES.theme === 'light'（實站預設淺色）", () => {
+    expect(DEFAULT_DISPLAY_PREFERENCES.theme).toBe("light");
   });
 
   test("合法值 → 正確還原", () => {
@@ -128,7 +132,7 @@ describe("readDisplayPreferences：讀取與回退", () => {
     });
   });
 
-  test("非法值 → 逐項回退（主題回 dark）", () => {
+  test("非法值 → 逐項回退（主題回 light）", () => {
     const storage = createStorage({
       [STORAGE_KEYS.theme]: "blue",
       [STORAGE_KEYS.comfortRead]: "yes",
@@ -136,6 +140,7 @@ describe("readDisplayPreferences：讀取與回退", () => {
       [STORAGE_KEYS.preferences]: "{ not json",
     });
     expect(readDisplayPreferences(storage)).toEqual(DEFAULT_DISPLAY_PREFERENCES);
+    expect(readDisplayPreferences(storage).theme).toBe("light");
   });
 
   test("bs-preferences-v1 非物件（陣列／字串）→ 視為空表", () => {
@@ -241,6 +246,32 @@ describe("防禦：localStorage 拋錯時不崩潰", () => {
 describe("buildDisplayPreferencesInitScript：阻塞式初始化腳本", () => {
   const script = buildDisplayPreferencesInitScript();
 
+  /**
+   * 實站原文（逐字，抽自 captured/login-capture/html/tab-stock.html 的 4 段 inline
+   * <script>，串接為單一字串；本專案把 4 段合併注入同一個 <script>）。
+   */
+  const REAL_SITE_SCRIPT =
+    "(function(){var t='light';try{var saved=localStorage.getItem('obsidian-theme');" +
+    "if(saved==='light'||saved==='dark')t=saved;}catch(e){}" +
+    "document.documentElement.setAttribute('data-theme',t);" +
+    "document.documentElement.style.colorScheme=t;})();" +
+    "(function(){try{if(localStorage.getItem('obsidian-comfort-read')==='1')" +
+    "document.documentElement.classList.add('comfort-read')}catch(e){}})();" +
+    "(function(){try{var s=localStorage.getItem('obsidian-updown');" +
+    "if(s==='us')document.documentElement.setAttribute('data-updown','us');}catch(e){}})();" +
+    "\n(function(){\n  try {\n" +
+    "    var prefs = JSON.parse(localStorage.getItem('bs-preferences-v1') || '{}');\n" +
+    "    var root = document.documentElement;\n" +
+    "    prefs = prefs && typeof prefs === 'object' ? prefs : {};\n" +
+    "    root.setAttribute('data-font-size', ['standard','large','xlarge','huge'].indexOf(prefs.fontSize) >= 0 ? prefs.fontSize : 'standard');\n" +
+    "    root.setAttribute('data-density', prefs.density === 'compact' ? 'compact' : 'comfortable');\n" +
+    "  } catch(e){}\n" +
+    "})();\n";
+
+  test("★ 輸出逐字等於實站原文（4 段 inline script 串接）", () => {
+    expect(script).toBe(REAL_SITE_SCRIPT);
+  });
+
   test("涵蓋三把 obsidian 鍵與偏好總表", () => {
     expect(script).toContain("obsidian-theme");
     expect(script).toContain("obsidian-comfort-read");
@@ -248,18 +279,30 @@ describe("buildDisplayPreferencesInitScript：阻塞式初始化腳本", () => {
     expect(script).toContain("bs-preferences-v1");
   });
 
-  test("主題非法值回退 dark，且僅 us 才設 data-updown", () => {
-    expect(script).toContain("t!=='light'&&t!=='dark'");
-    expect(script).toContain("t='dark'");
+  test("主題預設 light（非 dark），且僅 us 才設 data-updown", () => {
+    // 逐字對齊實站：var t='light' 起始，再被合法 storage 值覆寫。
+    expect(script).toContain("var t='light'");
+    expect(script).toContain("if(saved==='light'||saved==='dark')t=saved;");
+    expect(script).toContain("document.documentElement.style.colorScheme=t;");
+    expect(script).not.toContain("t='dark'");
     expect(script).toContain("s==='us'");
   });
 
-  test("腳本可執行且預設套用 dark（無 localStorage 時）", () => {
+  test("腳本可執行且預設套用 light（無 localStorage 時）", () => {
     // eslint-disable-next-line no-new-func
     const run = new Function("document", "localStorage", script);
     const fakeStorage = createStorage();
     expect(() => run(document, fakeStorage)).not.toThrow();
-    expect(root().getAttribute(THEME_ATTRIBUTE)).toBe("dark");
+    expect(root().getAttribute(THEME_ATTRIBUTE)).toBe("light");
     expect(root().hasAttribute(UP_DOWN_ATTRIBUTE)).toBe(false);
+  });
+
+  test("腳本可執行：storage 為合法 light／dark 時以 storage 為準", () => {
+    // eslint-disable-next-line no-new-func
+    const run = new Function("document", "localStorage", script);
+    run(document, createStorage({ [STORAGE_KEYS.theme]: "dark" }));
+    expect(root().getAttribute(THEME_ATTRIBUTE)).toBe("dark");
+    run(document, createStorage({ [STORAGE_KEYS.theme]: "light" }));
+    expect(root().getAttribute(THEME_ATTRIBUTE)).toBe("light");
   });
 });

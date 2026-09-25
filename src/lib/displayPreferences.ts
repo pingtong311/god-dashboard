@@ -9,7 +9,10 @@
  * 博主以 4 把 localStorage 鍵 + 4 個 <html> 屬性/class 驅動主題：
  *
  *   (1) obsidian-theme      → <html data-theme="light|dark"> + style.colorScheme
- *                             值域：'light' | 'dark'；非法值一律回退 'dark'（預設深色）
+ *                             值域：'light' | 'dark'；非法／缺漏一律回退 'light'
+ *                             （★ 預設為「淺色」，逐字對齊實站 inline script 的
+ *                               `var t='light'`；:root 的深色 token 只是 CSS 基礎值，
+ *                               實際主題由 data-theme 屬性決定）
  *   (2) obsidian-comfort-read → <html class="... comfort-read">
  *                             值域：'1' 表示開啟；其餘（含 null/'0'）視為關閉
  *   (3) obsidian-updown     → <html data-updown="us">
@@ -27,7 +30,7 @@
  * 此時一律回退預設值且不崩潰（對齊博主腳本的 try/catch 行為）。
  * ========================================================================== */
 
-/** 明暗主題：'dark' 為預設（對齊 :root 深色 token）。 */
+/** 明暗主題：'light' 為預設（逐字對齊實站 inline script `var t='light'`）。 */
 export type ThemePreference = "dark" | "light";
 
 /** 漲跌色慣例：'tw'＝台股紅漲綠跌（預設，不設屬性）；'us'＝美股綠漲紅跌（data-updown=us）。 */
@@ -71,9 +74,9 @@ export const FONT_SIZE_VALUES: readonly FontSizePreference[] = [
   "huge",
 ];
 
-/** 預設偏好（＝博主在無任何 localStorage 時的行為）。 */
+/** 預設偏好（＝博主在無任何 localStorage 時的行為；主題預設「淺色」）。 */
 export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
-  theme: "dark",
+  theme: "light",
   comfortRead: false,
   upDown: "tw",
   density: "comfortable",
@@ -85,9 +88,9 @@ export const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
  * 對齊博主腳本的判斷式：任何非法／缺漏值都回退到預設。
  * ------------------------------------------------------------------------- */
 
-/** 明暗主題正規化：非 'light'／'dark' 一律回退 'dark'。 */
+/** 明暗主題正規化：非 'light'／'dark' 一律回退 'light'（實站預設淺色）。 */
 export function normalizeTheme(value: unknown): ThemePreference {
-  return value === "light" || value === "dark" ? value : "dark";
+  return value === "light" || value === "dark" ? value : "light";
 }
 
 /** 漲跌色正規化：僅 'us' 為美股慣例，其餘一律回退台股慣例 'tw'。 */
@@ -274,34 +277,39 @@ export function persistDisplayPreferences(
  * <head> 阻塞式初始化腳本（逐字複刻博主 4 段 inline script，維持原順序與最小邏輯）。
  * 由 src/app/layout.tsx 以 dangerouslySetInnerHTML 注入，於 <body> 首次繪製前同步執行，
  * 避免 FOUC（主題閃爍）。SSR 時 <html> 不寫死 data-theme，交由本腳本決定。
+ *
+ * 輸出＝實站 4 段 <script> 內容的逐字串接（無分隔字元），因此
+ * `buildDisplayPreferencesInitScript()` === 實站原文（見測試鎖定）。
  */
 export function buildDisplayPreferencesInitScript(): string {
   return [
-    // (1) 明暗主題
-    "(function(){try{",
-    "var t=localStorage.getItem('obsidian-theme');",
-    "if(t!=='light'&&t!=='dark')t='dark';",
+    // (1) 明暗主題 —— 逐字照抄實站：預設 'light'，再被合法 storage 值覆寫；
+    //     setAttribute / colorScheme 在 try 之外，catch 不改變 t（仍為 'light'）。
+    "(function(){var t='light';try{",
+    "var saved=localStorage.getItem('obsidian-theme');",
+    "if(saved==='light'||saved==='dark')t=saved;",
+    "}catch(e){}",
     "document.documentElement.setAttribute('data-theme',t);",
-    "document.documentElement.style.colorScheme=(t==='light'?'light':'dark');",
-    "}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();",
-    // (2) 舒適閱讀
+    "document.documentElement.style.colorScheme=t;",
+    "})();",
+    // (2) 舒適閱讀（逐字照抄；注意 add('comfort-read') 後無分號）
     "(function(){try{",
     "if(localStorage.getItem('obsidian-comfort-read')==='1')",
-    "document.documentElement.classList.add('comfort-read');",
+    "document.documentElement.classList.add('comfort-read')",
     "}catch(e){}})();",
     // (3) 漲跌色（僅 us 才設屬性）
     "(function(){try{",
     "var s=localStorage.getItem('obsidian-updown');",
     "if(s==='us')document.documentElement.setAttribute('data-updown','us');",
     "}catch(e){}})();",
-    // (4) 偏好總表：字級／密度
-    "(function(){try{",
-    "var prefs=JSON.parse(localStorage.getItem('bs-preferences-v1')||'{}');",
-    "var root=document.documentElement;",
-    "prefs=prefs&&typeof prefs==='object'?prefs:{};",
-    "root.setAttribute('data-font-size',",
-    "['standard','large','xlarge','huge'].indexOf(prefs.fontSize)>=0?prefs.fontSize:'standard');",
-    "root.setAttribute('data-density',prefs.density==='compact'?'compact':'comfortable');",
-    "}catch(e){}})();",
+    // (4) 偏好總表：字級／密度（逐字照抄，含實站原始換行與縮排）
+    "\n(function(){\n  try {\n",
+    "    var prefs = JSON.parse(localStorage.getItem('bs-preferences-v1') || '{}');\n",
+    "    var root = document.documentElement;\n",
+    "    prefs = prefs && typeof prefs === 'object' ? prefs : {};\n",
+    "    root.setAttribute('data-font-size', ['standard','large','xlarge','huge'].indexOf(prefs.fontSize) >= 0 ? prefs.fontSize : 'standard');\n",
+    "    root.setAttribute('data-density', prefs.density === 'compact' ? 'compact' : 'comfortable');\n",
+    "  } catch(e){}\n",
+    "})();\n",
   ].join("");
 }

@@ -41,7 +41,7 @@ export const metadata: Metadata = {
  * 全站顯示偏好初始化腳本（阻塞式，於 <body> 首次繪製前同步執行，避免 FOUC）。
  *
  * 逐字複刻博主在每個頁面 <head> 內嵌的 4 段 inline script：
- *   - obsidian-theme        → data-theme + style.colorScheme（預設 dark）
+ *   - obsidian-theme        → data-theme + style.colorScheme（預設 light，對齊實站）
  *   - obsidian-comfort-read → class="comfort-read"
  *   - obsidian-updown       → data-updown="us"（僅美股慣例才設）
  *   - bs-preferences-v1     → data-font-size / data-density

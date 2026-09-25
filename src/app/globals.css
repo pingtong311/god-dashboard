@@ -100,6 +100,36 @@ body {
 }
 
 /* ============================================================================
+ * 根字級 —— 「拖拉視窗時整體等比縮放」
+ * ----------------------------------------------------------------------------
+ * 逐字照抄實站（captured/login-capture/css/22j_792g-trnl.css）：
+ *
+ *   html{ …; text-size-adjust:100%; font-size:16px }
+ *   @media (min-width:768px){ html{ font-size:19px } }
+ *
+ * 實站全站（Tailwind 工具類別 + 自訂 CSS）幾乎都用 `rem`，根字級一變，
+ * 字體、方框、間距、圓角全部等比縮放；≥768px 由 16px → 19px（放大 18.75%），
+ * 讓桌面／平板自動「長到合適大小」。此為業主明確點名的細節，必須保留。
+ *
+ * ⚠ 刻意「不」寫死 `color-scheme`：實站原文雖有 `color-scheme:dark`，但那是被
+ *   <head> inline script 覆寫的基礎值；峰子由 displayPreferences 的腳本設定
+ *   `style.colorScheme`，若在此寫死會蓋掉明暗主題切換。
+ * ========================================================================== */
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 19px;
+  }
+}
+
+/* ============================================================================
  * 「股市大佬」未登入態外殼（guest shell）全域自訂類別
  * ----------------------------------------------------------------------------
  * 博主的未登入態外殼（compliance-bar / site-footer / mobile-taskbar / skip-link

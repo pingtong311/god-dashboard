@@ -22,6 +22,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { usePathname } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import { LOGIN_TOKEN_KEY } from '@/lib/authState';
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -47,6 +48,11 @@ jest.mock('next/navigation', () => ({
 const mockUsePathname = usePathname as unknown as jest.Mock;
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+/** 每個測試前清空登入憑證，避免跨測試殘留（guest 測試需確定未登入）。 */
+beforeEach(() => {
+  window.localStorage.removeItem(LOGIN_TOKEN_KEY);
+});
 
 /** 博主 about.html 內「返回上一頁」的原始 path（Phosphor ArrowLeft）。 */
 const BLOGGER_BACK_PATH =
@@ -207,6 +213,82 @@ describe('Navigation — header 內容', () => {
         return label.includes('切換') || label.includes('淺色') || label.includes('深色');
       });
       expect(hasThemeToggle).toBe(true);
+    } finally {
+      cleanup(container, root);
+    }
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 會員態 header（登入後）                                                     */
+/* -------------------------------------------------------------------------- */
+
+describe('Navigation — 會員態 header（登入後）', () => {
+  /** 桌面導覽 6 個下拉鈕的文字（去空白）。 */
+  function memberNavLabels(container: HTMLElement): string[] {
+    return Array.from(
+      container.querySelectorAll<HTMLButtonElement>('nav[class*="lg:flex"] button[aria-haspopup="menu"]'),
+    ).map((b) => (b.textContent ?? '').trim());
+  }
+
+  it('登入後路由 /today 用會員態：桌面導覽 6 個下拉鈕（今天/股票/選股/我的/教學/更多）', () => {
+    const { container, root } = renderAt('/today');
+    try {
+      expect(container.querySelector('header')).not.toBeNull();
+      const labels = memberNavLabels(container);
+      expect(labels).toEqual(['今天', '股票', '選股', '我的', '教學', '更多']);
+      // 每個下拉鈕皆為 <button aria-expanded="false" aria-haspopup="menu"> 且含 caret SVG。
+      const buttons = Array.from(
+        container.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="menu"]'),
+      );
+      expect(buttons).toHaveLength(6);
+      for (const b of buttons) {
+        expect(b.getAttribute('aria-expanded')).toBe('false');
+        expect(b.querySelector('svg path')).not.toBeNull();
+      }
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('已登入（warroom_token）時，即使位於 guest 路由也改用會員態 header', () => {
+    window.localStorage.setItem(LOGIN_TOKEN_KEY, 'test-token');
+    const { container, root } = renderAt('/school');
+    try {
+      expect(memberNavLabels(container)).toEqual(['今天', '股票', '選股', '我的', '教學', '更多']);
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('右側含全站搜尋鈕、推播設定鈴鐺（/notify/）、功能抽屜漢堡', () => {
+    const { container, root } = renderAt('/today');
+    try {
+      const search = container.querySelector('button[aria-label="搜尋股票或功能，快捷鍵 Command K"]');
+      expect(search).not.toBeNull();
+      expect(search?.getAttribute('title')).toBe('全站搜尋');
+
+      const notify = container.querySelector('a[aria-label="推播設定"]');
+      expect(notify).not.toBeNull();
+      expect(notify?.getAttribute('href')).toBe('/notify/');
+
+      const drawer = container.querySelector('button[aria-label="開啟功能抽屜"]');
+      expect(drawer).not.toBeNull();
+      expect(drawer?.getAttribute('aria-expanded')).toBe('false');
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('會員態 header 不出現訪客導覽（文章/學堂/關於/登入）與主題切換鈕', () => {
+    const { container, root } = renderAt('/today');
+    try {
+      const navText = Array.from(container.querySelectorAll('nav a')).map((a) =>
+        (a.textContent ?? '').trim(),
+      );
+      expect(navText).toEqual([]);
+      expect(container.textContent).not.toContain('文章');
+      expect(container.querySelector('[aria-label="返回上一頁"]')).not.toBeNull();
     } finally {
       cleanup(container, root);
     }

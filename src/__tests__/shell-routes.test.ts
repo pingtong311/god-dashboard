@@ -5,6 +5,7 @@ import {
   shouldShowSiteFooter,
   shouldShowBottomTabBar,
   resolveTabbarVariant,
+  isMemberShell,
 } from '@/lib/shellRoutes';
 
 /**
@@ -190,6 +191,37 @@ describe('shellRoutes — 外殼判定', () => {
     it('省略 pathname 時仍可運作（僅依登入狀態）', () => {
       expect(resolveTabbarVariant(false)).toBe('guest');
       expect(resolveTabbarVariant(true)).toBe('member');
+    });
+  });
+
+  describe('isMemberShell — 會員態外殼的單一事實來源（header 與底部列共用）', () => {
+    it('未登入且非登入後路由 → false', () => {
+      expect(isMemberShell(false, '/')).toBe(false);
+      expect(isMemberShell(false, '/school')).toBe(false);
+    });
+
+    it('已登入 → true（任何路由）', () => {
+      expect(isMemberShell(true, '/')).toBe(true);
+      expect(isMemberShell(true, '/learn')).toBe(true);
+    });
+
+    it('登入後路由即使未登入 → true（路徑回退，避免 /stock 出現訪客外殼）', () => {
+      expect(isMemberShell(false, '/stock')).toBe(true);
+      expect(isMemberShell(false, '/today')).toBe(true);
+    });
+
+    it('resolveTabbarVariant 與 isMemberShell 永遠一致', () => {
+      const cases: ReadonlyArray<readonly [boolean, string]> = [
+        [false, '/'],
+        [true, '/'],
+        [false, '/stock'],
+        [true, '/stock'],
+        [false, '/privacy'],
+      ];
+      for (const [loggedIn, path] of cases) {
+        const variant = resolveTabbarVariant(loggedIn, path);
+        expect(variant === 'member').toBe(isMemberShell(loggedIn, path));
+      }
     });
   });
 });
