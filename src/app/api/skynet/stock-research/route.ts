@@ -32,10 +32,10 @@ import {
   type TdccRow,
 } from '@/lib/stockResearch';
 
-/** 內部子來源呼叫逾時（毫秒）。 */
-const INTERNAL_TIMEOUT_MS = 12_000;
-/** chips route 取幾個交易日的法人/資券（供連續買賣超推導）。 */
-const CHIPS_DAYS = 20;
+/** 內部子來源呼叫逾時（毫秒）；chips 需逐日抓 T86/MI_MARGN，留足預算。 */
+const INTERNAL_TIMEOUT_MS = 18_000;
+/** chips route 取幾個交易日的法人/資券（供連續買賣超推導；10 日足夠算連買連賣）。 */
+const CHIPS_DAYS = 10;
 
 /** 台股 4~6 位數字（可帶一個字母後綴）。 */
 const TICKER_RE = /^\d{4,6}[A-Z]?$/;
