@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { shouldShowMobileTaskbar } from '@/lib/shellRoutes';
+import { shouldShowSiteFooter } from '@/lib/shellRoutes';
 
 /**
  * SiteFooter — 頁尾免責與法遵聲明（複刻「股市大佬」未登入態外殼）。
@@ -32,12 +32,14 @@ import { shouldShowMobileTaskbar } from '@/lib/shellRoutes';
  *     於此輸出純文字 `© 2026`。
  *   - 全形字元 `／`（U+FF0F，使用回饋／刪帳）與 `｜`（U+FF5C，版權列）原樣保留。
  *
- * 顯示時機：未登入態（guest）—— 由 shellRoutes 單一來源判定，非 guest 回傳 null。
+ * 顯示時機：guest 與 app（登入後）**皆有** site-footer —— 實測登入後頁面
+ * （/today/ /market/ …）同樣渲染本頁尾。由 shellRoutes 單一來源判定，
+ * 'none' 路由（/learn/<slug>、/s/<ticker>、/privacy、/terms）回傳 null。
  */
 export default function SiteFooter() {
   const pathname = usePathname();
 
-  if (!shouldShowMobileTaskbar(pathname)) {
+  if (!shouldShowSiteFooter(pathname)) {
     return null;
   }
 

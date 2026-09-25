@@ -1,10 +1,9 @@
 /** @jest-environment jsdom */
 
 /**
- * 未登入態外殼（guest shell）測試
+ * 外殼元件測試（底部列 / 法遵條 / 頁尾）
  * ----------------------------------------------------------------------------
- * 覆蓋 <ComplianceBar/> <SiteFooter/> <MobileTaskbar/> 三個新外殼元件，
- * 以及 <AppTabBar/> 與底部列的互斥（回歸）。
+ * 覆蓋 <BottomTabBar/>（guest + member 兩態）、<ComplianceBar/>、<SiteFooter/>。
  *
  * 說明：本專案的 `@testing-library/dom` 為損壞的 symlink（缺 dom-accessibility-api，
  * 連帶使 `@testing-library/react` 無任何 export），故沿用 repo 既有做法：
@@ -12,6 +11,7 @@
  *   - `next/link` 以純 <a> 取代（href 不變）
  *   - `next/navigation` 的 usePathname 以可控 mock 取代
  * 元件以 mountedPath（useState('') + useEffect）判定「已選取」，
+ * 登入狀態以 localStorage 的 `warroom_token` 判定（同樣於 effect 內讀取），
  * 故必須真正掛載、跑完 effect 後再查詢。
  */
 
@@ -21,8 +21,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { usePathname } from 'next/navigation';
 import ComplianceBar from '@/components/ComplianceBar';
 import SiteFooter from '@/components/SiteFooter';
-import MobileTaskbar from '@/components/MobileTaskbar';
-import AppTabBar from '@/components/AppTabBar';
+import BottomTabBar from '@/components/BottomTabBar';
+import { LOGIN_TOKEN_KEY } from '@/lib/authState';
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -54,6 +54,11 @@ const mockUsePathname = usePathname as unknown as jest.Mock;
 /* 工具                                                                       */
 /* -------------------------------------------------------------------------- */
 
+/** 每個測試前清空登入憑證，避免跨測試殘留。 */
+beforeEach(() => {
+  window.localStorage.removeItem(LOGIN_TOKEN_KEY);
+});
+
 /** 在指定 pathname 掛載元件（跑完 effect）→ 回傳可查詢的容器與 root。 */
 function renderAt(pathname: string, ui: ReactElement): { container: HTMLDivElement; root: Root } {
   mockUsePathname.mockReturnValue(pathname);
@@ -75,26 +80,24 @@ function cleanup(container: HTMLDivElement, root: Root): void {
   container.remove();
 }
 
-/** 底部列的五個連結。 */
-function taskbarLinks(container: HTMLElement): HTMLAnchorElement[] {
-  return Array.from(
-    container.querySelectorAll<HTMLAnchorElement>('nav[aria-label="手機導覽（未登入）"] a'),
-  );
+/** 底部列的所有連結。 */
+function tabbarLinks(container: HTMLElement): HTMLAnchorElement[] {
+  return Array.from(container.querySelectorAll<HTMLAnchorElement>('nav.mobile-taskbar a'));
 }
 
 /* -------------------------------------------------------------------------- */
-/* 1. MobileTaskbar — 結構                                                    */
+/* 1. BottomTabBar — 訪客態（guest）                                          */
 /* -------------------------------------------------------------------------- */
 
-describe('MobileTaskbar — 結構', () => {
-  it('渲染 5 個連結，nav 具 aria-label，標籤與 href 逐字正確', () => {
-    const { container, root } = renderAt('/', <MobileTaskbar />);
+describe('BottomTabBar — 訪客態', () => {
+  it('未登入時 nav 的 aria-label 為「手機導覽（未登入）」，5 個 href/label 逐字正確', () => {
+    const { container, root } = renderAt('/', <BottomTabBar />);
     try {
       const nav = container.querySelector('nav');
       expect(nav).not.toBeNull();
       expect(nav?.getAttribute('aria-label')).toBe('手機導覽（未登入）');
 
-      const links = taskbarLinks(container);
+      const links = tabbarLinks(container);
       expect(links).toHaveLength(5);
       expect(links.map((a) => a.textContent)).toEqual(['首頁', '文章', '學堂', '導覽', '登入']);
       expect(links.map((a) => a.getAttribute('href'))).toEqual([
@@ -109,13 +112,132 @@ describe('MobileTaskbar — 結構', () => {
     }
   });
 
-  it('每個項目皆含圓形圖示膠囊（<svg>）與文字標籤', () => {
-    const { container, root } = renderAt('/', <MobileTaskbar />);
+  it('nav 的 class 逐字等於實站原文', () => {
+    const { container, root } = renderAt('/', <BottomTabBar />);
     try {
-      const links = taskbarLinks(container);
-      for (const a of links) {
-        expect(a.querySelector('svg')).not.toBeNull();
-        expect(a.querySelectorAll('span')).toHaveLength(2);
+      const nav = container.querySelector('nav');
+      expect(nav?.getAttribute('class')).toBe(
+        'mobile-taskbar fixed inset-x-0 bottom-0 z-30 grid h-[calc(4.5rem+env(safe-area-inset-bottom))] grid-cols-5 border-t border-line bg-surface/96 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden',
+      );
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('訪客態 <a> class 不含 px-0.5（與會員態的關鍵差異之一）', () => {
+    const { container, root } = renderAt('/', <BottomTabBar />);
+    try {
+      for (const a of tabbarLinks(container)) {
+        const cls = a.getAttribute('class') ?? '';
+        expect(cls).toContain(
+          'flex min-w-0 flex-col items-center justify-center gap-0.5 text-[11px] font-black transition active:scale-95',
+        );
+        expect(cls).not.toContain('px-0.5');
+      }
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('訪客態 label 為單純 <span>首頁</span>（無 truncate 內層）', () => {
+    const { container, root } = renderAt('/', <BottomTabBar />);
+    try {
+      const first = tabbarLinks(container)[0];
+      const labelSpan = first.querySelectorAll('span')[1];
+      expect(labelSpan.textContent).toBe('首頁');
+      expect(labelSpan.querySelector('span')).toBeNull();
+    } finally {
+      cleanup(container, root);
+    }
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 2. BottomTabBar — 會員態（member）                                         */
+/* -------------------------------------------------------------------------- */
+
+describe('BottomTabBar — 會員態', () => {
+  it('登入後路由 /today 用會員態：aria-label 與 5 個 href/label 逐字正確', () => {
+    const { container, root } = renderAt('/today', <BottomTabBar />);
+    try {
+      const nav = container.querySelector('nav');
+      expect(nav?.getAttribute('aria-label')).toBe('手機主要導覽');
+
+      const links = tabbarLinks(container);
+      expect(links).toHaveLength(5);
+      expect(links.map((a) => a.textContent)).toEqual(['戰情', '市場', '個股', '籌碼', '我的']);
+      expect(links.map((a) => a.getAttribute('href'))).toEqual([
+        '/today',
+        '/market',
+        '/stock',
+        '/brokers',
+        '/member',
+      ]);
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('已登入（warroom_token 存在）時，即使位於 guest 路由也改用會員態', () => {
+    window.localStorage.setItem(LOGIN_TOKEN_KEY, 'test-token');
+    const { container, root } = renderAt('/', <BottomTabBar />);
+    try {
+      const nav = container.querySelector('nav');
+      expect(nav?.getAttribute('aria-label')).toBe('手機主要導覽');
+      expect(tabbarLinks(container).map((a) => a.textContent)).toEqual([
+        '戰情',
+        '市場',
+        '個股',
+        '籌碼',
+        '我的',
+      ]);
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('會員態 <a> class 含 px-0.5，且 nav class 與訪客態相同', () => {
+    const { container, root } = renderAt('/today', <BottomTabBar />);
+    try {
+      const nav = container.querySelector('nav');
+      expect(nav?.getAttribute('class')).toBe(
+        'mobile-taskbar fixed inset-x-0 bottom-0 z-30 grid h-[calc(4.5rem+env(safe-area-inset-bottom))] grid-cols-5 border-t border-line bg-surface/96 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden',
+      );
+      for (const a of tabbarLinks(container)) {
+        expect(a.getAttribute('class')).toContain(
+          'flex min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 text-[11px] font-black transition active:scale-95',
+        );
+      }
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('會員態 label 多包一層 flex/truncate（逐字照抄實站）', () => {
+    const { container, root } = renderAt('/today', <BottomTabBar />);
+    try {
+      const first = tabbarLinks(container)[0];
+      const wrapper = first.querySelector('span.flex.max-w-full.items-center.justify-center.gap-0\\.5');
+      expect(wrapper).not.toBeNull();
+      const inner = wrapper?.querySelector('span.truncate');
+      expect(inner?.textContent).toBe('戰情');
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('個股 /stock 帶 aria-haspopup="dialog" 與 aria-expanded="false"（其餘項不帶）', () => {
+    const { container, root } = renderAt('/stock', <BottomTabBar />);
+    try {
+      const links = tabbarLinks(container);
+      const stock = links.find((a) => a.getAttribute('href') === '/stock');
+      expect(stock?.getAttribute('aria-haspopup')).toBe('dialog');
+      expect(stock?.getAttribute('aria-expanded')).toBe('false');
+
+      const others = links.filter((a) => a.getAttribute('href') !== '/stock');
+      for (const a of others) {
+        expect(a.getAttribute('aria-haspopup')).toBeNull();
+        expect(a.getAttribute('aria-expanded')).toBeNull();
       }
     } finally {
       cleanup(container, root);
@@ -124,11 +246,11 @@ describe('MobileTaskbar — 結構', () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 2. MobileTaskbar — 已選取態                                                */
+/* 3. BottomTabBar — 已選取態                                                 */
 /* -------------------------------------------------------------------------- */
 
-describe('MobileTaskbar — 已選取態', () => {
-  const cases: ReadonlyArray<readonly [string, string]> = [
+describe('BottomTabBar — 已選取態', () => {
+  const guestCases: ReadonlyArray<readonly [string, string]> = [
     ['/', '首頁'],
     ['/learn', '文章'],
     ['/school', '學堂'],
@@ -136,10 +258,31 @@ describe('MobileTaskbar — 已選取態', () => {
     ['/login', '登入'],
   ];
 
-  it.each(cases)('pathname %s → 恰好一個 aria-current=page，且為「%s」', (path, label) => {
-    const { container, root } = renderAt(path, <MobileTaskbar />);
+  it.each(guestCases)('訪客態 pathname %s → 恰好一個 aria-current=page（%s）', (path, label) => {
+    const { container, root } = renderAt(path, <BottomTabBar />);
     try {
-      const active = taskbarLinks(container).filter(
+      const active = tabbarLinks(container).filter(
+        (a) => a.getAttribute('aria-current') === 'page',
+      );
+      expect(active).toHaveLength(1);
+      expect(active[0].textContent).toBe(label);
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  const memberCases: ReadonlyArray<readonly [string, string]> = [
+    ['/today', '戰情'],
+    ['/market', '市場'],
+    ['/stock', '個股'],
+    ['/brokers', '籌碼'],
+    ['/member', '我的'],
+  ];
+
+  it.each(memberCases)('會員態 pathname %s → 恰好一個 aria-current=page（%s）', (path, label) => {
+    const { container, root } = renderAt(path, <BottomTabBar />);
+    try {
+      const active = tabbarLinks(container).filter(
         (a) => a.getAttribute('aria-current') === 'page',
       );
       expect(active).toHaveLength(1);
@@ -150,9 +293,9 @@ describe('MobileTaskbar — 已選取態', () => {
   });
 
   it('已選取項目的圖示膠囊帶 taskbar-active-pill；未選取者不帶（全頁僅 1 個）', () => {
-    const { container, root } = renderAt('/school', <MobileTaskbar />);
+    const { container, root } = renderAt('/school', <BottomTabBar />);
     try {
-      const links = taskbarLinks(container);
+      const links = tabbarLinks(container);
       const activeLink = links.find((a) => a.getAttribute('aria-current') === 'page');
       expect(activeLink?.textContent).toBe('學堂');
 
@@ -160,8 +303,7 @@ describe('MobileTaskbar — 已選取態', () => {
       expect(pillSpans).toHaveLength(1);
       expect(activeLink?.querySelector('span')?.className).toContain('taskbar-active-pill');
 
-      // 其餘四個膠囊為未選取樣式
-      const inactivePills = Array.from(links)
+      const inactivePills = links
         .filter((a) => a.getAttribute('aria-current') !== 'page')
         .map((a) => a.querySelector('span')?.className ?? '');
       expect(inactivePills).toHaveLength(4);
@@ -174,13 +316,27 @@ describe('MobileTaskbar — 已選取態', () => {
     }
   });
 
-  it('已選取態圖示尺寸 21、未選取態 22（逐字照抄博主）', () => {
-    const { container, root } = renderAt('/login', <MobileTaskbar />);
+  it('已選取態圖示尺寸 21、未選取態 22（逐字照抄實站）', () => {
+    const { container, root } = renderAt('/login', <BottomTabBar />);
     try {
       const active = container.querySelector('a[aria-current="page"] svg');
       expect(active?.getAttribute('width')).toBe('21');
       expect(active?.getAttribute('height')).toBe('21');
-      const inactive = taskbarLinks(container).find(
+      const inactive = tabbarLinks(container).find(
+        (a) => a.getAttribute('aria-current') !== 'page',
+      );
+      expect(inactive?.querySelector('svg')?.getAttribute('width')).toBe('22');
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('會員態已選取圖示尺寸亦為 21（/stock）', () => {
+    const { container, root } = renderAt('/stock', <BottomTabBar />);
+    try {
+      const active = container.querySelector('a[aria-current="page"] svg');
+      expect(active?.getAttribute('width')).toBe('21');
+      const inactive = tabbarLinks(container).find(
         (a) => a.getAttribute('aria-current') !== 'page',
       );
       expect(inactive?.querySelector('svg')?.getAttribute('width')).toBe('22');
@@ -191,14 +347,14 @@ describe('MobileTaskbar — 已選取態', () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 3. MobileTaskbar — 非 guest 不渲染                                         */
+/* 4. BottomTabBar — 無外殼路由不渲染                                         */
 /* -------------------------------------------------------------------------- */
 
-describe('MobileTaskbar — 非 guest 路由不渲染', () => {
-  it.each(['/learn/some-slug', '/s/2330', '/privacy', '/terms', '/diary'])(
+describe('BottomTabBar — 無外殼路由不渲染', () => {
+  it.each(['/learn/some-slug', '/s/2330', '/privacy', '/terms'])(
     '%s → 不渲染任何 <nav>',
     (path) => {
-      const { container, root } = renderAt(path, <MobileTaskbar />);
+      const { container, root } = renderAt(path, <BottomTabBar />);
       try {
         expect(container.querySelector('nav')).toBeNull();
         expect(container.childNodes).toHaveLength(0);
@@ -210,7 +366,7 @@ describe('MobileTaskbar — 非 guest 路由不渲染', () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 4. ComplianceBar                                                           */
+/* 5. ComplianceBar — 法遵條                                                  */
 /* -------------------------------------------------------------------------- */
 
 describe('ComplianceBar — 法遵條', () => {
@@ -221,7 +377,6 @@ describe('ComplianceBar — 法遵條', () => {
       expect(text).toContain('非證券投資顧問事業');
       expect(text).toContain('｜公開資料研究與教學，不提供個股分析意見或推介');
       expect(text).toContain('｜公開資料研究與教學');
-      // 兩個 tagline 分屬 hidden sm:inline / sm:hidden
       expect(container.querySelector('.hidden.sm\\:inline')).not.toBeNull();
       expect(container.querySelector('.sm\\:hidden')).not.toBeNull();
     } finally {
@@ -236,14 +391,22 @@ describe('ComplianceBar — 法遵條', () => {
       expect(links.map((a) => a.textContent)).toEqual(['法遵', '隱私']);
       expect(links.map((a) => a.getAttribute('href'))).toEqual(['/legal/', '/privacy']);
       expect(links.some((a) => a.getAttribute('target') === '_blank')).toBe(false);
-      // 兩個連結之間為一個前後各一空格的「·」
       expect(container.textContent).toContain('法遵 · 隱私');
     } finally {
       cleanup(container, root);
     }
   });
 
-  it('非 guest 路由（/s/2330）不渲染', () => {
+  it('★ 登入後路由（/today）同樣渲染（實測登入後頁面仍有法遵條）', () => {
+    const { container, root } = renderAt('/today', <ComplianceBar />);
+    try {
+      expect(container.querySelector('.compliance-bar')).not.toBeNull();
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('無外殼路由（/s/2330）不渲染', () => {
     const { container, root } = renderAt('/s/2330', <ComplianceBar />);
     try {
       expect(container.childNodes).toHaveLength(0);
@@ -254,7 +417,7 @@ describe('ComplianceBar — 法遵條', () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 5. SiteFooter                                                              */
+/* 6. SiteFooter                                                              */
 /* -------------------------------------------------------------------------- */
 
 describe('SiteFooter — 免責與法遵聲明', () => {
@@ -293,43 +456,25 @@ describe('SiteFooter — 免責與法遵聲明', () => {
         '/legal/',
         '/member/?tab=feedback',
       ]);
-      // 隱私 / 服務條款已改為站內路由，不再另開視窗
       expect(links.some((a) => a.getAttribute('target') === '_blank')).toBe(false);
     } finally {
       cleanup(container, root);
     }
   });
 
-  it('非 guest 路由（/s/2330）不渲染', () => {
+  it('★ 登入後路由（/today）同樣渲染 site-footer（實測登入後頁面仍有頁尾）', () => {
+    const { container, root } = renderAt('/today', <SiteFooter />);
+    try {
+      expect(container.querySelector('footer.site-footer')).not.toBeNull();
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('無外殼路由（/s/2330）不渲染', () => {
     const { container, root } = renderAt('/s/2330', <SiteFooter />);
     try {
       expect(container.childNodes).toHaveLength(0);
-    } finally {
-      cleanup(container, root);
-    }
-  });
-});
-
-/* -------------------------------------------------------------------------- */
-/* 6. 外殼互斥（回歸）                                                        */
-/* -------------------------------------------------------------------------- */
-
-describe('外殼互斥（回歸）', () => {
-  it('AppTabBar 在 /school 不渲染（不得與未登入態底部列重疊）', () => {
-    const { container, root } = renderAt('/school', <AppTabBar />);
-    try {
-      expect(container.querySelector('nav')).toBeNull();
-    } finally {
-      cleanup(container, root);
-    }
-  });
-
-  it('AppTabBar 在 /diary 仍渲染（App 外殼不受影響）', () => {
-    const { container, root } = renderAt('/diary', <AppTabBar />);
-    try {
-      const nav = container.querySelector('nav');
-      expect(nav).not.toBeNull();
-      expect(nav?.getAttribute('aria-label')).toBe('底部功能列');
     } finally {
       cleanup(container, root);
     }

@@ -14,7 +14,12 @@ import styles from './Navigation.module.css';
  *   （about / home / login / school 等頁的 header 同構）
  * 導覽四項固定為：文章 /learn/、學堂 /school/、關於 /about/、登入 /login/。
  *
- * 注意：App 底部功能列 <AppTabBar /> 已由 layout.tsx 全域渲染，本元件不重複渲染。
+ * 注意：底部固定列 <BottomTabBar /> 已由 layout.tsx 全域渲染，本元件不重複渲染。
+ *
+ * 顯示時機：實測登入後的頁面（/today/ /market/ …）**同樣有 site-header**，
+ * 故本元件對 guest 與 app 皆顯示（由 shellRoutes 的 shouldShowHeader 單一來源判定）。
+ * ⚠ 目前 header 內容仍為訪客版（文章／學堂／關於／登入）；登入後實站的
+ *   header 為「今天／股票／選股…」下拉選單，屬後續複刻範圍。
  */
 
 // 是否顯示網站 header 一律交由 @/lib/shellRoutes 的 shouldShowHeader() 判定
@@ -48,7 +53,7 @@ export default function Navigation() {
 
   // Hydration 安全：不在 render 期間直接依 usePathname() 決定「當前項」，
   // 改以 useState('') 起始、於 useEffect 內才同步，避免 SSR/CSR 首屏不一致。
-  // （與 AppTabBar.tsx 同模式：pathname 用於顯示/隱藏判斷，mountedPath 用於當前項。）
+  // （與 BottomTabBar.tsx 同模式：pathname 用於顯示/隱藏判斷，mountedPath 用於當前項。）
   const [mountedPath, setMountedPath] = useState('');
 
   // 目前主題；首屏固定 'dark'（= <html data-theme="dark"> 的預設值），
@@ -137,7 +142,7 @@ export default function Navigation() {
           </span>
         </Link>
 
-        {/* 桌面導覽（md 以上顯示；手機由 AppTabBar 底部列負責） */}
+        {/* 桌面導覽（md 以上顯示；手機由 BottomTabBar 底部列負責） */}
         <nav className={styles.nav}>
           {NAV_ITEMS.map((item) => (
             <Link

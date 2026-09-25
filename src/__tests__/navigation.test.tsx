@@ -4,7 +4,7 @@
  * Navigation（頂部 site-header）測試
  * ----------------------------------------------------------------------------
  * 覆蓋：
- *   1. 顯示時機：只在 guest 路由渲染（沿用 shellRoutes 判定）。
+ *   1. 顯示時機：guest 與 app（登入後）皆渲染；只有 'none' 路由不渲染（沿用 shellRoutes 判定）。
  *   2. ★ 回歸：「返回上一頁」按鈕不得出現在首頁 `/`。
  *      博主實測（extracted/site/，grep `返回上一頁`）：
  *        home.html = 0，其餘 10 個外殼頁 = 1。
@@ -79,10 +79,10 @@ function backButton(container: HTMLElement): HTMLElement | null {
 
 /* -------------------------------------------------------------------------- */
 
-describe('Navigation — 顯示時機（guest 路由）', () => {
+describe('Navigation — 顯示時機（guest 與 app 皆顯示）', () => {
   const guestPaths = ['/', '/learn', '/school', '/guide', '/manual', '/about', '/pricing'];
 
-  it.each(guestPaths)('%s → 渲染 header', (pathname) => {
+  it.each(guestPaths)('%s → 渲染 header（guest）', (pathname) => {
     const { container, root } = renderAt(pathname);
     try {
       expect(container.querySelector('header')).not.toBeNull();
@@ -91,9 +91,21 @@ describe('Navigation — 顯示時機（guest 路由）', () => {
     }
   });
 
-  const noHeaderPaths = ['/learn/some-slug', '/s/2330', '/privacy', '/terms', '/diary', '/radar'];
+  // ★ 本次修正：登入後的頁面（'app'）**同樣有** site-header，不再是「無外殼」。
+  const appPaths = ['/today', '/market', '/stock', '/brokers', '/member', '/diary', '/radar'];
 
-  it.each(noHeaderPaths)('%s → 完全不渲染', (pathname) => {
+  it.each(appPaths)('%s → 渲染 header（登入後頁面仍有 site-header）', (pathname) => {
+    const { container, root } = renderAt(pathname);
+    try {
+      expect(container.querySelector('header')).not.toBeNull();
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  const noHeaderPaths = ['/learn/some-slug', '/s/2330', '/privacy', '/terms'];
+
+  it.each(noHeaderPaths)('%s → 完全不渲染（無外殼）', (pathname) => {
     const { container, root } = renderAt(pathname);
     try {
       expect(container.querySelector('header')).toBeNull();

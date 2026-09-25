@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { shouldShowMobileTaskbar } from '@/lib/shellRoutes';
+import { shouldShowHeader } from '@/lib/shellRoutes';
 
 /**
  * ComplianceBar — 頂部法遵條（複刻「股市大佬」未登入態外殼）。
@@ -18,8 +18,9 @@ import { shouldShowMobileTaskbar } from '@/lib/shellRoutes';
  *     <a href="/privacy.html" target="_blank" rel="noreferrer" …>隱私</a>
  *   </div>
  *
- * 顯示時機：與底部列同屬「未登入態（guest）」—— 由 shellRoutes 單一來源判定，
- * 非 guest 路由（/learn/<slug>、/s/<ticker>、/privacy、/terms、App 主分頁）回傳 null。
+ * 顯示時機：與 site-header 同進退（實測登入後的頁面同樣有此法遵條）——
+ * 由 shellRoutes 單一來源判定；'none' 路由（/learn/<slug>、/s/<ticker>、
+ * /privacy、/terms）回傳 null。
  *
  * 與博主的唯一差異（URL 是我們自己的）：
  *   - 法遵 → Next.js <Link> 指向本站 `/legal/`（博主同為 /legal/）。
@@ -32,7 +33,7 @@ export default function ComplianceBar() {
 
   // 與 Navigation.tsx 相同的顯示判斷：直接以 usePathname() 決定是否渲染
   // （SSR 與 CSR 的 pathname 一致，故不會有 hydration 落差）。
-  if (!shouldShowMobileTaskbar(pathname)) {
+  if (!shouldShowHeader(pathname)) {
     return null;
   }
 

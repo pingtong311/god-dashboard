@@ -1,25 +1,38 @@
 /**
- * 全站「外殼路由表」—— 三個外殼元件共用同一份判定，避免各自維護前綴而漂移。
+ * 全站「外殼路由表」—— 所有外殼元件共用同一份判定，避免各自維護前綴而漂移。
  *
- *   <Navigation />      頂部 site-header      → 只在 'guest' 顯示
- *   <MobileTaskbar />   未登入態底部列（5 欄） → 只在 'guest' 顯示
- *   <AppTabBar />       峰子 App 底部功能列    → 只在 'app'   顯示
+ *   <Navigation />     頂部 site-header   → guest 與 app 皆顯示（none 隱藏）
+ *   <ComplianceBar />  頂部法遵條         → guest 與 app 皆顯示（none 隱藏）
+ *   <SiteFooter />     頁尾免責聲明       → guest 與 app 皆顯示（none 隱藏）
+ *   <BottomTabBar />   底部固定列（5 欄） → guest 與 app 皆顯示（none 隱藏）
  *
- * ── 博主站上的三種頁面外殼（實測自 extracted/site/ 本地快取）──
+ * ── 實測後的架構真相（登入前後完整抓取 https://blackstockai.com）──
  *
- * A. 'guest' — App 版面，**有** site-header + mobile-taskbar（aria-label="手機導覽（未登入）"）
- *      /                     home.html
- *      /learn                learn-index.html   ← 注意：索引頁有外殼
- *      /school /guide /manual /about /pricing /methodology /legal /app /login
+ * 博主站上**只有一套外殼**。登入前後的差別**僅在底部列的五個項目**，
+ * 以及頂部 header 的內容（guest 為「文章／學堂／關於／登入」，
+ * 登入後為「今天／股票／選股…」下拉選單）。外殼的有無完全一致：
  *
- * B. 'none' — SEO 版面，**兩者皆無**（無 site-header、無 <nav>、無 mobile-taskbar）
- *      /learn/<slug>         416 篇，`grep -l site-header learn/*.html` = 0
- *      /s/<ticker>           例 s2330.html，同為 0
- *      這兩者是給搜尋引擎與免登入訪客的純內容頁。
+ *   A. 'guest' — 未登入態外殼。有 site-header + mobile-taskbar
+ *                （aria-label="手機導覽（未登入）"）+ site-footer + compliance-bar。
+ *      /  /learn  /school  /guide  /manual  /about  /pricing  /methodology
+ *      /legal  /app  /login
+ *      （★ /learn 索引本身**有**外殼；只有 /learn/<slug> 才是無外殼。）
  *
- * C. 'app' — 博主登入後才有的 App 主體畫面（/today/ /picks/ …）。
- *      該批路由在博主站上是登入閘門後的 SPA（SSR 只吐「正在載入你的資料…」），
- *      內容無法抓取；峰子以自建的 App 主分頁 + <AppTabBar /> 接手。
+ *   B. 'app'   — 登入態外殼。**同樣有** site-header + site-footer + compliance-bar，
+ *                差別只在底部列換成會員態（aria-label="手機主要導覽"，5 項：
+ *                /today/ 戰情、/market/ 市場、/stock/ 個股、/brokers/ 籌碼、/member/ 我的）。
+ *      /today  /market  /stock  /brokers  /member  /live  /reports  … 共 40 條實站路由，
+ *      外加峰子自有的登入後頁面（/diary /review /chart /ai /sim /chips）。
+ *
+ *   C. 'none'  — 完全沒有導覽外殼（無 site-header、無 mobile-taskbar、無 site-footer）。
+ *      /learn/<slug>   SEO 文章頁
+ *      /s/<ticker>     SEO 個股落地頁
+ *      /privacy  /terms  獨立靜態頁
+ *
+ * ⚠ 關鍵修正（本次）：舊版把 'app' 定義成「無 site-header，只顯示 AppTabBar」，
+ *   **是錯的**。實測登入後 10 個頁面（/today/ /market/ /stock/ /brokers/ /member/
+ *   /settings/ /community/ …）**全部都有 site-header 與 site-footer**。
+ *   故 shouldShowHeader / shouldShowSiteFooter 對 guest 與 app **都要回 true**。
  *
  * ⚠ 判別依據是「該頁有沒有渲染 site-header / mobile-taskbar」，**不是** `lang` 屬性。
  *   416 篇文章的 lang 其實是 `zh-Hant`（與有外殼的 App 版面相同），
@@ -28,9 +41,9 @@
 
 /** 頁面外殼種類。 */
 export type ShellKind =
-  /** 未登入態：頂部 site-header + 底部 5 欄 mobile-taskbar。 */
+  /** 未登入態：頂部 site-header + 底部 5 欄 mobile-taskbar（guest 版）+ site-footer。 */
   | 'guest'
-  /** 峰子 App 主分頁：僅底部 AppTabBar。 */
+  /** 登入態：同樣有 site-header + site-footer，底部列換成會員態 5 欄。 */
   | 'app'
   /** 純內容頁：完全沒有導覽外殼。 */
   | 'none';
@@ -54,17 +67,59 @@ const GUEST_EXACT: readonly string[] = [
 ];
 
 /**
- * 峰子 App 主分頁前綴（含子路徑）。
- * 這些頁面不顯示網站 header —— 依博主設計，App 主體不應出現網站外殼。
+ * 登入態頁面前綴（含子路徑）。
+ * 來源：登入後 Playwright 抓取的 51 條路由清單（全為登入後頁面），
+ * 再加上峰子自有的登入後頁面（/diary /review /chart /ai /sim /chips）。
+ * 這些頁面**仍會顯示** site-header 與 site-footer，只是底部列改用會員態。
  */
 const APP_PREFIXES: readonly string[] = [
-  '/diary',
+  // ── 實站登入後路由（51 條清單中的頂層前綴）─────────────────────────────
+  '/today',
+  '/market',
+  '/stock',
+  '/brokers',
+  '/member',
+  '/live',
+  '/reports',
+  '/sector',
   '/radar',
+  '/market-center',
+  '/trump',
+  '/futures-opt',
+  '/signal',
+  '/valuation',
+  '/research',
+  '/picks',
+  '/patterns',
+  '/swing',
+  '/tools',
+  '/risk',
+  '/dividend',
+  '/etf-active',
+  '/cb',
+  '/ranking',
+  '/backtest',
+  '/fade',
+  '/leverage',
+  '/margin-maint',
+  '/block-trades',
+  '/hub',
+  '/watchlist',
+  '/portfolio',
+  '/alerts',
+  '/notify',
+  '/community',
+  '/partners',
+  '/ask',
+  '/dojo',
+  '/guess',
+  '/settings',
+  // ── 峰子自有的登入後頁面（保留於此，避免既有頁面突然變成 guest）────────
+  '/diary',
   '/review',
   '/chart',
   '/ai',
   '/sim',
-  '/watchlist',
   '/chips',
 ];
 
@@ -108,7 +163,7 @@ export function resolveShell(pathname: string): ShellKind {
     return 'none';
   }
 
-  // 3) 峰子 App 主分頁（含子路徑）。
+  // 3) 登入態頁面（含子路徑）。
   if (APP_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) {
     return 'app';
   }
@@ -118,22 +173,64 @@ export function resolveShell(pathname: string): ShellKind {
     return 'guest';
   }
 
-  // 5) 其餘（例如 /settings 等尚未複刻的頁面）一律當作未登入態，
+  // 5) 其餘（例如尚未複刻的頁面）一律當作未登入態，
   //    確保任何新頁面至少有一條可用的導覽，不會出現「無外殼孤島」。
   return 'guest';
 }
 
-/** 是否顯示頂部 site-header（未登入態）。 */
+/**
+ * 是否屬於「有外殼」的頁面（guest 或 app）。
+ * 這是 header / footer / 底部列三者的共同前提：只有 'none' 才完全沒有外殼。
+ */
+export function hasShell(pathname: string): boolean {
+  return resolveShell(pathname) !== 'none';
+}
+
+/**
+ * 是否顯示頂部 site-header。
+ * 實測：guest 與 app（登入後）**都有** site-header，故兩者皆回 true。
+ */
 export function shouldShowHeader(pathname: string): boolean {
-  return resolveShell(pathname) === 'guest';
+  return hasShell(pathname);
 }
 
-/** 是否顯示未登入態底部列（5 欄）。 */
-export function shouldShowMobileTaskbar(pathname: string): boolean {
-  return resolveShell(pathname) === 'guest';
+/**
+ * 是否顯示頁尾 site-footer。
+ * 實測：guest 與 app（登入後）**都有** site-footer，故兩者皆回 true。
+ */
+export function shouldShowSiteFooter(pathname: string): boolean {
+  return hasShell(pathname);
 }
 
-/** 是否顯示峰子 App 底部功能列。 */
-export function shouldShowAppTabBar(pathname: string): boolean {
-  return resolveShell(pathname) === 'app';
+/**
+ * 是否顯示底部固定列（guest / 會員兩態皆為 5 欄，僅 items 不同）。
+ * 實測：guest 與 app（登入後）**都有** mobile-taskbar，故兩者皆回 true。
+ */
+export function shouldShowBottomTabBar(pathname: string): boolean {
+  return hasShell(pathname);
+}
+
+/** 底部列型態：guest（未登入 5 項）或 member（登入後 5 項）。 */
+export type TabbarVariant = 'guest' | 'member';
+
+/**
+ * 決定底部列該採用哪一組 items —— 全站單一事實來源。
+ *
+ * 實站實測：**登入後所有頁面**（含 `/home` `/learn` `/school` 等 guest 路由）
+ * 一律顯示會員態底部列（aria-label="手機主要導覽"）；未登入時一律顯示訪客態。
+ * 因此本質上由「登入狀態」決定。
+ *
+ * 額外保險：登入後路由（`resolveShell(pathname) === 'app'`）本質屬會員區，
+ * 即使登入態尚未就緒（例如 `warroom_token` 尚未寫入、或尚未實作登入流程），
+ * 也一律採用會員態，避免 `/stock` 等頁面出現訪客列而前後不一致。
+ *
+ * @param isLoggedIn 目前是否已登入（client 端由 `warroom_token` 判定）。
+ * @param pathname   目前路徑（選填；用於登入後路由的保險判定）。
+ * @returns `'guest'` | `'member'`
+ */
+export function resolveTabbarVariant(isLoggedIn: boolean, pathname = ''): TabbarVariant {
+  if (resolveShell(pathname) === 'app') {
+    return 'member';
+  }
+  return isLoggedIn ? 'member' : 'guest';
 }

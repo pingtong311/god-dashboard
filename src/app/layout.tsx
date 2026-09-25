@@ -5,8 +5,7 @@ import SkipLink from "@/components/SkipLink";
 import ComplianceBar from "@/components/ComplianceBar";
 import Navigation from "@/components/Navigation";
 import SiteFooter from "@/components/SiteFooter";
-import AppTabBar from "@/components/AppTabBar";
-import MobileTaskbar from "@/components/MobileTaskbar";
+import BottomTabBar from "@/components/BottomTabBar";
 import { buildDisplayPreferencesInitScript } from "@/lib/displayPreferences";
 
 /**
@@ -71,22 +70,26 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: displayPreferencesInitScript }}
         />
       </head>
-      {/* 未登入態外殼（guest shell）依博主 <body> 文件順序渲染：
-          skip-link → compliance-bar → site-header → 內容 → site-footer，
-          另加固定底欄 mobile-taskbar（5 欄）。
-          各元件皆自行以 @/lib/shellRoutes 判定是否屬於 guest 外殼，非 guest 回傳 null，
-          故 App 主分頁（僅 AppTabBar）與 SEO 純內容頁（無外殼）不受影響。
+      {/* 外殼依實站 <body> 文件順序渲染（登入前後一致）：
+          skip-link → compliance-bar → site-header → 內容 → site-footer → mobile-taskbar。
+          實測：登入後的頁面（/today/ /market/ …）**同樣**有 site-header 與 site-footer，
+          差別只在底部列換成會員態（見 src/lib/shellRoutes.ts）。
+          各元件皆自行以 @/lib/shellRoutes 判定是否屬於有外殼的頁面，
+          'none' 路由（/learn/<slug>、/s/<ticker>、/privacy、/terms）一律回傳 null。
           body 加 pb-40 lg:pb-16，避免固定底欄遮住行動版頁尾（博主 body 同此）。 */}
       <body className="min-h-screen bg-background text-foreground selection:bg-cyan/30 review-mode pb-40 lg:pb-16" data-review-theme="dark">
         <SkipLink />
         <ComplianceBar />
         <Navigation />
-        <main id="main-content" className="w-full">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="shell-main mx-auto w-full max-w-[1360px] px-4 pt-5 outline-none md:px-6 lg:pt-7"
+        >
           {children}
         </main>
         <SiteFooter />
-        <AppTabBar />
-        <MobileTaskbar />
+        <BottomTabBar />
       </body>
     </html>
   );
