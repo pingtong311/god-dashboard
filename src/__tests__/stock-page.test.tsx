@@ -73,6 +73,7 @@ const RAW: RawStockInputs = {
     asOfDate: '2026-08',
   },
   dailyCandles: makeDailyCandles(),
+  sectorPeers: null,
 };
 
 const DATA = buildStockResearchData('2330', RAW, new Date('2026-09-24T06:00:00Z'));

@@ -42,6 +42,8 @@ export interface TechnicalInput {
   trustStreak: StreakInput | null;
   marginLots: number | null;
   dataDate: string | null;
+  /** 同族群（產業）統計；無來源時省略或 null。 */
+  sector?: SectorPeerInput | null;
 }
 
 /** 風險分級色調（safe=綠/相對安全、normal=黃/普通、warn=紅/要留意）。 */
@@ -118,6 +120,28 @@ export interface ScenarioCard {
   available: boolean;
 }
 
+/** 同族群單一個股。 */
+export interface SectorPeer {
+  symbol: string;
+  name: string;
+  price: number;
+  changePct: number;
+}
+
+/** 同族群（產業）統計輸入。 */
+export interface SectorPeerInput {
+  /** 族群名稱（如「半導體」）。 */
+  name: string;
+  /** 族群檔數。 */
+  count: number;
+  /** 族群平均漲跌幅（%）。 */
+  avgChangePct: number;
+  /** 龍頭（資料日漲幅最大者）。 */
+  leader: { symbol: string; name: string; changePct: number };
+  /** 同族群個股（含本檔）。 */
+  peers: SectorPeer[];
+}
+
 /** 情境分頁 view model。 */
 export interface ScenarioPanel {
   available: boolean;
@@ -125,6 +149,8 @@ export interface ScenarioPanel {
   bullets: Array<{ text: string; available: boolean }>;
   dataDate: string | null;
   ai: { available: boolean; label: string; quotaNote: string };
+  /** 同族群個股清單（無來源時為 null → 前端顯示未入庫）。 */
+  sectorPeers: { name: string; count: number; peers: SectorPeer[] } | null;
 }
 
 // ── 基礎統計工具 ────────────────────────────────────────
@@ -688,7 +714,7 @@ export function buildTechPanel(input: TechnicalInput): TechPanel {
 
 /** 建立持有情境與風險 view model。 */
 export function buildScenarioPanel(input: TechnicalInput): ScenarioPanel {
-  const { candles, price, changePct, volumeLots, foreignStreak, trustStreak, dataDate } = input;
+  const { candles, price, changePct, volumeLots, foreignStreak, trustStreak, dataDate, sector } = input;
   const cards: ScenarioCard[] = [];
   const bullets: Array<{ text: string; available: boolean }> = [];
 
@@ -725,9 +751,36 @@ export function buildScenarioPanel(input: TechnicalInput): ScenarioPanel {
     cards.push({ key: 'dayChange', label: '資料日漲跌', value: null, sub: null, available: false });
   }
 
-  // 同族群（本站無族群即時均價來源）
-  cards.push({ key: 'sector', label: '同族群', value: null, sub: null, available: false });
-  bullets.push({ text: '同族群比較資料未入庫。', available: false });
+  // 同族群（由族群統計來源推導；無來源時誠實標未入庫）
+  if (sector && sector.count > 0) {
+    const rel =
+      changePct === null
+        ? null
+        : changePct < sector.avgChangePct
+          ? '相對偏弱'
+          : changePct > sector.avgChangePct
+            ? '相對偏強'
+            : '持平';
+    cards.push({
+      key: 'sector',
+      label: '同族群',
+      value: rel,
+      sub: `${sector.name} 均 ${fmtSigned(sector.avgChangePct, 2)}%`,
+      available: true,
+    });
+    bullets.push({
+      text: `同族群「${sector.name}」${sector.count} 檔平均 ${fmtSigned(sector.avgChangePct, 2)}%｜龍頭 ${sector.leader.symbol} ${sector.leader.name} ${fmtSigned(sector.leader.changePct, 2)}%${rel ? `｜本檔${rel}` : ''}`,
+      available: true,
+    });
+    if (rel === '相對偏弱') {
+      bullets.push({ text: '這檔資料日漲幅低於同族群平均，屬相對弱勢對照，不代表後續延續。', available: true });
+    } else if (rel === '相對偏強') {
+      bullets.push({ text: '這檔資料日漲幅高於同族群平均，屬相對強勢對照，不代表後續延續。', available: true });
+    }
+  } else {
+    cards.push({ key: 'sector', label: '同族群', value: null, sub: null, available: false });
+    bullets.push({ text: '同族群比較資料未入庫。', available: false });
+  }
 
   const swing = candles ? recentSwing(candles, 60) : null;
   const closes = candles?.map((k) => k.close) ?? [];
@@ -779,5 +832,6 @@ export function buildScenarioPanel(input: TechnicalInput): ScenarioPanel {
       label: '用 AI 白話解讀（扣 1 次）',
       quotaNote: '今日剩餘次數未入庫',
     },
+    sectorPeers: sector && sector.count > 0 ? { name: sector.name, count: sector.count, peers: sector.peers } : null,
   };
 }

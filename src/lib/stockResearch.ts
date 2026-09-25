@@ -19,10 +19,11 @@ import {
   type RiskPanel,
   type RiskTone,
   type ScenarioPanel,
+  type SectorPeerInput,
   type TechPanel,
 } from './stockTechnical';
 
-export type { DailyCandle, RiskCard, RiskPanel, RiskTone, ScenarioPanel, TechPanel };
+export type { DailyCandle, RiskCard, RiskPanel, RiskTone, ScenarioPanel, SectorPeerInput, TechPanel };
 
 // ── 型別 ────────────────────────────────────────────────
 
@@ -100,6 +101,8 @@ export interface RawStockInputs {
   fundamental: FundamentalInput | null;
   /** 日 K（完整 OHLCV；供走勢／技術／風險／情境推導）。 */
   dailyCandles: DailyCandle[] | null;
+  /** 同族群（產業）統計；無來源時 null。 */
+  sectorPeers: SectorPeerInput | null;
 }
 
 /** 連續買/賣超結果（張）。 */
@@ -613,6 +616,7 @@ export function buildStockResearchData(
     trustStreak,
     marginLots: margLatest?.marginBalance ?? null,
     dataDate: q?.tradeDate ?? instLatest?.date ?? null,
+    sector: raw.sectorPeers,
   };
   const risk = buildRiskPanel(techInput);
   if (risk.history) {

@@ -206,6 +206,7 @@ const RAW: RawStockInputs = {
     { date: '2026-09-23', open: 2440, high: 2520, low: 2430, close: 2500, volume: 12000 },
     { date: '2026-09-24', open: 2480, high: 2490, low: 2470, close: 2475, volume: 12989 },
   ],
+  sectorPeers: null,
 };
 
 describe('buildStockResearchData', () => {
@@ -249,6 +250,7 @@ describe('buildStockResearchData', () => {
       concentration: null,
       fundamental: null,
       dailyCandles: null,
+      sectorPeers: null,
     });
     expect(empty.institutional.foreignNet).toBeNull();
     expect(empty.margin.marginLots).toBeNull();

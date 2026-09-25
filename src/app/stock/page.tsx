@@ -1102,6 +1102,30 @@ function ScenarioTab({ data }: { data: StockResearchData }) {
         </ul>
       </div>
 
+      {/* 同族群個股 */}
+      {s.sectorPeers ? (
+        <div className="data-panel hud-panel glass rounded-2xl mt-3 p-4">
+          <p className="text-[13px] font-black text-ink">
+            同族群「{s.sectorPeers.name}」{s.sectorPeers.count} 檔
+          </p>
+          <ul className="mt-2 grid gap-1">
+            {s.sectorPeers.peers.map((p) => (
+              <li key={p.symbol} className="flex items-center justify-between text-[12.5px]">
+                <span className="font-bold text-ink">
+                  {p.symbol} {p.name}
+                </span>
+                <span className="num flex items-center gap-2">
+                  <span className="font-bold text-ink">{p.price.toFixed(2)}</span>
+                  <span className={p.changePct > 0 ? 'font-black text-up' : p.changePct < 0 ? 'font-black text-down' : 'font-black text-muted'}>
+                    {p.changePct > 0 ? '+' : ''}{p.changePct.toFixed(2)}%
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {/* AI 白話解讀 */}
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button

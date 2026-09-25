@@ -28,6 +28,7 @@ import {
   type MarginRow,
   type QuoteInput,
   type RawStockInputs,
+  type SectorPeerInput,
   type StockResearchData,
   type TdccRow,
 } from '@/lib/stockResearch';
@@ -186,6 +187,55 @@ function normalizeKline(body: unknown): DailyCandle[] | null {
   return points.length >= 2 ? points : null;
 }
 
+/**
+ * treemap route → 本檔所屬族群統計（同族群 peers）。
+ * 在 sectors 中找到包含本檔的族群；找不到或欄位缺損回 null。
+ */
+function normalizeSectorPeers(body: unknown, ticker: string): SectorPeerInput | null {
+  if (!body || typeof body !== 'object') return null;
+  const sectors = (body as { sectors?: unknown }).sectors;
+  if (!Array.isArray(sectors)) return null;
+  for (const s of sectors as Record<string, unknown>[]) {
+    const items = Array.isArray(s.items) ? (s.items as Record<string, unknown>[]) : [];
+    const self = items.find((it) => String(it.symbol ?? '').trim() === ticker);
+    if (!self) continue;
+    const name = typeof s.sector === 'string' && s.sector.trim() ? s.sector.trim() : null;
+    const count = num(s.count);
+    if (!name || count === null) return null;
+    const avgChangePct = num(s.changePercent);
+    if (avgChangePct === null) return null;
+    // 龍頭：族內漲幅最高者。
+    let leader: SectorPeerInput['leader'] | null = null;
+    for (const it of items) {
+      const cp = num(it.changePercent);
+      if (cp === null) continue;
+      if (!leader || cp > leader.changePct) {
+        leader = {
+          symbol: String(it.symbol ?? '').trim(),
+          name: String(it.name ?? '').trim(),
+          changePct: cp,
+        };
+      }
+    }
+    if (!leader || !leader.symbol || !leader.name) return null;
+    const peers: SectorPeerInput['peers'] = [];
+    for (const it of items) {
+      const price = num(it.price);
+      const cp = num(it.changePercent);
+      if (price === null || cp === null) continue;
+      peers.push({
+        symbol: String(it.symbol ?? '').trim(),
+        name: String(it.name ?? '').trim(),
+        price,
+        changePct: cp,
+      });
+    }
+    if (peers.length === 0) return null;
+    return { name, count, avgChangePct, leader, peers };
+  }
+  return null;
+}
+
 // ── GET Handler ─────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
@@ -199,17 +249,19 @@ export async function GET(req: NextRequest) {
   const origin = req.nextUrl.origin;
   const enc = encodeURIComponent(ticker);
 
-  const [quoteRes, chipsRes, fundRes, klineRes] = await Promise.all([
+  const [quoteRes, chipsRes, fundRes, klineRes, treemapRes] = await Promise.all([
     fetchInternal(`${origin}/api/skynet/twse?tickers=${enc}`),
     fetchInternal(`${origin}/api/skynet/chips?ticker=${enc}&days=${CHIPS_DAYS}`),
     fetchInternal(`${origin}/api/skynet/fundamental?ticker=${enc}`),
     fetchInternal(`${origin}/api/skynet/kline?ticker=${enc}&type=daily`),
+    fetchInternal(`${origin}/api/skynet/treemap`),
   ]);
 
   const quote = quoteRes.ok ? normalizeQuote(quoteRes.body) : null;
   const chips = chipsRes.ok ? normalizeChips(chipsRes.body) : { institutionalHistory: [], marginHistory: [], tdcc: null, concentration: null };
   const fundamental = fundRes.ok ? normalizeFundamental(fundRes.body) : null;
   const dailyCandles = klineRes.ok ? normalizeKline(klineRes.body) : null;
+  const sectorPeers = treemapRes.ok ? normalizeSectorPeers(treemapRes.body, ticker) : null;
 
   const hasAnyData =
     quote !== null ||
@@ -231,6 +283,7 @@ export async function GET(req: NextRequest) {
     concentration: chips.concentration,
     fundamental,
     dailyCandles,
+    sectorPeers,
   };
 
   const data: StockResearchData = buildStockResearchData(ticker, raw);
