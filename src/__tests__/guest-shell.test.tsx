@@ -27,6 +27,7 @@ import { LOGIN_TOKEN_KEY } from '@/lib/authState';
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({ href, children, ...rest }: { href: unknown; children: ReactNode }) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory 需同步 require
     (require('react') as typeof import('react')).createElement(
       'a',
       { href: typeof href === 'string' ? href : String(href), ...rest },

@@ -27,6 +27,7 @@ import { LOGIN_TOKEN_KEY } from '@/lib/authState';
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({ href, children, ...rest }: { href: unknown; children: ReactNode }) =>
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory 需同步 require
     (require('react') as typeof import('react')).createElement(
       'a',
       { href: typeof href === 'string' ? href : String(href), ...rest },
@@ -52,6 +53,8 @@ const mockUsePathname = usePathname as unknown as jest.Mock;
 /** 每個測試前清空登入憑證，避免跨測試殘留（guest 測試需確定未登入）。 */
 beforeEach(() => {
   window.localStorage.removeItem(LOGIN_TOKEN_KEY);
+  // 主題切換鈕依 <html data-theme> 決定外觀；測試前還原為實站預設 light。
+  document.documentElement.setAttribute('data-theme', 'light');
 });
 
 /** 博主 about.html 內「返回上一頁」的原始 path（Phosphor ArrowLeft）。 */
@@ -289,6 +292,56 @@ describe('Navigation — 會員態 header（登入後）', () => {
       expect(navText).toEqual([]);
       expect(container.textContent).not.toContain('文章');
       expect(container.querySelector('[aria-label="返回上一頁"]')).not.toBeNull();
+    } finally {
+      cleanup(container, root);
+    }
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* 主題切換鈕（依當前主題顯示「切換目標」）                                    */
+/* -------------------------------------------------------------------------- */
+
+describe('Navigation — 主題切換鈕', () => {
+  /** 主題切換鈕（guest header 唯一帶 aria-pressed 的按鈕）。 */
+  function themeBtn(container: HTMLElement): HTMLButtonElement | null {
+    return container.querySelector<HTMLButtonElement>('button[aria-pressed]');
+  }
+
+  it('當前 light → aria-pressed=true、title「切換到深色（戰情室）」、圖示 ☾、sr-only「切換深色」', () => {
+    document.documentElement.setAttribute('data-theme', 'light');
+    const { container, root } = renderAt('/school');
+    try {
+      const btn = themeBtn(container);
+      expect(btn).not.toBeNull();
+      expect(btn?.getAttribute('aria-pressed')).toBe('true');
+      expect(btn?.getAttribute('title')).toBe('切換到深色（戰情室）');
+      expect(btn?.textContent).toContain('☾');
+      expect(btn?.textContent).toContain('切換深色');
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('當前 dark → aria-pressed=false、title「切換到淺色（較亮、較清楚）」、圖示 ☀、sr-only「切換淺色」', () => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const { container, root } = renderAt('/school');
+    try {
+      const btn = themeBtn(container);
+      expect(btn).not.toBeNull();
+      expect(btn?.getAttribute('aria-pressed')).toBe('false');
+      expect(btn?.getAttribute('title')).toBe('切換到淺色（較亮、較清楚）');
+      expect(btn?.textContent).toContain('☀');
+      expect(btn?.textContent).toContain('切換淺色');
+    } finally {
+      cleanup(container, root);
+    }
+  });
+
+  it('會員態 header 不渲染主題切換鈕（實站登入後為 搜尋／鈴鐺／漢堡）', () => {
+    const { container, root } = renderAt('/today');
+    try {
+      expect(themeBtn(container)).toBeNull();
     } finally {
       cleanup(container, root);
     }

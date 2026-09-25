@@ -303,17 +303,24 @@ export default function Navigation() {
 
             {/* 右側：主題切換 + 手機「登入」 */}
             <div className={styles.actions}>
+              {/*
+                主題切換鈕 —— 語意是「顯示你要切換過去的目標」，不是顯示當前狀態：
+                  當前 light → aria-pressed=true  / title「切換到深色（戰情室）」/ 圖示 ☾ / sr-only「切換深色」
+                  當前 dark  → aria-pressed=false / title「切換到淺色（較亮、較清楚）」/ 圖示 ☀ / sr-only「切換淺色」
+                （實站即時抓取 pricing/ 兩種主題各一次確認；站方預設由 dark 改 light 後，
+                 此鈕預設外觀也隨之改變 —— 這是與 2026-09-17 快照的差異來源。）
+              */}
               <button
                 type="button"
                 className={styles.themeBtn}
                 aria-pressed={isLight}
-                title="切換到淺色（較亮、較清楚）"
+                title={isLight ? '切換到深色（戰情室）' : '切換到淺色（較亮、較清楚）'}
                 onClick={toggleTheme}
               >
                 <span aria-hidden="true" className={styles.themeGlyph}>
-                  ☀
+                  {isLight ? '☾' : '☀'}
                 </span>
-                <span className={styles.srOnly}>切換淺色</span>
+                <span className={styles.srOnly}>{isLight ? '切換深色' : '切換淺色'}</span>
               </button>
               <Link href="/login/" className={styles.loginMobile}>
                 登入
