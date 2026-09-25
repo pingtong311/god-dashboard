@@ -8,14 +8,15 @@
  * 說明：本專案的 `@testing-library/dom` 為損壞的 symlink（缺 dom-accessibility-api，
  * 連帶使 `@testing-library/react` 無任何 export），故沿用 repo 既有做法：
  *   - `react-dom/client` 的 createRoot + `react` 的 act 掛載真實 DOM（含 effect）
- *   - `next/link` 以純 <a> 取代（href 不變）
+ *   - **不 mock `next/link`**：直接使用真實 <Link>，配合 jest.setup.ts 的
+ *     `__NEXT_TRAILING_SLASH='true'`，讓 href 尾斜線與屬性順序如實反映 render
+ *     （修正 3 的要求）
  *   - `next/navigation` 的 usePathname 以可控 mock 取代
- * 元件以 mountedPath（useState('') + useEffect）判定「已選取」，
- * 登入狀態以 localStorage 的 `warroom_token` 判定（同樣於 effect 內讀取），
+ * 登入狀態以 localStorage 的 `warroom_token` 判定（於 effect 內讀取），
  * 故必須真正掛載、跑完 effect 後再查詢。
  */
 
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactElement } from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { usePathname } from 'next/navigation';
@@ -23,17 +24,6 @@ import ComplianceBar from '@/components/ComplianceBar';
 import SiteFooter from '@/components/SiteFooter';
 import BottomTabBar from '@/components/BottomTabBar';
 import { LOGIN_TOKEN_KEY } from '@/lib/authState';
-
-jest.mock('next/link', () => ({
-  __esModule: true,
-  default: ({ href, children, ...rest }: { href: unknown; children: ReactNode }) =>
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory 需同步 require
-    (require('react') as typeof import('react')).createElement(
-      'a',
-      { href: typeof href === 'string' ? href : String(href), ...rest },
-      children,
-    ),
-}));
 
 jest.mock('next/navigation', () => ({
   __esModule: true,
@@ -390,7 +380,8 @@ describe('ComplianceBar — 法遵條', () => {
     try {
       const links = Array.from(container.querySelectorAll('a'));
       expect(links.map((a) => a.textContent)).toEqual(['法遵', '隱私']);
-      expect(links.map((a) => a.getAttribute('href'))).toEqual(['/legal/', '/privacy']);
+      // trailingSlash: true 下真實 Link 會把 /privacy 渲染成 /privacy/。
+      expect(links.map((a) => a.getAttribute('href'))).toEqual(['/legal/', '/privacy/']);
       expect(links.some((a) => a.getAttribute('target') === '_blank')).toBe(false);
       expect(container.textContent).toContain('法遵 · 隱私');
     } finally {
@@ -452,8 +443,8 @@ describe('SiteFooter — 免責與法遵聲明', () => {
       expect(links.map((a) => a.getAttribute('href'))).toEqual([
         '/about/',
         '/guide/',
-        '/privacy',
-        '/terms',
+        '/privacy/',
+        '/terms/',
         '/legal/',
         '/member/?tab=feedback',
       ]);

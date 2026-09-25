@@ -7,29 +7,25 @@
  * 為唯一依據，逐項斷言渲染結果：href、圖示寬度、`<path>` d 序列（含籌碼的 3 條）、
  * 選中項 caret、aria-haspopup/aria-expanded 掛載規則、主圖示 vs caret 的 aria-hidden。
  *
- * mock 方式沿用專案既有做法（見 navigation.test.tsx）：`next/link` 以純 <a> 取代、
- * `next/navigation` 的 usePathname 以可控 mock 取代；登入狀態由 localStorage
- * 的 `warroom_token` 決定（`useIsLoggedIn` 於 effect 內讀取），故需真正掛載跑完 effect。
+ * 本測試**不 mock `next/link`**，直接使用真實 <Link>：
+ *   - jest.setup.ts 已把 `process.env.__NEXT_TRAILING_SLASH='true'` 鏡像成
+ *     next.config.ts 的 `trailingSlash: true`，故真實 Link 會保留/補上尾斜線，
+ *     也能測出「href 尾斜線在 render 被剝」與「屬性順序」這兩件真實 render
+ *     才發生的事（修正 3 的要求）。
+ *   - `next/navigation` 的 usePathname 以可控 mock 取代（專案既有做法）；
+ *     真實 Link 不需要 next/navigation 的 mock 也能正常渲染（router 為 null 時
+ *     直接使用 href 原值，再經 addBasePath/addLocale 套用尾斜線規則）。
+ *   - 登入狀態由 localStorage 的 `warroom_token` 決定（`useIsLoggedIn` 於 effect
+ *     內讀取），故需真正掛載跑完 effect。
  */
 
-import type { ReactElement, ReactNode } from 'react';
+import type { ReactElement } from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { usePathname } from 'next/navigation';
 import BottomTabBar from '@/components/BottomTabBar';
 import { LOGIN_TOKEN_KEY } from '@/lib/authState';
 import fixture from './fixtures/tabbar-icons.json';
-
-jest.mock('next/link', () => ({
-  __esModule: true,
-  default: ({ href, children, ...rest }: { href: unknown; children: ReactNode }) =>
-    // eslint-disable-next-line @typescript-eslint/no-require-imports -- jest.mock factory 需同步 require
-    (require('react') as typeof import('react')).createElement(
-      'a',
-      { href: typeof href === 'string' ? href : String(href), ...rest },
-      children,
-    ),
-}));
 
 jest.mock('next/navigation', () => ({
   __esModule: true,

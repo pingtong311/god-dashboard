@@ -215,7 +215,8 @@ describe('原文照登：逐句抽查（未漏字、未改寫）', () => {
 
   test('terms 的「隱私權政策」連結文字不變、href 指向峰子 /privacy', () => {
     const html = render(getLegalPage('terms'));
-    expect(html).toMatch(/<a[^>]*href="\/privacy"[^>]*>隱私權政策<\/a>/);
+    // 內文連結走真實 next/link；trailingSlash: true 下 /privacy 渲染為 /privacy/。
+    expect(html).toMatch(/<a[^>]*href="\/privacy\/"[^>]*>隱私權政策<\/a>/);
   });
 
   test('privacy 的聯絡 Email 連結（mailto）原樣保留、文字不變', () => {

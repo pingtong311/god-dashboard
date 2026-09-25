@@ -325,14 +325,15 @@ describe('CTA 顯示文字未被改寫（僅 href 轉換）', () => {
     const html = renderPage(page);
     const cta = page.heroCtas[0];
     expect(html).toContain(cta.label);
-    expect(html).toContain('href="/diary"'); // /today/ → /diary
+    // /today/ → /diary，再經 trailingSlash:true 補尾斜線 → /diary/。
+    expect(html).toContain('href="/diary/"');
   });
 
   test('合成頁 CTA：文字為 JSON 原文', () => {
     const html = renderPage(SYNTHETIC);
     expect(html).toContain('CTA原文');
     expect(html).toContain('卡-CTA原文');
-    expect(html).toContain('href="/diary"');
+    expect(html).toContain('href="/diary/"');
   });
 
   test('外部 CTA 另開新視窗且 href 不變（app 頁 App Store 連結）', () => {

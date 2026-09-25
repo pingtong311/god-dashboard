@@ -1,7 +1,6 @@
 'use client';
 
 import type { ReactElement } from 'react';
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -50,8 +49,17 @@ import {
  * 屬性順序：實站為 `aria-current` → `aria-haspopup` → `aria-expanded` → `class` → `href`，
  * 故 JSX 把 `href` 放在**最後**一個 prop，讓 outerHTML 能逐字 diff。
  *
- * Hydration 安全：沿用專案既有寫法 —— 以 `useState('')` 起始，於 `useEffect`
- * 內才 `setMountedPath`；登入狀態亦同（`useIsLoggedIn` 初始 false，mount 後才讀）。
+ * Active 判定在 render 期直接做（不延後）：
+ *   `usePathname()` 在 SSR 時就有值，故 `aria-current`/`aria-haspopup`/
+ *   `aria-expanded`/`text-accent` 會在 SSR 就渲染，屬性順序直接反映到 DOM，
+ *   不再靠 useEffect 事後以 setAttribute 補上（那會把屬性追加到最尾端）。
+ *   訪客態的 active 因此在 SSR 就正確（實站 home.html 選中「首頁」就有
+ *   `aria-current="page"`）。會員態因 `useIsLoggedIn()` 是 client-only
+ *   （SSR 時恆為 false），仍待 mount 後才切換——這是登入態的根本限制，
+ *   實站 curl 無 JS 時也全是訪客態底部列，行為一致。
+ *
+ * Hydration 安全：`usePathname()` 於 SSR/首屏即為目前路徑，render 期判定
+ * 不會造成首屏誤亮；登入狀態以 `useIsLoggedIn` 判定（初始 false，mount 後才讀）。
  *
  * 顯示時機：guest 與 app 皆顯示（由 `shouldShowBottomTabBar` 單一來源判定）；
  * 'none' 路由（/learn/<slug>、/s/<ticker>、/privacy、/terms）回傳 null。
@@ -239,15 +247,7 @@ function normalizePath(path: string): string {
 
 export default function BottomTabBar() {
   const pathname = usePathname();
-
-  // Hydration 安全：不在 render 期間直接依 usePathname() 決定「當前項」，
-  // 改以 useState('') 起始、於 useEffect 內才同步。
-  const [mountedPath, setMountedPath] = useState('');
   const isLoggedIn = useIsLoggedIn();
-
-  useEffect(() => {
-    setMountedPath(pathname);
-  }, [pathname]);
 
   // guest 與 app 皆顯示底部列；只有 'none'（SEO / 靜態頁）回傳 null。
   if (!shouldShowBottomTabBar(pathname)) {
@@ -259,9 +259,9 @@ export default function BottomTabBar() {
   const items = isMember ? MEMBER_ITEMS : GUEST_ITEMS;
   const linkBaseClass = isMember ? MEMBER_LINK_CLASS : GUEST_LINK_CLASS;
 
-  // 已選取判定：mountedPath 為空字串代表尚未 mount（首屏），此時不標記任何項目，
-  // 避免 SSR 首屏誤亮首頁。mount 後以「去除結尾斜線後精確比對」判定。
-  const current = normalizePath(mountedPath);
+  // Active 判定在 render 期直接計算：usePathname() 於 SSR 就有值。
+  // 去除結尾斜線後精確比對（/learn/ 與 /learn 視為同一條）。
+  const current = normalizePath(pathname);
 
   return (
     <nav
@@ -269,7 +269,7 @@ export default function BottomTabBar() {
       className={NAV_CLASS}
     >
       {items.map((item) => {
-        const isActive = mountedPath !== '' && current === normalizePath(item.href);
+        const isActive = current === normalizePath(item.href);
         return (
           <Link
             key={item.href}
