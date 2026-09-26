@@ -101,7 +101,7 @@ describe('Navigation — 顯示時機（guest 與 app 皆顯示）', () => {
   });
 
   // ★ 本次修正：登入後的頁面（'app'）**同樣有** site-header，不再是「無外殼」。
-  const appPaths = ['/today', '/market', '/stock', '/brokers', '/member', '/diary', '/radar'];
+  const appPaths = ['/today', '/market', '/stock', '/brokers', '/member', '/market-center', '/radar'];
 
   it.each(appPaths)('%s → 渲染 header（登入後頁面仍有 site-header）', (pathname) => {
     const { container, root } = renderAt(pathname);

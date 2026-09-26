@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKe
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { isMemberShell, shouldShowHeader } from '@/lib/shellRoutes';
+import { HUB_SECTIONS } from '@/lib/hubTools';
 import { useIsLoggedIn } from '@/lib/authState';
 import styles from './Navigation.module.css';
 
@@ -55,7 +56,7 @@ const NAV_ITEMS: readonly NavItem[] = [
 type MemberMenuItem = {
   readonly title: string;
   readonly desc: string;
-  /** 站內路由（含尾斜線）；尚無對應頁面者為 '#'（點擊時 preventDefault）。 */
+  /** 站內路由（含尾斜線），全部指向實站權威路徑（見 src/lib/hubTools.ts）。 */
   readonly href: string;
 };
 
@@ -70,103 +71,45 @@ type MemberMenu = {
   readonly items: readonly MemberMenuItem[];
 };
 
+/** 六個分組的外觀後設資料（下拉副標、欄數、對齊）；標籤與項目內容由 HUB_SECTIONS 派生。 */
+const MENU_META: Record<
+  string,
+  { readonly subtitle: string; readonly columns: 1 | 2 | 3; readonly align: 'left' | 'right' }
+> = {
+  今天: { subtitle: '今天盤怎麼走、日報、大環境', columns: 2, align: 'left' },
+  股票: { subtitle: '查一檔：K線、籌碼、大單、技術結構', columns: 2, align: 'left' },
+  選股: { subtitle: '用條件找股票：量價、型態、籌碼、估值', columns: 3, align: 'left' },
+  我的: { subtitle: '自選、持股、提醒、社群、帳號', columns: 2, align: 'left' },
+  教學: { subtitle: '練功房、學堂、文章、問 AI', columns: 2, align: 'left' },
+  更多: { subtitle: '法遵與條款', columns: 1, align: 'right' },
+};
+
 /**
- * 會員態桌面導覽六組下拉選單（內容逐字照抄實站；順序左→右）。
- * 路由映射依本專案現有頁面；無對應頁面者以 '#' 佔位。
+ * 「全部工具」入口：hub 清單本身沒有這張卡，但實站的「我的」下拉在
+ * 「大佬席位」之後放了一個通往 /hub/ 全部工具頁的項目，故在此補上。
  */
-const MEMBER_MENUS: readonly MemberMenu[] = [
-  {
-    label: '今天',
-    subtitle: '今天盤怎麼走、日報、大環境',
-    columns: 2,
-    align: 'left',
-    items: [
-      { title: '今日戰情', desc: '今天大盤發生什麼事，一頁看完', href: '/warroom/' },
-      { title: '盤中戰情', desc: '開盤時間看自選現價與急拉急跌事件', href: '/liangjia-warroom/' },
-      { title: '台股日報', desc: '每晚幫你整理今天的盤，睡前看這篇就夠', href: '/review/' },
-      { title: '族群熱圖', desc: '錢今天流去哪個族群', href: '#' },
-      { title: '事件雷達', desc: '急漲急跌、漲跌停、處置股一次看', href: '/radar/' },
-      { title: '大盤與國際', desc: '台指期、外資動向與美股表現', href: '/terminal/' },
-      { title: '市場行事曆', desc: '月營收、ETF 與企業大事的日曆', href: '/diary/' },
-      { title: '美國政策題材', desc: '關稅與政策原文整理，來源與時間分開看', href: '#' },
-      { title: '期選盤後', desc: 'VIX、夜盤法人與大額未平倉', href: '/strategy/' },
-    ],
-  },
-  {
-    label: '股票',
-    subtitle: '查一檔：K線、籌碼、大單、技術結構',
-    columns: 2,
-    align: 'left',
-    items: [
-      { title: '個股盯盤', desc: '查一檔股票：K線、逐筆、大單、籌碼、持有情境', href: '/stock/' },
-      { title: '技術分析', desc: '輸入代號：支撐壓力、回檔價位、均線與白話解讀', href: '#' },
-      { title: '分點排行', desc: '今天哪些券商分點在大買大賣', href: '#' },
-      { title: '分點名冊', desc: '查一個券商分點過去的出手紀錄（不等於單一主力）', href: '#' },
-      { title: '分點驗證', desc: '看這個分點過去買了之後隔天怎麼樣', href: '#' },
-      { title: '研究中心', desc: '條件掃描、歷史驗證、多檔比較都在這', href: '#' },
-    ],
-  },
-  {
-    label: '選股',
-    subtitle: '用條件找股票：量價、型態、籌碼、估值',
-    columns: 3,
-    align: 'left',
-    items: [
-      { title: '量價觀察', desc: '盤後成交量、集中度與量比條件命中列表，不是推薦', href: '#' },
-      { title: '隔日沖分點股', desc: '被隔日沖分點大買的股票（隔天常有賣壓）', href: '#' },
-      { title: 'K線型態掃描', desc: '全市場掃 W 底、假突破等常見型態', href: '#' },
-      { title: '波段條件', desc: '符合歷史條件的列表，不是保證會漲的名單', href: '#' },
-      { title: '自訂條件選股', desc: '自己組條件挑股票，可以存起來每天看', href: '#' },
-      { title: '估值河流', desc: '這檔現在算貴還是便宜', href: '#' },
-      { title: '資券借券', desc: '融資融券、借券與官股行庫動向', href: '#' },
-      { title: '除權息', desc: '除權息日程與歷史填息', href: '#' },
-      { title: '處置股名單', desc: '被處置、分盤、停券與暫停先賣後買', href: '#' },
-      { title: '融資維持率', desc: '盤後個股與大盤維持率', href: '#' },
-      { title: '主動式ETF', desc: '主動式 ETF 持股與異動', href: '#' },
-      { title: '鉅額交易', desc: '盤後鉅額成交金額', href: '#' },
-      { title: '可轉債', desc: '可轉債溢價排行', href: '#' },
-    ],
-  },
-  {
-    label: '我的',
-    subtitle: '自選、持股、提醒、社群、帳號',
-    columns: 2,
-    align: 'left',
-    items: [
-      { title: '自選股', desc: '你追蹤的股票都在這', href: '/watchlist/' },
-      { title: '到價提醒', desc: '到價、爆量、法人轉向就通知你', href: '#' },
-      { title: '我的持股', desc: '記下成本，看配置與大致損益', href: '#' },
-      { title: '戰情室警報', desc: '管理推播：想收什麼、不想收什麼', href: '/notify/' },
-      { title: '大佬席位', desc: '帳戶、回饋、邀請碼與專屬設定', href: '#' },
-      { title: '全部工具', desc: '所有功能一頁看，長按加入捷徑', href: '/hub/' },
-      { title: 'App 安裝', desc: 'iPhone、Android 與加入主畫面', href: '#' },
-      { title: '品牌合作', desc: '合作品牌的服務與活動，清楚標示廣告', href: '#' },
-      { title: '社群聊天', desc: '會員討論、即時聊天與戰績榜', href: '#' },
-    ],
-  },
-  {
-    label: '教學',
-    subtitle: '練功房、學堂、文章、問 AI',
-    columns: 2,
-    align: 'left',
-    items: [
-      { title: '問大佬AI', desc: '丟代號或問題，AI 用數據講白話並附資料依據', href: '/ai/' },
-      { title: '練功房', desc: '用歷史某天某檔練習進出，不是今日明牌', href: '/sim/' },
-      { title: '猜下一根', desc: '用歷史K線練盤感；結果用來理解機率，不是預測明天', href: '#' },
-      { title: '文章', desc: '每天更新的盤後解讀與教學長文，不是學堂名詞卡', href: '/learn/' },
-      { title: '台股學堂', desc: '專有名詞白話解釋', href: '/school/' },
-      { title: '新手導覽', desc: '第一次用，從這裡開始', href: '/guide/' },
-      { title: '使用手冊', desc: '每個功能怎麼用的完整說明', href: '/manual/' },
-    ],
-  },
-  {
-    label: '更多',
-    subtitle: '法遵與條款',
-    columns: 1,
-    align: 'right',
-    items: [{ title: '法遵與風險', desc: '免責聲明、隱私與條款', href: '/legal/' }],
-  },
-];
+const HUB_LINK: MemberMenuItem = {
+  title: '全部工具',
+  desc: '所有功能一頁看，長按加入捷徑',
+  href: '/hub/',
+};
+
+/**
+ * 會員態桌面導覽六組下拉選單（順序左→右：今天/股票/選股/我的/教學/更多）。
+ *
+ * 項目內容**完全由 src/lib/hubTools.ts 的 HUB_SECTIONS 派生**——即實站
+ * `/hub/`「全部工具」頁的 44 張工具卡（標題、白話副標、href、順序、分組），
+ * 確保頂部下拉選單與「全部工具」頁永遠一致、不漂移。
+ * 「我的」分組依實站慣例在「大佬席位」後插入「全部工具」。
+ */
+const MEMBER_MENUS: readonly MemberMenu[] = HUB_SECTIONS.map((section) => {
+  const meta = MENU_META[section.heading];
+  const items: readonly MemberMenuItem[] =
+    section.heading === '我的'
+      ? section.tools.flatMap((tool) => (tool.title === '大佬席位' ? [tool, HUB_LINK] : [tool]))
+      : section.tools;
+  return { label: section.heading, ...meta, items };
+});
 
 /** hover 進出下拉選單的防抖延遲（毫秒），避免游標掠過時閃爍。 */
 const DROPDOWN_HOVER_DELAY_MS = 130;

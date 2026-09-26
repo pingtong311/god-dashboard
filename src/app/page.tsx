@@ -123,7 +123,7 @@ const TOOL_CARDS: readonly ToolCardItem[] = [
     willSee: '會看到：漲跌家數與資料日',
     tag: '要登入',
     free: false,
-    href: '/diary',
+    href: '/today',
   },
   {
     title: '台股日報',
@@ -131,7 +131,7 @@ const TOOL_CARDS: readonly ToolCardItem[] = [
     willSee: '會看到：當日客觀摘要',
     tag: '要登入',
     free: false,
-    href: '/diary',
+    href: '/reports',
   },
   {
     title: '文章',
@@ -151,7 +151,7 @@ type QuickCardItem = {
 };
 
 const QUICK_CARDS: readonly QuickCardItem[] = [
-  { title: '今天市場怎麼了', hint: '先讀新手導覽', href: '/diary' },
+  { title: '今天市場怎麼了', hint: '先讀新手導覽', href: '/today' },
   { title: '查一檔股票', hint: '登入後看 2330', href: '/s/2330' },
   { title: '先學一個名詞', hint: '台股學堂白話', href: '/school' },
 ];

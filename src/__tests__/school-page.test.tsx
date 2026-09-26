@@ -272,10 +272,10 @@ describe('/school 台股學堂 — CTA', () => {
   it('CTA 文字保留 JSON 原文，href 已轉為峰子路由', () => {
     const dom = staticDom();
 
-    // /today/ → /diary（權宜對應），文字不變
+    // /today/ 為實站權威路徑（identity），文字不變
     const today = ctaOf(dom, 'what-daytrade');
     expect(today.textContent).toBe('前往 今日戰情 →');
-    expect(today.getAttribute('href')).toBe('/diary');
+    expect(today.getAttribute('href')).toBe('/today');
 
     // /learn/xxx/ → /learn/xxx（前綴精確對應）
     const learn = ctaOf(dom, 'orderbook-tab');

@@ -4,7 +4,7 @@
  * QA 獨立驗證 — `/sim` 模擬交易頁的純邏輯（費用計算、送單、localStorage 防禦）。
  *
  * ⚠️ 為什麼用「原始碼注入 + 轉譯 + 求值」而不是直接 import？
- *   `src/app/sim/page.tsx` 是 `'use client'` 的頁面元件，**沒有匯出任何**純函式
+ *   `src/app/dojo/page.tsx` 是 `'use client'` 的頁面元件，**沒有匯出任何**純函式
  *   （calcAmount / calcFee / calcTax / executeOrder / loadAccount…），因此無法直接
  *   `import` 來測。為了「測到真正出貨的程式碼」而非重寫一份公式（那會變成假測試），
  *   本檔以 TypeScript 的 transpileModule 轉譯**該檔原文**，附掛具名匯出後在受控的
@@ -19,7 +19,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as ts from 'typescript';
 
-const PAGE_PATH = path.join(process.cwd(), 'src/app/sim/page.tsx');
+const PAGE_PATH = path.join(process.cwd(), 'src/app/dojo/page.tsx');
 
 /** 需要取出測試的模組內私有函式。 */
 const EXPORT_NAMES = [

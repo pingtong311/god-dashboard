@@ -61,11 +61,11 @@ describe('shellRoutes — 外殼判定', () => {
       '/settings',
       '/community',
       '/live',
-      '/diary',
+      '/market-center',
       '/review',
       '/chart',
-      '/ai',
-      '/sim',
+      '/ask',
+      '/dojo',
     ];
 
     it.each(appPaths)('%s → app（★ 仍有 site-header 與 site-footer）', (pathname) => {
@@ -159,10 +159,10 @@ describe('shellRoutes — 外殼判定', () => {
     });
 
     it('相似但不相同的前綴不誤判', () => {
-      // /s 是 SEO 子路徑前綴，但不該吃掉 /school /settings /sim /stock。
+      // /s 是 SEO 子路徑前綴，但不該吃掉 /school /settings /dojo /stock。
       expect(resolveShell('/school')).toBe('guest');
       expect(resolveShell('/settings')).toBe('app');
-      expect(resolveShell('/sim')).toBe('app');
+      expect(resolveShell('/dojo')).toBe('app');
       expect(resolveShell('/stock')).toBe('app');
       // /learn-x 不是 /learn 的子路徑。
       expect(resolveShell('/learn-x')).toBe('guest');

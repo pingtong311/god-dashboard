@@ -119,7 +119,7 @@ test('點「今天」開啟面板：9 個 menuitem、副標與第一項正確', 
   const items = panel!.querySelectorAll('a[role="menuitem"]');
   expect(items.length).toBe(9);
   expect((items[0] as HTMLAnchorElement).textContent).toContain('今日戰情');
-  expect((items[0] as HTMLAnchorElement).href).toContain('/warroom/');
+  expect((items[0] as HTMLAnchorElement).href).toContain('/today/');
   expect((panel!.textContent ?? '')).toContain('今天盤怎麼走、日報、大環境');
 });
 
@@ -183,21 +183,24 @@ test('面板內的項目可透過方向鍵移動焦點', () => {
   expect(document.activeElement).toBe(links[12]);
 });
 
-test('href="#" 的佔位項點擊時不導航', () => {
-  const btn = findBtn('今天');
+test('全部選單項都指向實站權威路由（不再有 "#" 佔位項）', () => {
+  // 44 個實站路由已全部建置完成（見 src/lib/hubTools.ts），
+  // 六組下拉選單由 HUB_SECTIONS 派生，不應再有任何 href="#" 的佔位項。
+  for (const menu of MEMBER_MENUS) {
+    for (const item of menu.items) {
+      expect(item.href).not.toBe('#');
+      expect(item.href.startsWith('/')).toBe(true);
+    }
+  }
+
+  // 點開「選股」（13 項、曾有最多 '#' 佔位）實際驗證渲染結果也無佔位項。
+  const btn = findBtn('選股');
   act(() => {
     btn.click();
   });
   const panel = openPanel()!;
-  const placeholder = Array.from(
+  const placeholders = Array.from(
     panel.querySelectorAll<HTMLAnchorElement>('a[role="menuitem"]'),
-  ).find((a) => a.getAttribute('href') === '#');
-  expect(placeholder).toBeTruthy();
-
-  const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
-  act(() => {
-    placeholder!.dispatchEvent(clickEvent);
-  });
-  // React 在 root 監聽器呼叫 preventDefault，事件冒泡完後即可檢查。
-  expect(clickEvent.defaultPrevented).toBe(true);
+  ).filter((a) => a.getAttribute('href') === '#');
+  expect(placeholders).toHaveLength(0);
 });

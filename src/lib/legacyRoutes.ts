@@ -2,86 +2,108 @@
  * 博主站路由 → 峰子路由 對照表
  * ----------------------------------------------------------------------------
  * 背景：複刻博主的網頁／App 時，文章與學堂內文的 CTA 按鈕指向博主自己的路由
- *       （例如「前往 今日戰情 →」→ `/today/`）。這些路由在峰子尚未逐一實作，
- *       若直接沿用會 404。本檔為唯一的對照來源，供 /school、/learn 等頁面共用。
+ *       （例如「前往 今日戰情 →」→ `/today/`）。本檔曾是「博主 href → 峰子舊 href」
+ *       的轉譯層；如今 44 個實站路由已全部以**實站權威路徑**建置完成
+ *       （見 src/lib/hubTools.ts），本檔對已知路由一律回傳 **identity**，
+ *       只剩少數部落格內文出現、但 hub 清單沒有的路由需要權宜對應。
  *
  * 原則：
  *   1. CTA 的「文字」一律保留博主原文（不可改寫）。
- *   2. 只轉換 href。`exact: true` 表示語意等價；`exact: false` 表示權宜對應，
- *      待 P3 實作對應畫面後應改為 exact。
- *   3. 查不到對照時 fallback 至 `/diary`（App 首頁分頁），確保不 404。
- *
- * 待辦（P3）：博主的已登入畫面清單見下表；目前峰子僅有 9 條路由。
- *   /today/ /picks/ /patterns/ /signal/ /market/ /leverage/ /fade/ /risk/
- *   /reports/ /notify/ /industry/ /sector/ /alerts/ /valuation/ /ranking/
- *   /swing/ /dividend/ /cb/ /margin-maint/ /radar/ /watchlist/ /ask/ /dojo/
- *   /stock/ /learn/ /school/
+ *   2. 只轉換 href。`exact: true` 表示語意等價；`exact: false` 表示權宜對應。
+ *   3. 查不到對照時 fallback 至首頁 `/`，確保不 404。
  */
 
-/** 峰子既有路由（僅這 9 條是真的存在）。 */
+import { HUB_TOOLS } from './hubTools';
+
+/** 峰子既有路由（hub 權威清單 + 峰子自有頁面）。 */
 export const PEAK_ROUTES = [
   '/',
-  '/diary',
+  '/today',
+  '/live',
+  '/reports',
+  '/sector',
   '/radar',
-  '/review',
-  '/chart',
-  '/ai',
-  '/sim',
+  '/market',
+  '/market-center',
+  '/trump',
+  '/futures-opt',
+  '/stock',
+  '/signal',
+  '/ranking',
+  '/brokers',
+  '/backtest',
+  '/research',
+  '/picks',
+  '/fade',
+  '/patterns',
+  '/swing',
+  '/tools',
+  '/valuation',
+  '/leverage',
+  '/dividend',
+  '/risk',
+  '/margin-maint',
+  '/etf-active',
+  '/block-trades',
+  '/cb',
   '/watchlist',
-  '/chips',
-  '/s',
+  '/alerts',
+  '/portfolio',
+  '/notify',
+  '/member',
+  '/app',
+  '/partners',
+  '/community',
+  '/ask',
+  '/dojo',
+  '/guess',
   '/learn',
   '/school',
+  '/guide',
+  '/manual',
+  '/hub',
+  '/legal',
+  // ── 峰子自有頁面（不在實站 hub 清單，但確實存在）──────────────────────
+  '/review',
+  '/chart',
+  '/s',
+  '/chips',
+  '/settings',
 ] as const;
 
 export interface RouteMapping {
   /** 峰子對應路由；null = 無對應，將 fallback。 */
   target: string | null;
-  /** true = 語意等價；false = 權宜對應，P3 需重做。 */
+  /** true = 語意等價；false = 權宜對應。 */
   exact: boolean;
-  /** 博主原畫面的中文名稱（供除錯與 P3 盤點用）。 */
+  /** 博主原畫面的中文名稱（供除錯與盤點用）。 */
   label: string;
 }
 
 /** 精確前綴（含萬用字元）優先於固定表。 */
-const PREFIX_MAPPINGS: Array<[string, RouteMapping]> = [
+const PREFIX_MAPPINGS: ReadonlyArray<[string, RouteMapping]> = [
   ['/learn/', { target: '/learn', exact: true, label: '文章' }],
   ['/school/', { target: '/school', exact: true, label: '學堂' }],
 ];
 
+/**
+ * 實站 hub 權威路由（44 條）＋首頁：全部 identity。
+ * 來源：src/lib/hubTools.ts 的 HUB_TOOLS（單一來源，避免漂移）。
+ */
 const EXACT_MAPPINGS: Record<string, RouteMapping> = {
   '/': { target: '/', exact: true, label: '首頁' },
-  '/radar/': { target: '/radar', exact: true, label: '事件雷達' },
-  '/watchlist/': { target: '/watchlist', exact: true, label: '自選股' },
-  '/ask/': { target: '/ai', exact: true, label: '問 AI' },
-  '/dojo/': { target: '/sim', exact: true, label: '練功房' },
+  ...HUB_TOOLS.reduce<Record<string, RouteMapping>>((acc, tool) => {
+    acc[tool.href] = { target: tool.href.replace(/\/$/, ''), exact: true, label: tool.title };
+    return acc;
+  }, {}),
 };
 
-/** 權宜對應：語意相近但峰子尚無對應畫面。 */
+/** 權宜對應：hub 清單沒有、但部落格內文 CTA 會出現的路由。 */
 const APPROX_MAPPINGS: Record<string, RouteMapping> = {
-  '/today/': { target: '/diary', exact: false, label: '今日戰情' },
-  '/market/': { target: '/diary', exact: false, label: '大盤環境' },
-  '/industry/': { target: '/diary', exact: false, label: '產業地圖' },
-  '/sector/': { target: '/diary', exact: false, label: '族群熱圖' },
-  '/picks/': { target: '/radar', exact: false, label: '量價觀察' },
-  '/signal/': { target: '/radar', exact: false, label: '技術分析' },
-  '/fade/': { target: '/radar', exact: false, label: '隔日沖分點股' },
-  '/risk/': { target: '/review', exact: false, label: '風險雷達' },
-  '/reports/': { target: '/review', exact: false, label: '台股日報' },
-  '/notify/': { target: '/review', exact: false, label: '戰情室警報' },
-  '/alerts/': { target: '/review', exact: false, label: '到價提醒' },
-  '/ranking/': { target: '/chips/2330', exact: false, label: '分點排行' },
-  '/swing/': { target: '/chips/2330', exact: false, label: '波段·大戶籌碼' },
-  '/leverage/': { target: '/chips/2330', exact: false, label: '資券·借券' },
-  '/margin-maint/': { target: '/chips/2330', exact: false, label: '融資維持率' },
-  '/valuation/': { target: '/s/2330', exact: false, label: '估值情境器' },
-  '/dividend/': { target: '/s/2330', exact: false, label: '除權息行事曆' },
-  '/cb/': { target: '/s/2330', exact: false, label: '可轉債套利' },
-  '/patterns/': { target: '/chart', exact: false, label: '技術形態掃描' },
-  '/stock/': { target: '/s/2330', exact: false, label: '個股盯盤' },
+  '/industry/': { target: '/sector', exact: false, label: '產業地圖' },
 };
 
-const FALLBACK = '/diary';
+const FALLBACK = '/';
 
 /** 去尾斜線、拆 query 後正規化。 */
 function normalize(href: string): { path: string; query: string; hash: string } {
@@ -102,9 +124,9 @@ function tickerFromQuery(query: string): string | null {
 }
 
 /**
- * 將博主的 href 轉為峰子可用的 href。
+ * 將博主的 href 轉為站內可用的 href。
  *
- * @example resolveLegacyHref('/today/')            // '/diary'
+ * @example resolveLegacyHref('/today/')            // '/today'
  * @example resolveLegacyHref('/stock/?id=2330')    // '/s/2330'
  * @example resolveLegacyHref('/learn/w-bottom/')   // '/learn/w-bottom'
  */
@@ -122,7 +144,6 @@ export function resolveLegacyRoute(href: string): { href: string; mapping: Route
     if (ticker) {
       return { href: `/s/${ticker}`, mapping: { target: '/s', exact: false, label: '個股盯盤' } };
     }
-    return { href: FALLBACK, mapping: APPROX_MAPPINGS['/stock/'] };
   }
 
   for (const [prefix, mapping] of PREFIX_MAPPINGS) {
@@ -137,7 +158,7 @@ export function resolveLegacyRoute(href: string): { href: string; mapping: Route
   const key = path === '/' ? '/' : `${path}/`;
   const exact = EXACT_MAPPINGS[key];
   if (exact?.target) {
-    return { href: exact.target, mapping: exact };
+    return { href: exact.target + (query || '') + (hash || ''), mapping: exact };
   }
 
   const approx = APPROX_MAPPINGS[key];

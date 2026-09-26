@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 模擬練習 `/sim`（複刻「股市大佬」App 的當沖／模擬交易功能）
+ * 模擬練習 `/dojo`（複刻「股市大佬」App 的當沖／模擬交易功能）
  *
  * 純前端頁面，狀態全部存在 localStorage（鍵名 `skynet_sim_account_v1`）：
  *   - 初始狀態＝零持股、零交易、現金 1,000,000（初始值，非假資料）
@@ -1538,7 +1538,7 @@ export default function SimPage() {
 
       {/*
         底部功能列不在本頁渲染 —— src/app/layout.tsx:51 已全域掛載唯一一份 <AppTabBar />，
-        且其 TAB_BAR_PREFIXES 已包含 '/sim'。/diary、/review、/chart、/ai 也都是依賴那一份。
+        且其 TAB_BAR_PREFIXES 已包含 '/dojo'。/market-center、/review、/chart、/ask 也都是依賴那一份。
         若本頁再渲染一次，畫面上會出現兩條重疊的底部列。
       */}
     </div>

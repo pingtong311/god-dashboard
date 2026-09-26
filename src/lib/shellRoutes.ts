@@ -69,7 +69,7 @@ const GUEST_EXACT: readonly string[] = [
 /**
  * 登入態頁面前綴（含子路徑）。
  * 來源：登入後 Playwright 抓取的 51 條路由清單（全為登入後頁面），
- * 再加上峰子自有的登入後頁面（/diary /review /chart /ai /sim /chips）。
+ * 再加上峰子自有的登入後頁面（/review /chart /chips）。
  * 這些頁面**仍會顯示** site-header 與 site-footer，只是底部列改用會員態。
  */
 const APP_PREFIXES: readonly string[] = [
@@ -115,11 +115,10 @@ const APP_PREFIXES: readonly string[] = [
   '/guess',
   '/settings',
   // ── 峰子自有的登入後頁面（保留於此，避免既有頁面突然變成 guest）────────
-  '/diary',
+  // （/ai→/ask、/sim→/dojo、/diary→/market-center 已改名至實站權威路徑，
+  //   見上方清單；舊路徑不再存在。）
   '/review',
   '/chart',
-  '/ai',
-  '/sim',
   '/chips',
 ];
 

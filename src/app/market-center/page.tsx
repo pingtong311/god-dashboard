@@ -720,7 +720,7 @@ export default function DiaryPage() {
                       <span>四大排序找出主力佈局標的</span>
                     </div>
                   </Link>
-                  <Link href="/sim" className={styles.quickCard}>
+                  <Link href="/dojo" className={styles.quickCard}>
                     <Wallet size={20} aria-hidden="true" />
                     <div>
                       <strong>模擬練習</strong>

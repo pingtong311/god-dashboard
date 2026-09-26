@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import type { ChatStreamEvent } from '@/lib/aiChat';
 import { AVAILABLE_MODELS, type AvailableModelId, NVIDIA_MODEL } from '@/lib/aiChat';
 import { describeAiChatError, type AiChatErrorBody } from '@/lib/aiChatErrors';
-import { markdownToReactNodes } from '@/app/ai/aiMarkdown';
+import { markdownToReactNodes } from '@/app/ask/aiMarkdown';
 import {
   CHIP_ALL_LABEL,
   QUESTION_CHIPS,
@@ -14,7 +14,7 @@ import {
   countCards,
   type ChipFilter,
   type QuestionChip,
-} from '@/app/ai/aiQuestionCards';
+} from '@/app/ask/aiQuestionCards';
 
 /* ── SpeechRecognition 環境型別（Web Speech API 標準）────────────── */
 interface SpeechRecognition extends EventTarget {
@@ -112,7 +112,7 @@ type TabKey = 'chat' | 'logs';
 
 /**
  * 空狀態的快速提問卡已改為「依類別分組 + 模式 chips 過濾」：
- * 類別骨架與 chip 定義見 `@/app/ai/aiQuestionCards`（逐字自 ai.md §3.3/§3.4，
+ * 類別骨架與 chip 定義見 `@/app/ask/aiQuestionCards`（逐字自 ai.md §3.3/§3.4，
  * 各卡提問句 spec 標 [無法辨識]，不補腦）。
  */
 

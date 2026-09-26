@@ -15,7 +15,7 @@ import {
   filterCardGroups,
   countCards,
   type QuestionCardGroup,
-} from '@/app/ai/aiQuestionCards';
+} from '@/app/ask/aiQuestionCards';
 
 describe('QUESTION_CHIPS（ai.md §3.3，中信心）', () => {
   it('依 spec 逐字 5 顆 chip', () => {

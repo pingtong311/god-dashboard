@@ -153,7 +153,7 @@ describe('resolveLearnHref：站內轉換 / #anchor / 外部連結', () => {
 
   it('其餘博主路由走 resolveLegacyHref', () => {
     expect(resolveLearnHref('/school/')).toBe('/school');
-    expect(resolveLearnHref('/today/')).toBe('/diary');
+    expect(resolveLearnHref('/today/')).toBe('/today');
     expect(resolveLearnHref('/stock/?id=2330')).toBe('/s/2330');
   });
 
@@ -361,14 +361,14 @@ describe('/learn/[slug]：不同 category 的文章渲染正確', () => {
     expect(dom.textContent).toContain('本文重點');
   });
 
-  it('目錄 #anchor 未被轉換（仍為 #sec-N，而非 fallback /diary）', () => {
+  it('目錄 #anchor 未被轉換（仍為 #sec-N，而非 fallback /）', () => {
     const { dom, article } = staticArticle('how-to-use-stock-orderbook');
     const anchors = Array.from(dom.querySelectorAll('a[href^="#"]'));
     expect(anchors).toHaveLength(article.sections.length);
     anchors.forEach((a) => {
       const href = a.getAttribute('href') ?? '';
       expect(href.startsWith('#')).toBe(true);
-      expect(href).not.toBe('/diary');
+      expect(href).not.toBe('/');
     });
     expect(dom.querySelector('a[href="#sec-1"]')).not.toBeNull();
     // 章節 id 與目錄錨點一致
@@ -378,13 +378,13 @@ describe('/learn/[slug]：不同 category 的文章渲染正確', () => {
     }
   });
 
-  it('內文站內連結已轉換（/live/ → /diary；/learn/…/ → 去尾斜線）', () => {
+  it('內文站內連結已轉換（/live/ → /live identity；/learn/…/ → 去尾斜線）', () => {
     const { dom } = staticArticle('how-to-read-order-book-five-levels');
     // 不應殘留博主原始尾斜線路由
     expect(dom.querySelector('a[href="/live/"]')).toBeNull();
     expect(dom.querySelector('a[href="/learn/how-to-enable-notify/"]')).toBeNull();
-    // 已轉為峰子路由
-    expect(dom.querySelector('a[href="/diary"]')).not.toBeNull();
+    // 已轉為站內權威路徑（/live/ 為實站權威路由，identity）
+    expect(dom.querySelector('a[href="/live"]')).not.toBeNull();
     expect(dom.querySelector('a[href="/learn/how-to-enable-notify"]')).not.toBeNull();
   });
 

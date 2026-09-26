@@ -153,7 +153,7 @@ export function isExternalHref(href: string): boolean {
  * @example resolveLearnHref('/learn/?c=platform')   // '/learn?c=platform'
  * @example resolveLearnHref('#sec-1')               // '#sec-1'
  * @example resolveLearnHref('/school/')             // '/school'
- * @example resolveLearnHref('/today/')              // '/diary'
+ * @example resolveLearnHref('/today/')              // '/today'
  */
 export function resolveLearnHref(href: string): string {
   if (!href) return href;

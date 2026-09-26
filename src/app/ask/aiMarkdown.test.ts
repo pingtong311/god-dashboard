@@ -10,7 +10,7 @@
  * 對元素陣列做引用比較（Jest 30 對 element 的 toEqual 走引用相等）。
  */
 
-import { parseInline, parseBlocks, markdownToReactNodes } from '@/app/ai/aiMarkdown';
+import { parseInline, parseBlocks, markdownToReactNodes } from '@/app/ask/aiMarkdown';
 import { isValidElement, type ReactNode } from 'react';
 
 /**
