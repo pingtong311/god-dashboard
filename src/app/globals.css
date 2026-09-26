@@ -8357,30 +8357,19 @@ body.review-mode .rail-card {
   width: fit-content;
 }
 
-.indicator-status.bullish,
-.indicator-status:has-text('超買'),
-.indicator-status:has-text('多頭'),
-.indicator-status:has-text('嚴重偏離'),
-.indicator-status:has-text('偏多') {
+.indicator-status.bullish {
   color: var(--up);
   background: rgba(255, 77, 90, 0.12);
   border: 1px solid rgba(255, 77, 90, 0.2);
 }
 
-.indicator-status.bearish,
-.indicator-status:has-text('超賣'),
-.indicator-status:has-text('空頭'),
-.indicator-status:has-text('偏空') {
+.indicator-status.bearish {
   color: var(--down);
   background: rgba(47, 211, 154, 0.12);
   border: 1px solid rgba(47, 211, 154, 0.2);
 }
 
-.indicator-status.neutral,
-.indicator-status:has-text('中性'),
-.indicator-status:has-text('貼合'),
-.indicator-status:has-text('黃金交叉'),
-.indicator-status:has-text('死亡交叉') {
+.indicator-status.neutral {
   color: var(--muted);
   background: var(--surface);
   border: 1px solid var(--line);

@@ -7,6 +7,7 @@
  */
 
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import ValuationClient from './ValuationClient';
 import './page.css';
 
@@ -17,5 +18,10 @@ export const metadata: Metadata = {
 };
 
 export default function ValuationPage(): React.ReactElement {
-  return <ValuationClient />;
+  // useSearchParams() 必須包在 Suspense 內，否則 Next 15 無法靜態預渲染此頁。
+  return (
+    <Suspense>
+      <ValuationClient />
+    </Suspense>
+  );
 }

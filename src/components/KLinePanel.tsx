@@ -97,6 +97,29 @@ const ERROR_MESSAGES: Record<string, string> = {
   network_error: '網路連線異常，請檢查網路後再試。',
 };
 
+// ── 指標狀態膠囊（RSI/KD/MACD/BIAS 的語氣色）──────────────
+// globals.css 定義了 .indicator-status.bullish|.bearish|.neutral 三組配色；
+// 這裡依狀態文字套對應 class（CSS 的 :has-text() 不是合法偽類，必須由 JS 帶 class）。
+const INDICATOR_TONE: Record<string, 'bullish' | 'bearish' | 'neutral'> = {
+  超買: 'bullish',
+  多頭: 'bullish',
+  偏多: 'bullish',
+  嚴重偏離: 'bullish',
+  超賣: 'bearish',
+  空頭: 'bearish',
+  偏空: 'bearish',
+  中性: 'neutral',
+  貼合: 'neutral',
+  黃金交叉: 'neutral',
+  死亡交叉: 'neutral',
+};
+
+function IndicatorStatusChip({ children }: { children: React.ReactNode }): React.ReactElement {
+  const tone = INDICATOR_TONE[String(children)] ?? '';
+  const className = tone ? `indicator-status ${tone}` : 'indicator-status';
+  return <div className={className}>{children}</div>;
+}
+
 // ── 畫圖工具類型 ────────────────────────────────────────
 
 type DrawingTool = 'none' | 'trendline' | 'horizontal' | 'fibonacci';
@@ -1102,7 +1125,7 @@ function TechnicalIndicatorsPanel({ candles, timeframe }: TechnicalIndicatorsPan
           <div className="indicator-value">
             {lastCandle?.rsi != null ? lastCandle.rsi.toFixed(1) : '--'}
           </div>
-          <div className="indicator-status">
+          <IndicatorStatusChip>
             {lastCandle?.rsi != null
               ? lastCandle.rsi > 70
                 ? '超買'
@@ -1110,7 +1133,7 @@ function TechnicalIndicatorsPanel({ candles, timeframe }: TechnicalIndicatorsPan
                 ? '超賣'
                 : '中性'
               : '—'}
-          </div>
+          </IndicatorStatusChip>
           <div className="indicator-mini-chart" aria-hidden="true">
             {candles.slice(-30).map((c, i) => (
               <div
@@ -1132,7 +1155,7 @@ function TechnicalIndicatorsPanel({ candles, timeframe }: TechnicalIndicatorsPan
             K: {lastCandle?.k != null ? lastCandle.k.toFixed(1) : '--'} /
             D: {lastCandle?.d != null ? lastCandle.d.toFixed(1) : '--'}
           </div>
-          <div className="indicator-status">
+          <IndicatorStatusChip>
             {lastCandle?.k != null && lastCandle?.d != null
               ? lastCandle.k > 80 && lastCandle.d > 80
                 ? '超買'
@@ -1142,7 +1165,7 @@ function TechnicalIndicatorsPanel({ candles, timeframe }: TechnicalIndicatorsPan
                 ? '黃金交叉'
                 : '死亡交叉'
               : '—'}
-          </div>
+          </IndicatorStatusChip>
           <div className="indicator-mini-chart" aria-hidden="true">
             {candles.slice(-30).map((c, i) => (
               <div
@@ -1165,13 +1188,13 @@ function TechnicalIndicatorsPanel({ candles, timeframe }: TechnicalIndicatorsPan
             SIG: {lastCandle?.signal != null ? lastCandle.signal.toFixed(2) : '--'} |
             HIST: {lastCandle?.hist != null ? lastCandle.hist.toFixed(2) : '--'}
           </div>
-          <div className="indicator-status">
+          <IndicatorStatusChip>
             {lastCandle?.dif != null && lastCandle?.signal != null
               ? lastCandle.dif > lastCandle.signal
                 ? '多頭'
                 : '空頭'
               : '—'}
-          </div>
+          </IndicatorStatusChip>
           <div className="indicator-mini-chart" aria-hidden="true">
             {candles.slice(-30).map((c, i) => (
               <div
@@ -1194,7 +1217,7 @@ function TechnicalIndicatorsPanel({ candles, timeframe }: TechnicalIndicatorsPan
             12: {lastCandle?.bias12 != null ? (lastCandle.bias12 >= 0 ? '+' : '') + lastCandle.bias12.toFixed(2) + '%' : '--'} |
             24: {lastCandle?.bias24 != null ? (lastCandle.bias24 >= 0 ? '+' : '') + lastCandle.bias24.toFixed(2) + '%' : '--'}
           </div>
-          <div className="indicator-status">
+          <IndicatorStatusChip>
             {lastCandle?.bias6 != null
               ? lastCandle.bias6 > 5
                 ? '嚴重偏離'
@@ -1206,7 +1229,7 @@ function TechnicalIndicatorsPanel({ candles, timeframe }: TechnicalIndicatorsPan
                 ? '偏空'
                 : '貼合'
               : '—'}
-          </div>
+          </IndicatorStatusChip>
           <div className="indicator-mini-chart" aria-hidden="true">
             {candles.slice(-30).map((c, i) => (
               <div
