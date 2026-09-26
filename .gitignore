@@ -27,6 +27,7 @@
 .open-next/
 open-next.config.mjs
 cf-template/
+.wrangler/
 
 # misc
 .DS_Store
