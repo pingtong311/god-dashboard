@@ -31,8 +31,9 @@ import type { ChannelData, ChannelResponse } from '@/types/channel';
 /**
  * 上游 fetch 超時：4s（比照 futures route；HIT ~0.5s，回源 20s 掛起會被 4s 斷掉）。
  * 現況無上游呼叫，此常量为日後接 FinMind Sponsor 時啟用（redirect:'manual' 搭配）。
+ * 不 export：Next 15 路由檔只能匯出路由級導出（route.ts 的 GET/POST 等）。
  */
-export const UPSTREAM_TIMEOUT_MS = 4_000;
+const UPSTREAM_TIMEOUT_MS = 4_000;
 
 /** per-ticker 快取 TTL：1 小時（分點資料為 EOD 性質，收盤後 1h 內換新日）。 */
 const CHANNEL_TTL_MS = 3_600_000;

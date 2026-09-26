@@ -23,13 +23,14 @@ import type { ReactNode } from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import SchoolPage, {
+import SchoolPage from '@/app/school/page';
+import {
   articleMatchesQuery,
   buildChips,
   selectVisibleCategories,
   type SchoolArticle,
   type SchoolData,
-} from '@/app/school/page';
+} from '@/app/school/schoolSelect';
 import rawData from '@/data/school-articles.json';
 
 jest.mock('next/link', () => ({

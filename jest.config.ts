@@ -3,6 +3,8 @@ import type { Config } from 'jest';
 const config: Config = {
   testEnvironment: 'jsdom',
   setupFiles: ['<rootDir>/jest.setup.ts'],
+  // 勿掃描 build 產出（.next/standalone/package.json 會造成 Haste naming collision）。
+  modulePathIgnorePatterns: ['<rootDir>/.next', '<rootDir>/.open-next'],
   transform: {
     '^.+\\.(ts|tsx)$': [
       'ts-jest',
