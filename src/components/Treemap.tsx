@@ -103,7 +103,7 @@ export default function Treemap({ initialData }: TreemapProps) {
           族群熱圖
         </h2>
         <div className={styles.meta}>
-          <span className={styles.date}>資料日 {data?.date.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3') ?? '--'}</span>
+          <span className={styles.date}>資料日 {data?.date?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3') ?? '--'}</span>
           <span className={styles.count}>{data?.totalStocks ?? 0} 檔個股</span>
         </div>
       </header>
@@ -120,9 +120,9 @@ export default function Treemap({ initialData }: TreemapProps) {
             onClick={() => setActiveMarket(label as typeof activeMarket)}
           >
             {label}
-            {label !== '全部' && data?.marketGroups[label as keyof typeof data.marketGroups]?.length !== undefined && (
+            {label !== '全部' && data?.marketGroups?.[label as keyof typeof data.marketGroups]?.length !== undefined && (
               <span className={styles.tabCount}>
-                {data.marketGroups[label as keyof typeof data.marketGroups].length}
+                {data.marketGroups?.[label as keyof typeof data.marketGroups]?.length}
               </span>
             )}
           </button>

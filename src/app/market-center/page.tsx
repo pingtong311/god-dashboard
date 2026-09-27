@@ -383,7 +383,7 @@ export default function DiaryPage() {
       : null;
 
   const breadth = overview?.breadth ?? null;
-  const turnoverText = overview ? formatTurnover(overview.turnover.total) : '--';
+  const turnoverText = overview?.turnover ? formatTurnover(overview.turnover.total) : '--';
 
   return (
     <div className={styles.diaryRoot}>
@@ -672,28 +672,37 @@ export default function DiaryPage() {
                 </div>
                 <div className={styles.newsList}>
                   {newsItems.length > 0 ? (
-                    newsItems.map((item, index) => (
-                      <article
-                        key={`${item.time}-${index}`}
-                        className={`${styles.newsItem} ${styles[item.type.toLowerCase()]} ${item.isAlert ? styles.alert : ''}`}
-                      >
-                        <time className={styles.newsTime}>{item.time}</time>
-                        <div className={styles.newsContent}>
-                          <h4 className={styles.newsTitleText}>
-                            {item.type === 'ALERT' ? '⚠ 重大訊號' : item.type === 'SCAN' ? '📊 掃描訊號' : item.type === 'THOUGHT' ? '💡 策略思考' : item.type === 'INIT' ? '🔄 系統同步' : '❌ 連線錯誤'}
-                          </h4>
-                          <p className={styles.newsBody}>{item.msg}</p>
-                        </div>
-                        {item.msg.match(/\[(\d{4,6}[A-Z]?)\s/) && (
-                          <Link
-                            href={`/chart?ticker=${item.msg.match(/\[(\d{4,6}[A-Z]?)\s/)?.[1]}`}
-                            className={styles.newsTickerLink}
-                          >
-                            {item.msg.match(/\[(\d{4,6}[A-Z]?)\s/)?.[1]}
-                          </Link>
-                        )}
-                      </article>
-                    ))
+                    newsItems.map((item, index) => {
+                      // 防護：/api/skynet/insights 若回傳缺欄位的項目，避免在 render 期
+                      // 對 undefined 呼叫 .toLowerCase() / .match() 而拋錯、整頁崩潰
+                      // （瀏覽器上下頁以客戶端路由重新 render 時即會觸發）。
+                      const msg: string = typeof item.msg === 'string' ? item.msg : '';
+                      const tickerMatch = msg.match(/\[(\d{4,6}[A-Z]?)\s/);
+                      const typeKey: string =
+                        typeof item.type === 'string' ? item.type.toLowerCase() : '';
+                      return (
+                        <article
+                          key={`${item.time}-${index}`}
+                          className={`${styles.newsItem} ${typeKey ? styles[typeKey] : ''} ${item.isAlert ? styles.alert : ''}`}
+                        >
+                          <time className={styles.newsTime}>{item.time}</time>
+                          <div className={styles.newsContent}>
+                            <h4 className={styles.newsTitleText}>
+                              {item.type === 'ALERT' ? '⚠ 重大訊號' : item.type === 'SCAN' ? '📊 掃描訊號' : item.type === 'THOUGHT' ? '💡 策略思考' : item.type === 'INIT' ? '🔄 系統同步' : '❌ 連線錯誤'}
+                            </h4>
+                            <p className={styles.newsBody}>{item.msg}</p>
+                          </div>
+                          {tickerMatch && (
+                            <Link
+                              href={`/chart?ticker=${tickerMatch[1]}`}
+                              className={styles.newsTickerLink}
+                            >
+                              {tickerMatch[1]}
+                            </Link>
+                          )}
+                        </article>
+                      );
+                    })
                   ) : (
                     <div className={styles.newsEmpty}>
                       <Newspaper size={24} />
