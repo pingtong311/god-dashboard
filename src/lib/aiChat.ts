@@ -10,12 +10,15 @@
 export const NVIDIA_CHAT_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
 export const NVIDIA_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b';
 
-/** 可用模型列表（支援切換）。 */
+/** 可用模型列表（支援切換）。
+ *  id 必須是 NVIDIA NIM `GET /v1/models` 實際存在的值——2026-09-27 以金鑰實測校正：
+ *  舊有的 `nvidia/nemotron-3-ultra`、`meta/llama-3.1-405b-instruct`、
+ *  `meta/llama-3.1-70b-instruct` 已下架，改用下列實際存在的型號。 */
 export const AVAILABLE_MODELS = [
-  { id: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'Nemotron 3 Ultra (推理強)' },
-  { id: 'nvidia/nemotron-3-ultra', label: 'Nemotron 3 Ultra (多模態)' },
-  { id: 'meta/llama-3.1-405b-instruct', label: 'Llama 3.1 405B' },
-  { id: 'meta/llama-3.1-70b-instruct', label: 'Llama 3.1 70B' },
+  { id: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'Nemotron 3 Ultra 550B (推理強)' },
+  { id: 'nvidia/nemotron-3-super-120b-a12b', label: 'Nemotron 3 Super 120B (均衡)' },
+  { id: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', label: 'Nemotron Ultra 253B' },
+  { id: 'nvidia/llama-3.1-nemotron-70b-instruct', label: 'Nemotron 70B' },
   { id: 'nvidia/nemotron-4-340b-instruct', label: 'Nemotron 4 340B' },
 ] as const;
 
