@@ -33,6 +33,7 @@ import TodayMarketBrief from './TodayMarketBrief';
 import InstitutionalTop3 from './InstitutionalTop3';
 import RiskBrief from './RiskBrief';
 import TodayCaveat from './TodayCaveat';
+import GodPanel from '@/components/GodPanel';
 import {
   ICON_ARTICLE,
   ICON_DUMBBELL,
@@ -194,6 +195,8 @@ export default function TodayPage(): ReactElement {
         </p>
 
         <TodayCaveat />
+
+        <GodPanel endpoint="dashboard" />
       </div>
     </div>
   );

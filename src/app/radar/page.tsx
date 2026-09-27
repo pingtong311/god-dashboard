@@ -28,6 +28,7 @@ import {
 import type { RadarRow, RadarSort } from '@/app/api/skynet/radar/route';
 import { useChannelData } from '@/hooks/useChannelData';
 import type { ChannelData } from '@/types/channel';
+import GodPanel from '@/components/GodPanel';
 import styles from './radar.module.css';
 
 /** 固定列高（px），虛擬滾動據此換算可見區間。 */
@@ -598,6 +599,7 @@ export default function RadarPage() {
             </div>
           </div>
         )}
+        <GodPanel endpoint="radar" />
       </div>
 
       {/*
