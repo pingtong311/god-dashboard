@@ -4,8 +4,8 @@
  * QA 獨立驗證（第二輪）— /api/skynet/futures 的「KV 三層快取」未提交增量。
  *
  * 驗證範圍（對應未提交 diff：KV 綁定 + currentTradeDate + writeKv + responseHeaders(dataKind)）：
- *   1. KV 命中條件（date === currentTradeDate()）是否與寫入端（pickNearestMonth 的
- *      nearest.Date，YYYYMMDD）格式一致 —— 若不一致，KV 層為死碼
+ *   1. KV 命中條件（date === currentTradeDate()）與寫入端格式一致（皆 YYYY-MM-DD）——
+ *      修復前寫入端存 nearest.Date（YYYYMMDD）導致 KV 層為死碼；現以此為回歸守衛
  *   2. KV 讀取拋錯 → 不阻塞主流程（catch 兜底）
  *   3. KV 寫入：expirationTtl=1800 且 payload 為精簡物件（非 806KB 原表）
  *   4. KV 未綁定（getCloudflareContext 回傳空 env）→ 一切正常
@@ -111,7 +111,7 @@ function todayDashed(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** 今天（UTC）'YYYYMMDD'——route 端寫入 KV 的 date 欄格式（nearest.Date）。 */
+/** 今天（UTC）'YYYYMMDD'——上游 nearest.Date 的原始格式（route 內部再正規化為 YYYY-MM-DD）。 */
 function todayYmd(): string {
   return todayDashed().replace(/-/g, '');
 }
@@ -139,11 +139,45 @@ afterEach(() => {
 });
 
 describe('KV 快取層（未提交增量）', () => {
-  it('【缺陷】KV 命中條件用 currentTradeDate() 的 YYYY-MM-DD 比對寫入端的 YYYYMMDD → KV 永不命中', async () => {
-    // 依 writeKv() 的實際行為造一份 KV 內容：date = nearest.Date（YYYYMMDD）
+  it('KV 命中：寫入端 date 為 YYYY-MM-DD（與 currentTradeDate() 同格式）→ 同一天寫入後即命中', async () => {
+    // 共用一個假 KV store（存「已解析物件」，模擬 kv.get(key, 'json')）。
+    const store = new Map<string, unknown>();
+    const put = jest.fn(async (key: string, value: string) => {
+      store.set(key, JSON.parse(value) as unknown);
+    });
+    const get = jest.fn(async (key: string) => store.get(key) ?? null);
+    mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: { get, put } } });
+
+    // 第一個 module 實例：上游成功（Last=11111）→ fire-and-forget 寫入 KV。
+    const fetch1 = mockFetchOk([
+      futRow({ Date: todayYmd(), Last: '11111', Change: '582', '%': '1.23%' }),
+    ]);
+    const GET1 = freshGet();
+    const first = await GET1(makeReq());
+    expect((await first.json() as FuturesBody).data?.lastPrice).toBe(11111);
+    await new Promise((r) => setTimeout(r, 0)); // 排空 fire-and-forget 的 writeKv
+    expect(fetch1).toHaveBeenCalledTimes(1);
+    expect(put).toHaveBeenCalledTimes(1);
+
+    // 第二個 module 實例（乾淨 in-memory，只能靠 KV）：上游改成「明顯不同」的價格以判別來源。
+    const fetch2 = mockFetchOk([
+      futRow({ Date: todayYmd(), Last: '48000', Change: '582', '%': '1.23%' }),
+    ]);
+    const GET2 = freshGet();
+    const second = await GET2(makeReq());
+    const body = (await second.json()) as FuturesBody;
+
+    // 同一天 → KV 命中：回 KV 的 11111（非上游 48000），header 為 kv-cache，且不回源。
+    expect(body.data?.lastPrice).toBe(11111);
+    expect(second.headers.get('X-Skynet-Data-Source')).toBe('kv-cache');
+    expect(fetch2).not.toHaveBeenCalled();
+  });
+
+  it('KV 日期非當天（EOD 語義）→ 不命中，改走上游（不放寬命中條件）', async () => {
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
     const stored = {
       ts: Date.now(),
-      date: todayYmd(),
+      date: yesterday,
       data: {
         name: '台股期近月',
         lastPrice: 11111,
@@ -156,21 +190,37 @@ describe('KV 快取層（未提交增量）', () => {
         fetchedAt: new Date().toISOString(),
       },
     };
-    const { get } = installKv(stored);
-
-    // 上游回一個「明顯不同」的價格，用來判別資料來自 KV 還是上游
+    installKv(stored);
     const fetchMock = mockFetchOk([futRow({ Last: '48000', Change: '582', '%': '1.23%' })]);
 
     const GET = freshGet();
     const res = await GET(makeReq());
     const body = (await res.json()) as FuturesBody;
 
-    expect(get).toHaveBeenCalled(); // KV 有被讀
-    // 若 KV 命中，lastPrice 應為 11111 且 header 為 kv-cache；
-    // 實測為上游新鮮值 → 證明 date 格式不符，KV 命中分支不可達。
+    // 跨日不串資料：KV 命中失敗 → 走上游新鮮值（EOD 語義不得放寬）。
     expect(body.data?.lastPrice).toBe(48000);
     expect(res.headers.get('X-Skynet-Data-Source')).toBe('taifex-openapi-close');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('回歸守衛：寫入 KV 的 date 與 currentTradeDate() 同格式（YYYY-MM-DD），否則命中永不成立', async () => {
+    const { put } = installKv(null);
+    // 讓上游日期 = 今天（YYYYMMDD），使寫入值可與 currentTradeDate() 直接比對。
+    mockFetchOk([futRow({ Date: todayYmd() })]);
+
+    const GET = freshGet();
+    await GET(makeReq());
+    await new Promise((r) => setTimeout(r, 0)); // writeKv 為 fire-and-forget
+
+    expect(put).toHaveBeenCalledTimes(1);
+    const [, value] = put.mock.calls[0] as unknown as [string, string, { expirationTtl: number }];
+    const parsed = JSON.parse(value) as { date: string };
+
+    // 格式守衛：必須是 YYYY-MM-DD（與 currentTradeDate() 一致），不得漂移回 YYYYMMDD。
+    expect(parsed.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(parsed.date).not.toMatch(/^\d{8}$/);
+    // 同一天時，寫入值必須等於命中判斷式所用的 currentTradeDate()。
+    expect(parsed.date).toBe(todayDashed());
   });
 
   it('KV 讀取拋錯 → 不阻塞，仍回 200 + ok:true（走上游）', async () => {

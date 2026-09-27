@@ -173,6 +173,16 @@ function toMonthDay(value: string): string {
   return `${value.slice(4, 6)}/${value.slice(6, 8)}`;
 }
 
+/**
+ * YYYYMMDD → 'YYYY-MM-DD'（KV 的 date 欄與 currentTradeDate() 的統一格式）。
+ * ⚠ 這是 KV 命中判斷的關鍵：寫入端（此函式）與命中端（currentTradeDate()）格式必須一致，
+ *   否則 `kvHit.date === currentTradeDate()` 永不成立、KV 讀取快取形同虛設。格式異常回空字串。
+ */
+function toDashedDate(value: string): string {
+  if (!/^\d{8}$/.test(value)) return '';
+  return `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}`;
+}
+
 /** YYYYMM → 'YYYY-MM'。 */
 function toContractMonth(value: string): string {
   if (!/^\d{6}$/.test(value)) return '';
@@ -184,11 +194,15 @@ function currentTradeDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** 寫 KV（精簡 ~200 字節快照，TTL 30 分鐘）；寫失敗不阻塞主流程（KV 是優化非必需）。 */
-async function writeKv(tradeDate: string, data: TaifexFuturesData): Promise<void> {
+/**
+ * 寫 KV（精簡 ~200 字節快照，TTL 30 分鐘）；寫失敗不阻塞主流程（KV 是優化非必需）。
+ * ⚠ tradeDateDashed 必須為 'YYYY-MM-DD'（與 currentTradeDate() 同格式）：GET 的命中判斷為
+ *   `kvHit.date === currentTradeDate()`，兩邊格式不一致時命中永不成立（曾因此使 KV 層為死碼）。
+ */
+async function writeKv(tradeDateDashed: string, data: TaifexFuturesData): Promise<void> {
   const kv = await getKv();
   if (!kv) return;
-  const payload = JSON.stringify({ ts: Date.now(), date: tradeDate, data } satisfies KvStored);
+  const payload = JSON.stringify({ ts: Date.now(), date: tradeDateDashed, data } satisfies KvStored);
   try {
     await kv.put(KV_KEY, payload, { expirationTtl: 1800 });
   } catch {
@@ -226,8 +240,10 @@ function pickNearestMonth(raw: TaifexFutRow[]): TaifexFuturesData | null {
   // 若因極端情況（上游資料異常）為 null，仍交回 ok:false，不造假數字。
   if (lastPrice === null || lastPrice <= 0) return null;
 
-  const tradeDate = String(nearest.Date ?? '');
+  const tradeDate = String(nearest.Date ?? ''); // 上游原始格式 YYYYMMDD（供 sourceLabel）
   const monthDay = toMonthDay(tradeDate);
+  // KV 的 date 欄與 data.date 統一為 YYYY-MM-DD（與 currentTradeDate() 同格式）。
+  const tradeDateDashed = toDashedDate(tradeDate);
   const data: TaifexFuturesData = {
     name: '台股期近月',
     lastPrice,
@@ -237,16 +253,16 @@ function pickNearestMonth(raw: TaifexFutRow[]): TaifexFuturesData | null {
     // EOD 來源：盤中顯示前一日收盤日期；不標「即時」。
     sourceLabel: monthDay ? `收盤 ${monthDay}` : '收盤',
     source: 'taifex-openapi-close',
-    date: /^\d{8}$/.test(tradeDate)
-      ? `${tradeDate.slice(0, 4)}-${tradeDate.slice(4, 6)}-${tradeDate.slice(6, 8)}`
-      : '',
+    date: tradeDateDashed,
     contract: toContractMonth(String(nearest['ContractMonth(Week)'] ?? '')),
     fetchedAt: new Date().toISOString(),
   };
 
   cached = { ts: Date.now(), date: tradeDate, data };
   // fire-and-forget 寫 KV（不 await：KV 寫失敗/延遲不阻塞本次回應；catch 內建）。
-  void writeKv(tradeDate, data);
+  // ⚠ 寫入 date 用正規化後的 YYYY-MM-DD，與 GET 命中判斷式 currentTradeDate() 同格式；
+  //    若寫入端存上游原始 YYYYMMDD，KV 讀取快取永不命中、EOD 冷啟動 CPU 防護形同虛設。
+  void writeKv(tradeDateDashed, data);
   return data;
 }
 
@@ -312,6 +328,8 @@ function responseHeaders(
 
 export async function GET(_req: NextRequest) {
   // KV 命中（跨 isolate，30 分鐘 TTL）：同日期且未過期才用。
+  // ⚠ kvHit.date 與 currentTradeDate() 必須同格式（皆 YYYY-MM-DD）：寫入端 pickNearestMonth
+  //    以 toDashedDate() 正規化後才寫 KV；兩邊格式不一致時命中永不成立（曾因此使 KV 層為死碼）。
   // EOD 語義：盤中拿到的 tradeDate 必為前一交易日 ≠ 當前 UTC 日 → 不命中，
   // 避免跨日串資料（盤中必須重抓前一交易日的新快照）。
   const kv = await getKv();
