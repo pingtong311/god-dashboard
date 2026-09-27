@@ -18,9 +18,12 @@ import {
  * 由 GOD 辦公室（本機）以 HTTP POST 推入標準化 JSON 信封；App 存進 KV
  * （key `god:<endpoint>`，TTL 7 天），供 GET /api/skynet/god/[endpoint] 讀取。
  *
- * 安全：機器對機器，必須帶 token（Authorization: Bearer <SKYNET_DASHBOARD_API_TOKEN>
- * 或 header x-skynet-api-token）。刻意 allowSameOrigin:false——不開放同源繞過，
- * 因為此端點不是給瀏覽器用的。守衛細節見 src/lib/apiGuard.ts。
+ * 安全：機器對機器，必須帶 token（Authorization: Bearer <token>
+ * 或 header x-skynet-api-token）。接受兩種權杖：
+ *   - GOD_INGEST_TOKEN（專用，建議）：只對本端點有效，不需交出全站寫入權杖。
+ *   - SKYNET_DASHBOARD_API_TOKEN（全域，仍相容）：可寫入全站所有端點。
+ * 刻意 allowSameOrigin:false——不開放同源繞過，因為此端點不是給瀏覽器用的。
+ * 守衛細節見 src/lib/apiGuard.ts。
  *
  * 回應契約：
  *   200 { ok:true, endpoint, key, bytes, storedAt, expiresAt }
@@ -37,6 +40,9 @@ export async function POST(request: Request) {
     endpoint: 'god-ingest',
     maxRequests: 60,
     allowSameOrigin: false,
+    // GOD 辦公室的專用權杖：只能寫入此端點，
+    // 不需交出可寫入另外 9 個端點的全站權杖 SKYNET_DASHBOARD_API_TOKEN。
+    extraTokens: [process.env.GOD_INGEST_TOKEN ?? ''],
   });
   if (guard) return guard;
 

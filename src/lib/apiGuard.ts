@@ -5,6 +5,11 @@ type GuardOptions = {
   windowMs?: number;
   maxRequests?: number;
   allowSameOrigin?: boolean;
+  /**
+   * 端點專用權杖（例如 GOD 辦公室的 ingest 專用 token）。
+   * 與全域權杖等效，但只對此端點有效；未傳時行為與修改前完全一致。
+   */
+  extraTokens?: readonly string[];
 };
 
 type RateBucket = {
@@ -38,6 +43,21 @@ function extractToken(request: Request): string {
   return request.headers.get('x-skynet-api-token') || '';
 }
 
+/**
+ * 比對送來的權杖是否有效。
+ * 空字串一律視為無效 —— 避免「未設定」被誤判為「比對成功」。
+ * 順序：全域權杖優先，再比對端點專用權杖。
+ */
+function matchesAnyToken(
+  supplied: string,
+  configuredToken: string,
+  extraTokens?: readonly string[],
+): boolean {
+  if (!supplied) return false;
+  if (configuredToken && supplied === configuredToken) return true;
+  return (extraTokens ?? []).some((token) => Boolean(token) && token === supplied);
+}
+
 function checkRateLimit(request: Request, options: Required<Pick<GuardOptions, 'windowMs' | 'maxRequests'>> & Pick<GuardOptions, 'endpoint'>) {
   const now = Date.now();
   const key = `${options.endpoint}:${requestIp(request)}`;
@@ -64,7 +84,7 @@ export function guardMutation(request: Request, options: GuardOptions): NextResp
 
   const configuredToken = process.env.SKYNET_DASHBOARD_API_TOKEN || process.env.SKYNET_API_WRITE_TOKEN || '';
   const suppliedToken = extractToken(request);
-  if (configuredToken && suppliedToken && suppliedToken === configuredToken) return null;
+  if (matchesAnyToken(suppliedToken, configuredToken, options.extraTokens)) return null;
 
   const host = requestHost(request);
   const sameOrigin =
