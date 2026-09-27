@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const kv = getKv();
+  const kv = await getKv();
   if (!kv) {
     return NextResponse.json(
       { ok: false, error: 'kv_unavailable', message: 'KV 尚未綁定，無法儲存 GOD 辦公室資料。' },

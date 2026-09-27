@@ -20,6 +20,8 @@
  *   App 於 ingest 時補上 received_at，存成完整 GodEnvelope。
  */
 
+import { getCloudflareContext } from '@opennextjs/cloudflare';
+
 /**
  * 允許的 6 個標準化端點白名單（GOD 辦公室 http://127.0.0.1:4010/api/* 產出）。
  * 以 `as const` 宣告，供 `GodEndpoint` 型別推導與執行期白名單判斷共用（單一真相來源）。
@@ -105,9 +107,8 @@ export function isGodEndpoint(value: unknown): value is GodEndpoint {
 }
 
 /**
- * KV 綁定型別。
- * 照抄 src/app/api/skynet/futures/route.ts 的既有寫法：opennext 在 Workers 運行時
- * 注入 globalThis.SKYNET_CACHE；開發環境可能缺席。
+ * KV 綁定型別（Cloudflare KV Namespace 的最小介面子集）。
+ * 本專案的 KV 綁定名為 SKYNET_CACHE（見 wrangler.jsonc 的 [[kv_namespaces]]）。
  */
 export type SkynetKv = {
   get: (key: string, type?: string) => Promise<string | null>;
@@ -115,11 +116,25 @@ export type SkynetKv = {
 };
 
 /**
- * 取 KV 綁定（可能 undefined——本地 dev / 未綁定時）。
+ * 取 KV 綁定（可能 undefined——本地 dev / 未綁定 / 非 Workers 環境）。
+ *
+ * 透過 @opennextjs/cloudflare 的 getCloudflareContext({ async: true }) 取得 Workers
+ * 綁定集合 env（即 env.SKYNET_CACHE）。
+ *
+ * ⚠ 不可改用 `globalThis.SKYNET_CACHE`：@opennextjs/cloudflare v1.20.1 在 Workers
+ * 生產環境並不會把綁定掛上 globalThis，該寫法在生產環境恆為 undefined（導致 KV 快取
+ * 從未生效）。正確用法見 src/app/api/skynet/line-webhook/route.ts。
+ *
  * 讀寫端一律以 try/catch 兜底，KV 缺席時不可阻塞主流程（本專案既有慣例）。
  */
-export function getKv(): SkynetKv | undefined {
-  return (globalThis as unknown as { SKYNET_CACHE?: SkynetKv }).SKYNET_CACHE;
+export async function getKv(): Promise<SkynetKv | undefined> {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    return (env as unknown as { SKYNET_CACHE?: SkynetKv }).SKYNET_CACHE;
+  } catch {
+    // 本地 dev / 未綁定 / 非 Workers 環境：回 undefined，讀寫一律兜底不阻塞主流程。
+    return undefined;
+  }
 }
 
 /**

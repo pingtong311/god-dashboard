@@ -19,6 +19,13 @@
 
 import { NextRequest } from 'next/server';
 
+// ⚠ @opennextjs/cloudflare 為 ESM-only，Jest（CJS）無法直接載入 → 必須以 mock 模組取代，
+// 否則 require route 會拋 `SyntaxError: Unexpected token 'export'`。
+// 本檔不特別控制 KV 內容，只需讓 route 內的 getKv() 安全取得「未綁定」狀態（回空 env）。
+jest.mock('@opennextjs/cloudflare', () => ({
+  getCloudflareContext: jest.fn(async () => ({ env: {} })),
+}));
+
 const ORIGINAL_FETCH = globalThis.fetch;
 
 function makeReq(): NextRequest {

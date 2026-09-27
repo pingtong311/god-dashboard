@@ -47,7 +47,7 @@ export async function GET(
     );
   }
 
-  const kv = getKv();
+  const kv = await getKv();
   if (!kv) {
     return NextResponse.json(
       { ok: true, endpoint, ready: false, message: 'KV 尚未綁定' },

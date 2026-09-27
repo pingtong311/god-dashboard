@@ -55,6 +55,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 // 精確 URL 常量：禁止拼接尾斜線或 query（shioaji-research 2026-09-20 實測）：
 //   尾斜線 → 302 到 https://openapi.taifex.com.tw/ → 200 + text/html（1793 bytes）
@@ -71,15 +72,27 @@ const KV_TTL_MS = 30 * 60 * 1000;
 /** KV key：期近月收盤快照（精簡物件，~200 字節，絕非 806KB 原表）。 */
 const KV_KEY = 'futures_nearest';
 
-/** KV 綁定型別：opennext 在 Workers 運行時注入 globalThis.SKYNET_CACHE；開發環境可能缺席。 */
+/** KV 綁定型別（Cloudflare KV Namespace 最小介面；本專案綁定名 SKYNET_CACHE）。 */
 type SkynetKv = {
   get: (key: string, type?: string) => Promise<string | null>;
   put: (key: string, value: string, options?: { expirationTtl?: number }) => Promise<void>;
 };
 
-/** 取 KV 綁定（可能 undefined——本地 dev / 未綁定時，讀寫一律走 catch 兜底不阻塞）。 */
-function getKv(): SkynetKv | undefined {
-  return (globalThis as unknown as { SKYNET_CACHE?: SkynetKv }).SKYNET_CACHE;
+/**
+ * 取 KV 綁定（可能 undefined——本地 dev / 未綁定 / 非 Workers 環境，讀寫一律走 catch
+ * 兜底不阻塞）。
+ *
+ * 透過 @opennextjs/cloudflare 的 getCloudflareContext({ async: true }) 取得 env 綁定；
+ * ⚠ 不可改用 `globalThis.SKYNET_CACHE`（v1.20.1 在 Workers 生產環境不掛 globalThis
+ * → 恆為 undefined，導致此 route 的 KV 快取層從未生效，一直靜默退回直接 fetch）。
+ */
+async function getKv(): Promise<SkynetKv | undefined> {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    return (env as unknown as { SKYNET_CACHE?: SkynetKv }).SKYNET_CACHE;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -173,7 +186,7 @@ function currentTradeDate(): string {
 
 /** 寫 KV（精簡 ~200 字節快照，TTL 30 分鐘）；寫失敗不阻塞主流程（KV 是優化非必需）。 */
 async function writeKv(tradeDate: string, data: TaifexFuturesData): Promise<void> {
-  const kv = getKv();
+  const kv = await getKv();
   if (!kv) return;
   const payload = JSON.stringify({ ts: Date.now(), date: tradeDate, data } satisfies KvStored);
   try {
@@ -301,7 +314,7 @@ export async function GET(_req: NextRequest) {
   // KV 命中（跨 isolate，30 分鐘 TTL）：同日期且未過期才用。
   // EOD 語義：盤中拿到的 tradeDate 必為前一交易日 ≠ 當前 UTC 日 → 不命中，
   // 避免跨日串資料（盤中必須重抓前一交易日的新快照）。
-  const kv = getKv();
+  const kv = await getKv();
   if (kv) {
     const kvHit = (await kv.get(KV_KEY, 'json').catch(() => null)) as
       | KvStored

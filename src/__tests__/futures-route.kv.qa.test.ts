@@ -8,16 +8,25 @@
  *      nearest.Date，YYYYMMDD）格式一致 —— 若不一致，KV 層為死碼
  *   2. KV 讀取拋錯 → 不阻塞主流程（catch 兜底）
  *   3. KV 寫入：expirationTtl=1800 且 payload 為精簡物件（非 806KB 原表）
- *   4. KV 未綁定（globalThis.SKYNET_CACHE undefined）→ 一切正常
+ *   4. KV 未綁定（getCloudflareContext 回傳空 env）→ 一切正常
  *   5. 失敗契約：200 + { ok:false }（非 502）—— 覆蓋舊測試檔的過時斷言
  *   6. in-memory 命中 → X-Skynet-Data-Source: taifex-openapi-cache 且不再打上游
  *   7. X-Skynet-Trade-Date 純 ASCII（CJK 會觸發 ByteString TypeError → 500）
  *   8. change / changePercent 哨兵值 → null（前端 '--' 顯示的前提）
  *
- * 全程 mock globalThis.fetch，不打真實 TAIFEX；不打真實 KV。
+ * 全程 mock globalThis.fetch 與 @opennextjs/cloudflare，不打真實 TAIFEX；不打真實 KV。
  */
 
 import { NextRequest } from 'next/server';
+
+// ⚠ @opennextjs/cloudflare 為 ESM-only，Jest（CJS）無法直接載入 → 以 mock 模組取代。
+// 用「委派到 module-scope 的 jest.fn」寫法：freshGet() 會用 jest.isolateModules 重新
+// require route，mock 工廠會被重跑；若在工廠內新建 jest.fn，會與測試中操作的實例不同，
+// 委派可確保所有 registry 共用同一個 mock 實例（測試才有鑑別力）。
+const mockGetCloudflareContext = jest.fn();
+jest.mock('@opennextjs/cloudflare', () => ({
+  getCloudflareContext: (...args: unknown[]) => mockGetCloudflareContext(...args),
+}));
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -107,19 +116,20 @@ function todayYmd(): string {
   return todayDashed().replace(/-/g, '');
 }
 
-/** 塞入假 KV 綁定，回傳 put 的 jest.fn 供斷言。 */
+/** 塞入假 KV 綁定（透過 getCloudflareContext 的 env），回傳 get/put 供斷言。 */
 function installKv(stored: unknown | null, getThrows = false) {
   const put = jest.fn(async () => undefined);
   const get = jest.fn(async () => {
     if (getThrows) throw new Error('KV unavailable');
     return stored;
   });
-  (globalThis as unknown as { SKYNET_CACHE?: unknown }).SKYNET_CACHE = { get, put };
+  mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: { get, put } } });
   return { get, put };
 }
 
+/** 模擬「KV 未綁定」：getCloudflareContext 回傳空 env（env.SKYNET_CACHE 缺席）。 */
 function clearKv() {
-  delete (globalThis as unknown as { SKYNET_CACHE?: unknown }).SKYNET_CACHE;
+  mockGetCloudflareContext.mockResolvedValue({ env: {} });
 }
 
 afterEach(() => {
@@ -177,7 +187,7 @@ describe('KV 快取層（未提交增量）', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('KV 未綁定（globalThis.SKYNET_CACHE undefined）→ 一切正常，不拋錯', async () => {
+  it('KV 未綁定（getCloudflareContext 回空 env）→ 一切正常，不拋錯', async () => {
     clearKv();
     mockFetchOk([futRow()]);
 

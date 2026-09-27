@@ -14,7 +14,8 @@
  *
  * 測試風格對齊本專案：直接呼叫 route 的 POST/GET 函式並傳入 `new Request(...)`；
  * 不使用 @testing-library（本專案的 @testing-library/dom 為壞掉的 symlink）。
- * 假 KV 以 globalThis.SKYNET_CACHE stub 記錄 put 呼叫。
+ * 假 KV 以 mock @opennextjs/cloudflare 的 getCloudflareContext 注入（env.SKYNET_CACHE），
+ * 走與生產環境相同的取值路徑（不再用 globalThis.SKYNET_CACHE stub——該 stub 測不到真實路徑）。
  */
 
 import { POST } from '@/app/api/skynet/god/ingest/route';
@@ -28,6 +29,12 @@ import {
   isGodEndpoint,
   parseIngestBody,
 } from '@/lib/godBridge';
+
+// ⚠ @opennextjs/cloudflare 為 ESM-only 套件，Jest（CJS）無法直接載入；且正確的 KV 取得
+// 路徑是 getCloudflareContext（而非 globalThis.SKYNET_CACHE）。以 mock 模組取代，讓測試
+// 真正走新的取值路徑（有鑑別力：若 getKv 仍用 globalThis，此 mock 不會被呼叫）。
+jest.mock('@opennextjs/cloudflare', () => ({ getCloudflareContext: jest.fn() }));
+import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 const ORIGINAL_TOKEN = process.env.SKYNET_DASHBOARD_API_TOKEN;
 const ORIGINAL_ALT_TOKEN = process.env.SKYNET_API_WRITE_TOKEN;
@@ -46,13 +53,13 @@ function installKv(stored: unknown, getThrows = false) {
     if (getThrows) throw new Error('KV unavailable');
     return stored;
   });
-  (globalThis as unknown as { SKYNET_CACHE?: unknown }).SKYNET_CACHE = { get, put };
+  (getCloudflareContext as jest.Mock).mockResolvedValue({ env: { SKYNET_CACHE: { get, put } } });
   return { get, put };
 }
 
-/** 移除假 KV 綁定（模擬「KV 尚未綁定」）。 */
+/** 模擬「KV 尚未綁定」：getCloudflareContext 回傳空 env（env.SKYNET_CACHE 缺席）。 */
 function clearKv() {
-  delete (globalThis as unknown as { SKYNET_CACHE?: unknown }).SKYNET_CACHE;
+  (getCloudflareContext as jest.Mock).mockResolvedValue({ env: {} });
 }
 
 /** 建立 ingest 請求；token 傳 null 代表不帶憑證。 */
@@ -342,6 +349,17 @@ describe('GET /api/skynet/god/[endpoint]', () => {
     const res = await getRoute('dashboard');
     expect(res.status).toBe(200);
     const data = (await res.json()) as { ready: boolean; message: string };
+    expect(data.ready).toBe(false);
+    expect(data.message).toBe('KV 尚未綁定');
+  });
+
+  it('getCloudflareContext reject（非 Workers 環境）→ 200 + ready:false，不阻塞', async () => {
+    (getCloudflareContext as jest.Mock).mockRejectedValue(new Error('not in workers'));
+
+    const res = await getRoute('dashboard');
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok: boolean; ready: boolean; message: string };
+    expect(data.ok).toBe(true);
     expect(data.ready).toBe(false);
     expect(data.message).toBe('KV 尚未綁定');
   });
