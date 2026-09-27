@@ -16,6 +16,10 @@
  *   6. 零行為改變：不傳 extraTokens、configuredToken 有值、allowSameOrigin:false、
  *      帶同源 Origin 與 Referer → 仍須 403
  *
+ * 另含「allowSameOrigin 三態語義」suite：修正無權杖環境下同源分支 fail-open 的既存缺陷
+ * （無權杖時 !configuredToken 為 true → 架空 allowSameOrigin:false），驗證三態語義
+ * （true / false / undefined）與修正點。
+ *
  * 測試風格對齊本專案：直接呼叫 guardMutation 並傳入原生 `new Request(...)`；
  * 不使用 @testing-library（本專案的 @testing-library/dom 為壞掉的 symlink）。
  *
@@ -152,6 +156,55 @@ describe('guardMutation extraTokens（端點專用權杖）', () => {
     const result = guardMutation(sameOriginRequest(null), {
       endpoint: 'god-ingest-sameorigin',
       allowSameOrigin: false,
+    });
+    expectForbidden(result);
+  });
+});
+
+describe('guardMutation allowSameOrigin 三態語義（無權杖環境 fail-open 修正）', () => {
+  /**
+   * 清空所有權杖，模擬「尚未設定任何權杖」的環境（configuredToken === ''）。
+   * 修正前此環境下同源分支為 fail-open（!configuredToken 為 true → 放行），
+   * 會架空 allowSameOrigin:false；修正後 allowSameOrigin:false 一律擋下同源。
+   */
+  function clearAllTokens(): void {
+    delete process.env.SKYNET_DASHBOARD_API_TOKEN;
+    delete process.env.SKYNET_API_WRITE_TOKEN;
+  }
+
+  it('新案例 1（修正點）：allowSameOrigin:false + 無任何權杖 + 同源 → 必須 403', () => {
+    clearAllTokens();
+    const result = guardMutation(sameOriginRequest(null), {
+      endpoint: 'god-ingest-no-token-sameorigin-false',
+      allowSameOrigin: false,
+    });
+    // 修正前：!configuredToken === true → 同源被放行（回 null）；修正後必須 403。
+    expectForbidden(result);
+  });
+
+  it('新案例 2：allowSameOrigin:true + 無權杖 + 同源 → 放行（行為不變；亦證明同源構造有效）', () => {
+    clearAllTokens();
+    const result = guardMutation(sameOriginRequest(null), {
+      endpoint: 'god-ingest-no-token-sameorigin-true',
+      allowSameOrigin: true,
+    });
+    // 若同源構造無效（sameOrigin 為 false），此案例會回 403 而失敗——
+    // 故此案例通過即證明 sameOriginRequest 確實產生同源請求。
+    expect(result).toBeNull();
+  });
+
+  it('新案例 3：allowSameOrigin 未傳 + 無權杖 + 同源 → 放行（舊行為必須保留，供本機開發）', () => {
+    clearAllTokens();
+    const result = guardMutation(sameOriginRequest(null), {
+      endpoint: 'god-ingest-no-token-sameorigin-undefined',
+    });
+    expect(result).toBeNull();
+  });
+
+  it('新案例 4：allowSameOrigin 未傳 + 有權杖 + 同源 + 未帶 token → 403（行為不變）', () => {
+    // beforeEach 已設 SKYNET_DASHBOARD_API_TOKEN = GLOBAL_TOKEN。
+    const result = guardMutation(sameOriginRequest(null), {
+      endpoint: 'god-ingest-token-sameorigin-undefined',
     });
     expectForbidden(result);
   });

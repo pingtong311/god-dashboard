@@ -91,7 +91,15 @@ export function guardMutation(request: Request, options: GuardOptions): NextResp
     sameHostUrl(request.headers.get('origin'), host) ||
     sameHostUrl(request.headers.get('referer'), host);
 
-  if (sameOrigin && (!configuredToken || options.allowSameOrigin)) {
+  // allowSameOrigin 三態語義：
+  //   true      → 同源一律放行（瀏覽器端點，如 ai-chat）
+  //   false     → 同源一律不放行，與是否設定權杖無關（機器對機器端點，如 god-ingest）
+  //   undefined → 舊行為：未設定權杖時放行同源（供本機開發／尚未設權杖的環境），
+  //               設定權杖後改為一律需帶權杖
+  const sameOriginAllowed =
+    options.allowSameOrigin === true ||
+    (options.allowSameOrigin === undefined && !configuredToken);
+  if (sameOrigin && sameOriginAllowed) {
     return null;
   }
 
