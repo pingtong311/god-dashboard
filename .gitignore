@@ -42,6 +42,11 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# wrangler 本機開發變數（wrangler dev / opennextjs-cloudflare preview 會讀取）。
+# 內含真實 secret 時絕不可提交；.env* 蓋不到此檔名，故必須單獨列出。
+.dev.vars
+.dev.vars.*
+
 # vercel
 .vercel
 
