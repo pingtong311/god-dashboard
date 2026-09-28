@@ -513,7 +513,7 @@ describe('/trump/ 美國政策題材', () => {
     const statuses = container.querySelectorAll('[role="status"]');
     expect(statuses.length).toBeGreaterThan(0);
     expect(container.textContent).toContain('正在整理…');
-    expect(container.textContent).toContain('RSS 原文來源尚未接入');
+    expect(container.textContent).toContain('不提供標題正負面情緒分類');
     expect(container.textContent).not.toContain('正負面敘事接近');
   });
 
