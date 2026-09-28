@@ -16,16 +16,19 @@
  *   ✅ 處置（上櫃）  TPEx `openapi/v1/tpex_disposal_information`
  *        - 回傳 17 筆上櫃處置，欄位 DispositionPeriod="1150924~1151006"、DispositionReasons。
  *        - 實站 disposition 為「上市＋上櫃」合併（例：2305 全友＝上市、2221 大甲＝上櫃），故兩邊都要接。
+ *   ✅ 處置預警／即將 由上述處置資料**自產**：處置期間起始日 > 資料日者歸此類（見
+ *                    splitDispositionsByStart）。實站快照為 0 筆。
  *   ❌ 注意股        TWSE `announcement/notice` 可用，但**實站自己說暫不列示**，
  *                    故本站照抄 `attention_note` 並誠實留空（不自行列示）。
- *   ❌ 處置候選      需「注意交易資訊」累計判定（連續 N 營業日達標準），非單一端點可直接取得，
- *                    本站暫不自算，誠實留空。
- *   ❌ 融券回補期間  查無免費公開端點；已試 TWSE `announcement/credit`、`announcement/creditSuspension`、
- *                    `announcement/marginSuspension`（皆回空／404）。誠實留空。
- *   ❌ 暫停先賣後買  查無免費公開端點；已試 TWSE `announcement/daytrade`、`announcement/dayTradeSuspension`。
- *                    誠實留空。
- *   ❌ 暫停交易      查無免費公開端點；已試 TWSE `announcement/regSuspension`、`announcement/suspended`。
- *                    誠實留空。
+ *   ❌ 處置候選      需「注意交易資訊」累計判定（連續 N 營業日達漲幅／周轉率標準），
+ *                    非單一端點可直接取得，本站暫不自算，誠實留空。
+ *   ❌ 融券回補期間  查無免費公開端點；已試 TWSE `announcement/credit`、`creditSuspension`、
+ *                    `marginSuspension`、`regSuspension`、`suspension`、`margin`、
+ *                    `exchangeReport/TWT48U`（皆回空／302）。誠實留空。
+ *   ❌ 暫停先賣後買  查無免費公開端點；已試 TWSE `announcement/daytrade`、`dayTradeSuspension`、
+ *                    `afterTrading/TWTB4U`。誠實留空。
+ *   ❌ 暫停交易      查無免費公開端點；已試 TWSE `announcement/regSuspension`、`suspension`、
+ *                    `suspended`。誠實留空。
  *   ❌ 當日沖銷成交量值 查無免費公開端點。誠實留空。
  * ────────────────────────────────────────────────────────────────────────────
  *
@@ -150,12 +153,16 @@ export function rocDateToIso(raw: string): string {
 }
 
 /**
- * 解析「處置起迄時間」為 { period, endDate }。
+ * 解析「處置起迄時間」為 { period, startDate, endDate }。
  * 支援 TWSE "115/09/18～115/09/30" 與 TPEx "1150924~1151006"。
  */
-export function parsePeriodRange(raw: string): { period: string; endDate: string } {
+export function parsePeriodRange(raw: string): {
+  period: string;
+  startDate: string;
+  endDate: string;
+} {
   const s = String(raw ?? '').trim();
-  if (!s) return { period: '', endDate: '' };
+  if (!s) return { period: '', startDate: '', endDate: '' };
   const parts = s
     .split(/[~～]/)
     .map((p) => p.trim())
@@ -163,10 +170,19 @@ export function parsePeriodRange(raw: string): { period: string; endDate: string
   if (parts.length === 2) {
     const start = rocDateToIso(parts[0]);
     const end = rocDateToIso(parts[1]);
-    if (start && end) return { period: `${start}~${end}`, endDate: end };
+    if (start && end) return { period: `${start}~${end}`, startDate: start, endDate: end };
   }
   const single = rocDateToIso(s);
-  return single ? { period: single, endDate: single } : { period: '', endDate: '' };
+  return single
+    ? { period: single, startDate: single, endDate: single }
+    : { period: '', startDate: '', endDate: '' };
+}
+
+/** 從 "YYYY-MM-DD~YYYY-MM-DD" 取起始日；無效回空字串。 */
+export function periodStart(period: string): string {
+  const s = String(period ?? '');
+  const idx = s.indexOf('~');
+  return idx > 0 ? s.slice(0, idx) : '';
 }
 
 /**
@@ -252,6 +268,26 @@ function resolveDataDate(punishRows: string[][]): string {
   return latest || todayIso();
 }
 
+/**
+ * 依「處置期間起始日」把名單拆成兩類（對齊實站 disposition / disposition_upcoming）：
+ *   - 起始日 > 資料日 → 處置預警／即將（disposition_upcoming）
+ *   - 其餘（起始日 ≤ 資料日）→ 處置中（disposition）
+ * 無起始日者一律歸入「處置中」（寧可多列，不漏列）。
+ */
+export function splitDispositionsByStart(
+  items: DispositionItem[],
+  dataDate: string,
+): { current: DispositionItem[]; upcoming: DispositionItem[] } {
+  const current: DispositionItem[] = [];
+  const upcoming: DispositionItem[] = [];
+  for (const item of items) {
+    const start = periodStart(item.period);
+    if (start && dataDate && start > dataDate) upcoming.push(item);
+    else current.push(item);
+  }
+  return { current, upcoming };
+}
+
 async function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -333,30 +369,37 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       .map((row) => mapTpexDisposalRow(row))
       .filter((x): x is DispositionItem => x !== null);
 
-    const disposition = mergeDispositions(listed, otc);
+    const merged = mergeDispositions(listed, otc);
+    const dataDate = resolveDataDate(twseRows ?? []);
+    const { current: disposition, upcoming: dispositionUpcoming } = splitDispositionsByStart(
+      merged,
+      dataDate,
+    );
 
     // 誠實記錄缺哪些子清單與查過的路徑。
     const gaps: string[] = [];
     if (twseRows === null) gaps.push('上市處置（TWSE announcement/punish）暫時無法取得。');
     if (tpexRows === null) gaps.push('上櫃處置（TPEx openapi tpex_disposal_information）暫時無法取得。');
     gaps.push('注意股：依實站口徑暫不列示（見 attention_note）。');
-    gaps.push('處置候選：需注意交易資訊累計判定，本站暫不自算。');
     gaps.push(
-      '融券回補期間（暫停融資融券）：查無免費公開端點（已試 TWSE announcement/credit、creditSuspension、marginSuspension）。',
+      '處置候選：需「注意交易資訊」累計判定（連續 N 營業日達漲幅/周轉率標準），無單一端點可直接取得，本站暫不自算。',
     );
     gaps.push(
-      '暫停先賣後買（暫停當日沖銷）：查無免費公開端點（已試 TWSE announcement/daytrade、dayTradeSuspension）。',
+      '融券回補期間（暫停融資融券）：查無免費公開端點（已試 TWSE announcement/credit、creditSuspension、marginSuspension、regSuspension、suspension、margin、exchangeReport/TWT48U）。',
     );
-    gaps.push('暫停交易：查無免費公開端點（已試 TWSE announcement/regSuspension、suspended）。');
+    gaps.push(
+      '暫停先賣後買（暫停當日沖銷）：查無免費公開端點（已試 TWSE announcement/daytrade、dayTradeSuspension、afterTrading/TWTB4U）。',
+    );
+    gaps.push('暫停交易：查無免費公開端點（已試 TWSE announcement/regSuspension、suspension、suspended）。');
     gaps.push('當日沖銷成交量值：查無免費公開端點。');
 
     const body: RiskResponse = {
       ok: true,
-      date: resolveDataDate(twseRows ?? []),
+      date: dataDate,
       data_scope: '盤後',
       next_update: NEXT_UPDATE,
       disposition,
-      disposition_upcoming: [],
+      disposition_upcoming: dispositionUpcoming,
       disposition_candidates: [],
       margin_suspension: [],
       daytrade_suspension: [],

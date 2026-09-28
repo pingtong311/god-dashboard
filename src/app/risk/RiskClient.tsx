@@ -6,14 +6,18 @@
  * 向本站代理 `GET /api/skynet/risk` 取真實資料（TWSE punish + TPEx disposal 自產）。
  * 上游失敗 → 誠實錯誤狀態（不顯示假資料）。
  *
+ * 卡片結構逐字對齊 risk.html（勿任意更動 className）：
+ *   - 處置中／即將：`rounded-2xl p-5  border-l-2 border-l-up` ＋ `<a href="/stock/?id=…">`
+ *     ＋ `grid grid-cols-2 sm:grid-cols-3` 三格（處置原因／目前分盤／處置期間）。
+ *   - 處置候選：`border-l-2 border-l-amber-400` ＋ 右上 `num font-black text-up` 六日漲幅。
+ *   - 融券回補期間／暫停先賣後買：`<ul class="grid md:grid-cols-2">` 的 `<li>` 列。
+ *   - 當日沖銷成交量值：`<ul>` 的 `flex justify-between … last:border-0` 列。
+ *   - 標題列帶檔數 `（n）`（實站連 0 也顯示）。
+ *
  * 文案保真（重要，勿混淆兩種語意）：
  *   - 「注意股」＝**本站刻意不列示**（實站 attention_available:false，永久狀態）。
- *     一律顯示實站原文 `attention_note`（「本站暫不列示」），**不是**「資料尚未入庫」
- *     ——後者語意會變成「之後會列」，與實站不符。故此區塊在載入中／錯誤時也照顯示。
- *   - 「處置預警／處置中／處置候選」＝**真的會載入資料**，載入中顯示「資料尚未入庫」
- *     骨架是正確的。
- *
- * 版面文字與骨架樣式沿用原逐字複刻頁（risk.html）。
+ *     一律顯示實站原文 `attention_note`，**不是**「資料尚未入庫」。
+ *   - 「處置預警／處置中／處置候選」＝**真的會載入資料**，載入中顯示「資料尚未入庫」骨架正確。
  */
 
 import { useEffect, useState, type ReactElement } from 'react';
@@ -32,17 +36,41 @@ interface DispositionItem {
   end_date: string;
 }
 
+interface CandidateItem {
+  stock_id: string;
+  stock_name: string;
+  label: string;
+  ret_6d_pct: number;
+  close: number;
+}
+
+interface SuspensionItem {
+  stock_id: string;
+  stock_name: string;
+  label: string;
+  reason: string;
+  period: string;
+}
+
+interface DayTradingItem {
+  stock_id: string;
+  stock_name: string;
+  label: string;
+  volume: number;
+  buy_after_sale_blocked: boolean;
+}
+
 interface RiskData {
   date: string;
   data_scope: string;
   next_update: string;
   disposition: DispositionItem[];
   disposition_upcoming: DispositionItem[];
-  disposition_candidates: unknown[];
-  margin_suspension: unknown[];
-  daytrade_suspension: unknown[];
-  suspended: unknown[];
-  day_trading: unknown[];
+  disposition_candidates: CandidateItem[];
+  margin_suspension: SuspensionItem[];
+  daytrade_suspension: SuspensionItem[];
+  suspended: SuspensionItem[];
+  day_trading: DayTradingItem[];
   attention: unknown[];
   attention_available: boolean;
   attention_note: string;
@@ -131,6 +159,107 @@ function HonestEmpty({ note }: { note: string }): ReactElement {
   );
 }
 
+/** 處置卡片（處置中／即將）—— 逐字對齊 risk.html。 */
+function DispositionCards({ items }: { items: DispositionItem[] }): ReactElement {
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {items.map((item) => (
+        <div
+          key={item.stock_id}
+          className="data-panel hud-panel glass rounded-2xl p-5  border-l-2 border-l-up"
+        >
+          <a href={`/stock/?id=${item.stock_id}`} className="block">
+            <p className="text-lg font-black text-accent">{item.label}</p>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-center sm:grid-cols-3">
+              <div className="rounded-xl bg-surface-2 px-2 py-2">
+                <div className="text-xs text-muted">處置原因</div>
+                <div className="text-sm font-bold">{item.reason}</div>
+              </div>
+              <div className="rounded-xl bg-surface-2 px-2 py-2">
+                <div className="text-xs text-muted">目前分盤</div>
+                {/* 交易所處置措施一律含人工管制撮合（分盤撮合），實站亦固定顯示此值。 */}
+                <div className="text-sm font-black text-up">{item.interval || '分盤撮合'}</div>
+              </div>
+              <div className="rounded-xl bg-surface-2 px-2 py-2 sm:col-span-1 col-span-2">
+                <div className="text-xs text-muted">處置期間</div>
+                <div className="num text-sm font-bold">{item.period}</div>
+              </div>
+            </div>
+          </a>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 處置候選卡片 —— 逐字對齊 risk.html。 */
+function CandidateCards({ items }: { items: CandidateItem[] }): ReactElement {
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {items.map((item) => (
+        <div
+          key={item.stock_id}
+          className="data-panel hud-panel glass rounded-2xl p-5  border-l-2 border-l-amber-400"
+        >
+          <a href={`/stock/?id=${item.stock_id}`} className="block">
+            <div className="flex items-center justify-between">
+              <p className="text-lg font-black text-accent">{item.label}</p>
+              <span className="num font-black text-up">6日 +{item.ret_6d_pct}%</span>
+            </div>
+            <p className="mt-1.5 text-sm text-muted">
+              收 <b className="num text-ink">{item.close}</b>｜ 漲速已達注意等級，若再強勢恐進處置（分盤交易）。
+            </p>
+          </a>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 融券回補期間／暫停先賣後買 —— `<ul>` 兩欄列，逐字對齊 risk.html。 */
+function SuspensionList({ items }: { items: SuspensionItem[] }): ReactElement {
+  return (
+    <div className="data-panel hud-panel glass rounded-2xl   p-0">
+      <ul className="grid md:grid-cols-2">
+        {items.map((item) => (
+          <li key={item.stock_id} className="border-b border-line/60 px-4 py-3">
+            <a
+              href={`/stock/?id=${item.stock_id}`}
+              className="font-bold text-accent underline-offset-4 hover:underline"
+            >
+              {item.label}
+            </a>
+            <span className="ml-2 text-[12px] text-muted">
+              {item.reason}（{item.period}）
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** 當日沖銷成交量值 —— `<ul>` 左右列，逐字對齊 risk.html。 */
+function DayTradingList({ items }: { items: DayTradingItem[] }): ReactElement {
+  return (
+    <div className="data-panel hud-panel glass rounded-2xl   p-0">
+      <ul>
+        {items.map((item) => (
+          <li
+            key={item.stock_id}
+            className="flex justify-between gap-3 border-b border-line/60 px-4 py-2 last:border-0"
+          >
+            <a href={`/stock/?id=${item.stock_id}`} className="font-bold text-accent">
+              {item.label}
+            </a>
+            <span className="num text-sm">{item.volume.toLocaleString('zh-Hant')}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function RiskClient(): ReactElement {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
 
@@ -159,19 +288,21 @@ export default function RiskClient(): ReactElement {
   const attentionNote = state.status === 'ready' ? state.data.attention_note : ATTENTION_NOTE;
   const dataDate =
     state.status === 'ready' ? state.data.date : state.status === 'loading' ? '載入中…' : '尚未入庫';
+  const d = state.status === 'ready' ? state.data : null;
 
   return (
     <>
       <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
         資料日 <b className="text-ink">{dataDate}</b>
-        {state.status === 'ready' && <span className="ml-2">下次更新 {state.data.next_update}</span>}
       </p>
 
       {/* 注意股＝本站刻意不列示（永久狀態），永遠顯示實站原文，非載入中骨架。 */}
       <SectionHeading>注意</SectionHeading>
-      <div className="data-panel hud-panel glass rounded-2xl p-5">
+      <div className="data-panel hud-panel glass rounded-2xl p-5  ">
         <p className="text-[13.5px] leading-relaxed text-ink">{attentionNote}</p>
-        <p className="mt-2 text-[12.5px] text-muted">下方提供處置預警／即將分盤與處置中名單。</p>
+        <p className="mt-2 text-[12.5px] text-muted">
+          下方提供處置預警／即將分盤與處置中名單{d ? `，資料日 ${d.date}` : ''}。
+        </p>
       </div>
 
       {state.status === 'loading' && (
@@ -188,7 +319,7 @@ export default function RiskClient(): ReactElement {
       {state.status === 'error' && (
         <>
           <SectionHeading>處置預警／即將</SectionHeading>
-          <EmptyState title="目前沒有資料" desc="暫時無法取得處置名單。" />
+          <EmptyState title="目前沒有資料" desc="此資料日沒有即將分盤列。" />
           <SectionHeading>處置中</SectionHeading>
           <div className="data-panel hud-panel glass rounded-2xl p-5" role="status">
             <p className="text-[13.5px] leading-relaxed text-ink">
@@ -201,43 +332,58 @@ export default function RiskClient(): ReactElement {
         </>
       )}
 
-      {state.status === 'ready' && (
+      {d && (
         <>
-          <SectionHeading>處置預警／即將</SectionHeading>
-          {state.data.disposition_upcoming.length > 0 ? (
-            <DispositionList items={state.data.disposition_upcoming} />
+          <SectionHeading>處置預警／即將（{d.disposition_upcoming.length}）</SectionHeading>
+          {d.disposition_upcoming.length > 0 ? (
+            <DispositionCards items={d.disposition_upcoming} />
           ) : (
             <EmptyState title="目前沒有資料" desc="此資料日沒有即將分盤列。" />
           )}
 
-          <SectionHeading>處置中</SectionHeading>
-          {state.data.disposition.length > 0 ? (
-            <DispositionList items={state.data.disposition} />
+          <SectionHeading>處置中（{d.disposition.length}）</SectionHeading>
+          {d.disposition.length > 0 ? (
+            <DispositionCards items={d.disposition} />
           ) : (
             <HonestEmpty note="此資料日交易所未公布處置名單；名單依交易所盤後公告更新。" />
           )}
 
-          <SectionHeading>處置候選</SectionHeading>
-          {state.data.disposition_candidates.length > 0 ? (
-            <SkeletonGrid label="處置候選名單" cards={6} />
+          <SectionHeading>處置候選（{d.disposition_candidates.length}）</SectionHeading>
+          {d.disposition_candidates.length > 0 ? (
+            <CandidateCards items={d.disposition_candidates} />
           ) : (
             <HonestEmpty note="處置候選需依「注意交易資訊」累計判定，本站暫不自算，故不列示。" />
           )}
+
+          <SectionHeading>融券回補期間（{d.margin_suspension.length}）</SectionHeading>
+          {d.margin_suspension.length > 0 ? (
+            <SuspensionList items={d.margin_suspension} />
+          ) : (
+            <HonestEmpty note="融券回補期間（暫停融資融券）查無免費公開端點，本站誠實留空；請以交易所公告為準。" />
+          )}
+
+          <SectionHeading>暫停先賣後買（{d.daytrade_suspension.length}）</SectionHeading>
+          {d.daytrade_suspension.length > 0 ? (
+            <SuspensionList items={d.daytrade_suspension} />
+          ) : (
+            <HonestEmpty note="暫停先賣後買（暫停當日沖銷）查無免費公開端點，本站誠實留空；請以交易所公告為準。" />
+          )}
+
+          <SectionHeading>暫停交易（{d.suspended.length}）</SectionHeading>
+          {d.suspended.length > 0 ? (
+            <SuspensionList items={d.suspended} />
+          ) : (
+            <EmptyState title="目前沒有資料" desc="資料日沒有暫停交易列。" />
+          )}
+
+          <SectionHeading>當日沖銷成交量值（{d.day_trading.length}）</SectionHeading>
+          {d.day_trading.length > 0 ? (
+            <DayTradingList items={d.day_trading} />
+          ) : (
+            <HonestEmpty note="當日沖銷成交量值查無免費公開端點，本站誠實留空；為盤後公開統計。" />
+          )}
         </>
       )}
-
-      {/* 其餘子清單：上游查無來源，永遠誠實留空（不以 0 代替）。 */}
-      <SectionHeading>融券回補期間</SectionHeading>
-      <HonestEmpty note="融券回補期間（暫停融資融券）查無免費公開端點，本站誠實留空；請以交易所公告為準。" />
-
-      <SectionHeading>暫停先賣後買</SectionHeading>
-      <HonestEmpty note="暫停先賣後買（暫停當日沖銷）查無免費公開端點，本站誠實留空；請以交易所公告為準。" />
-
-      <SectionHeading>暫停交易</SectionHeading>
-      <EmptyState title="目前沒有資料" desc="資料日沒有暫停交易列。" />
-
-      <SectionHeading>當日沖銷成交量值</SectionHeading>
-      <HonestEmpty note="當日沖銷成交量值查無免費公開端點，本站誠實留空；為盤後公開統計。" />
 
       <DataCaveatDetails>
         <p>來源：本站行情管線（盤中）、交易所公開資料（盤後統計）</p>
@@ -247,37 +393,5 @@ export default function RiskClient(): ReactElement {
         <p>以上是已發生的公開統計，不是進出建議。</p>
       </DataCaveatDetails>
     </>
-  );
-}
-
-/** 處置名單：真實資料卡片。 */
-function DispositionList({ items }: { items: DispositionItem[] }): ReactElement {
-  return (
-    <div className="data-panel hud-panel glass rounded-2xl p-0">
-      <div className="grid gap-2 p-4 md:grid-cols-2">
-        {items.map((item) => (
-          <div
-            key={item.stock_id}
-            className="rounded-xl border border-line/70 bg-surface p-3 transition"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-black text-ink">{item.label}</span>
-              {item.end_date && (
-                <span className="num shrink-0 text-[11px] text-muted">迄 {item.end_date}</span>
-              )}
-            </div>
-            {item.reason && (
-              <p className="mt-1 text-[12px] leading-relaxed text-muted">{item.reason}</p>
-            )}
-            {item.period && (
-              <p className="mt-0.5 text-[11px] leading-relaxed text-muted">期間 {item.period}</p>
-            )}
-          </div>
-        ))}
-      </div>
-      <p className="px-4 pb-4 text-[12px] leading-relaxed text-muted">
-        共 <b className="num text-ink">{items.length}</b> 檔；名單依交易所盤後公告更新。
-      </p>
-    </div>
   );
 }

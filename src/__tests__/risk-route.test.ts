@@ -19,6 +19,8 @@ import {
   GET,
   rocDateToIso,
   parsePeriodRange,
+  periodStart,
+  splitDispositionsByStart,
   mapTwsePunishRow,
   mapTpexDisposalRow,
   mergeDispositions,
@@ -120,17 +122,52 @@ describe('rocDateToIso', () => {
 });
 
 describe('parsePeriodRange', () => {
-  it('TWSE "115/09/18～115/09/30" → period 用 ~ 連接，endDate=迄日', () => {
+  it('TWSE "115/09/18～115/09/30" → period 用 ~ 連接，startDate/endDate', () => {
     expect(parsePeriodRange('115/09/18～115/09/30')).toEqual({
       period: '2026-09-18~2026-09-30',
+      startDate: '2026-09-18',
       endDate: '2026-09-30',
     });
   });
   it('TPEx "1150924~1151006" → 2026-09-24~2026-10-06', () => {
     expect(parsePeriodRange('1150924~1151006')).toEqual({
       period: '2026-09-24~2026-10-06',
+      startDate: '2026-09-24',
       endDate: '2026-10-06',
     });
+  });
+});
+
+describe('periodStart', () => {
+  it('取 "YYYY-MM-DD~YYYY-MM-DD" 的起始日', () => {
+    expect(periodStart('2026-09-24~2026-10-06')).toBe('2026-09-24');
+  });
+  it('無 ~ 或空字串 → 空字串', () => {
+    expect(periodStart('')).toBe('');
+    expect(periodStart('2026-09-24')).toBe('');
+  });
+});
+
+describe('splitDispositionsByStart', () => {
+  const mk = (id: string, period: string): DispositionItem => ({
+    stock_id: id,
+    stock_name: id,
+    label: id,
+    reason: '',
+    period,
+    interval: '',
+    end_date: period.includes('~') ? period.split('~')[1] : '',
+  });
+
+  it('起始日 > 資料日 → 即將；否則 → 處置中', () => {
+    const items = [
+      mk('A', '2026-09-18~2026-09-30'), // 已開始
+      mk('B', '2026-09-24~2026-10-06'), // 當日開始
+      mk('C', '2026-09-29~2026-10-06'), // 尚未開始（資料日 09-24）
+    ];
+    const { current, upcoming } = splitDispositionsByStart(items, '2026-09-24');
+    expect(current.map((x) => x.stock_id)).toEqual(['A', 'B']);
+    expect(upcoming.map((x) => x.stock_id)).toEqual(['C']);
   });
 });
 
