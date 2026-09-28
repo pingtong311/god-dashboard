@@ -4,7 +4,9 @@
  * K 線型態掃描 — 資料區（用戶端互動）
  * ----------------------------------------------------------------------------
  * 版面逐字對齊實站 patterns.html：7 個型態頁籤 + 選取型態說明面板 + 符合清單。
- * 資料改抓自家 API（GET /api/skynet/pattern-screen，來源為本站自算全市場日 K 幾何）。
+ * 資料取自自家 API（GET /api/skynet/pattern-screen，本站自算全市場日 K 幾何）；
+ * 由 <PatternsDataProvider> 集中抓取一次，頁首「資料日」列（PatternsDataDate）與
+ * 本區共用同一份狀態。頁首的資料日列不在本檔渲染（實站位於 hero 區）。
  *
  * 誠實原則：
  *   - 資料未累積足夠（KV 尚無日 K）→ 顯示「日 K 資料累積中（目前 N 天）」，
@@ -13,17 +15,12 @@
  *   - 紅漲綠跌：change_pct ≥ 0 → text-up（紅）；< 0 → text-down（綠）。
  */
 
-import { useEffect, useState, type ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import Link from 'next/link';
 import { PATTERN_ORDER, type PatternId } from '@/lib/patternScan';
 import SourceBadge from '@/components/SourceBadge';
 import type { Provenance } from '@/lib/provenance';
-import type { PatternScreenResponse } from '@/app/api/skynet/pattern-screen/route';
-
-type LoadState =
-  | { status: 'loading' }
-  | { status: 'ready'; data: PatternScreenResponse }
-  | { status: 'error' };
+import { usePatternScreen } from './PatternsDataContext';
 
 /** 漲跌幅字串：≥0 加正號（對齊實站 `+0%` / `-1%` 的呈現）。 */
 function formatChange(pct: number): string {
@@ -174,25 +171,8 @@ function CalibrationDisclosure({ provenance }: { provenance: Provenance }): Reac
 
 export default function PatternsClient(): ReactElement {
   const [active, setActive] = useState<PatternId>('w_bottom');
-  const [state, setState] = useState<LoadState>({ status: 'loading' });
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/skynet/pattern-screen', { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((json: PatternScreenResponse) => {
-        if (cancelled) return;
-        if (json && json.ok === true) setState({ status: 'ready', data: json });
-        else setState({ status: 'error' });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setState({ status: 'error' });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // 資料由 <PatternsDataProvider> 集中抓取一次；頁首資料日列與本區共用同一份狀態。
+  const state = usePatternScreen();
 
   if (state.status === 'loading') return <ScanSkeleton />;
 
@@ -235,10 +215,6 @@ export default function PatternsClient(): ReactElement {
 
   return (
     <div className="mt-4">
-      <p className="text-sm text-muted">
-        資料日：<b className="text-ink">{data.data_date ?? '—'}</b>｜{data.data_scope ?? '盤後日 K'}
-        <span className="ml-2">下次更新 {data.next_update ?? '—'}</span>
-      </p>
       <CalibrationDisclosure
         provenance={{ source: 'self-produced', upstream: data.provenance?.upstream ?? '' }}
       />
