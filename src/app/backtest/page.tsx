@@ -6,14 +6,18 @@
  * + 回測表單 + 方向切換 + 分點下拉 + 規則面板 + 4 張統計卡 + 摘要面板
  * + 交易明細 29 筆 + 口徑註記）。
  *
- * 資料策略：capture 本頁為 2330 台積電／元大分點的回測結果快照（29 筆），
- * 逐字取自 capture，為「過去發生過的事」的歷史統計教學，非即時計算結果。
- * 注意：capture 本頁沒有「市場分類」與「相關功能切換」次導覽，故不加。
+ * 資料策略（已改為 site-mirror 快照模組）：
+ *   本頁資料改由 ./mirror/backtest-2330-2026-09-24 的 BACKTEST_MIRROR 提供
+ *   （實站 /api/broker-backtest 快照；基準日 2026-09-24、非即時），不再把數字寫死
+ *   在頁面裡。逐字取自 capture 的版面文字與三條護欄**一字不改**。
+ *   ⚠ 本站無法重算分點跟單模擬（分點為 FinMind Sponsor-only 付費資料），故為
+ *     site-mirror 而非 self-produced；頁面以 SourceBadge 明示來源與「非即時」。
  *
  * 為 Server Component：表單控制項如實呈現 capture 的初始值，不需要 client state。
  */
 import type { Metadata } from 'next';
-import { BACKTEST_TRADES } from './backtest-trades';
+import SourceBadge from '@/components/SourceBadge';
+import { BACKTEST_MIRROR, MIRROR_META } from './mirror/backtest-2330-2026-09-24';
 import '../picks/screener.css';
 
 export const metadata: Metadata = {
@@ -22,24 +26,33 @@ export const metadata: Metadata = {
     '輸入一檔股票，系統找出最常操作它的券商分點，然後把「跟著這個分點做」這件事套回過去半年一筆一筆算一次，看歷史上會是什麼結果。為歷史統計教學，非投資建議。',
 };
 
-/** 回測對象下拉選項（分點與近半年淨買張數逐字取自 capture）。 */
+/** 千分位格式（如 86009 → '86,009'）；純字串處理，輸出穩定可測。 */
+function formatThousands(n: number): string {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+/** 帶正負號的百分比（固定兩位小數，如 0.14 → '+0.14%'、-7.16 → '-7.16%'）。 */
+function formatSignedPct(v: number): string {
+  return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+}
+
+/** 回測對象下拉選項：首項固定為「主導分點」，其餘由快照 broker_options 產生。 */
 const BROKER_OPTIONS: readonly { value: string; label: string }[] = [
   { value: '', label: '主導分點（淨買最大）' },
-  { value: '9800', label: '元大｜近半年淨買 86,009 張' },
-  { value: '9A00', label: '永豐金｜近半年淨買 35,671 張' },
-  { value: '9100', label: '群益｜近半年淨買 30,436 張' },
-  { value: '9200', label: '凱基｜近半年淨買 21,884 張' },
-  { value: '5850', label: '統一｜近半年淨買 19,803 張' },
-  { value: '6160', label: '中國信託｜近半年淨買 12,175 張' },
-  { value: '8888', label: '國泰敦南｜近半年淨買 9,769 張' },
-  { value: '8880', label: '國泰綜合｜近半年淨買 7,864 張' },
-  { value: '8840', label: '玉山｜近半年淨買 4,372 張' },
-  { value: '9600', label: '富邦｜近半年淨買 4,206 張' },
-  { value: '1260', label: '宏遠｜近半年淨買 3,579 張' },
-  { value: '5380', label: '第一金證｜近半年淨買 3,218 張' },
+  ...BACKTEST_MIRROR.broker_options.map((b) => ({
+    value: b.trader_id,
+    label: `${b.trader_name}｜近半年淨買 ${formatThousands(b.net_lots)} 張`,
+  })),
 ];
 
 export default function BacktestPage() {
+  const m = BACKTEST_MIRROR;
+  const winPct = `${Math.round(m.win_rate * 100)}%`;
+  const avgPct = formatSignedPct(m.avg_ret_pct);
+  const totalPct = formatSignedPct(m.total_ret_pct);
+  const bestPct = formatSignedPct(m.best.ret_pct);
+  const worstPct = formatSignedPct(m.worst.ret_pct);
+
   return (
     <div className="page-enter">
       <section className="hero-hud px-5 py-6">
@@ -88,38 +101,39 @@ export default function BacktestPage() {
         </select>
       </div>
       <div className="data-panel hud-panel glass rounded-2xl p-5  mt-4 border-l-2 border-l-accent">
-        <p className="text-lg font-black">2330 台積電｜主力：元大</p>
-        <p className="mt-0.5 text-sm font-bold text-accent">跟主力做多（follow）</p>
-        <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted">每次這個分點『大買』後，隔天開盤跟著做多、最多抱 3 天——賭它波段布局帶動續漲。</p>
+        <p className="text-lg font-black">{m.label}｜主力：{m.broker}</p>
+        <p className="mt-0.5 text-sm font-bold text-accent">{m.play_zh}</p>
+        <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted">{m.play_desc}</p>
       </div>
+      <SourceBadge provenance={MIRROR_META} note="本站無法重算" className="mt-4" />
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="data-stat rounded-2xl border border-line/80 bg-surface/78 px-4 py-4 ">
           <div className="flex items-start justify-between gap-2">
             <div className="text-[12.5px] font-bold leading-snug text-muted">歷史樣本符合率</div>
           </div>
-          <div className="num mt-1.5 text-2xl font-black leading-none md:text-3xl text-down">45%</div>
+          <div className="num mt-1.5 text-2xl font-black leading-none md:text-3xl text-down">{winPct}</div>
         </div>
         <div className="data-stat rounded-2xl border border-line/80 bg-surface/78 px-4 py-4 ">
           <div className="flex items-start justify-between gap-2">
             <div className="text-[12.5px] font-bold leading-snug text-muted">平均每筆</div>
           </div>
-          <div className="num mt-1.5 text-2xl font-black leading-none md:text-3xl text-up">+0.14%</div>
+          <div className="num mt-1.5 text-2xl font-black leading-none md:text-3xl text-up">{avgPct}</div>
         </div>
         <div className="data-stat rounded-2xl border border-line/80 bg-surface/78 px-4 py-4 ">
           <div className="flex items-start justify-between gap-2">
             <div className="text-[12.5px] font-bold leading-snug text-muted">累積報酬</div>
           </div>
-          <div className="num mt-1.5 text-2xl font-black leading-none md:text-3xl text-up">+2.28%</div>
+          <div className="num mt-1.5 text-2xl font-black leading-none md:text-3xl text-up">{totalPct}</div>
         </div>
         <div className="data-stat rounded-2xl border border-line/80 bg-surface/78 px-4 py-4 ">
           <div className="flex items-start justify-between gap-2">
             <div className="text-[12.5px] font-bold leading-snug text-muted">交易筆數</div>
           </div>
-          <div className="num mt-1.5 text-2xl font-black leading-none md:text-3xl text-ink">{BACKTEST_TRADES.length}</div>
+          <div className="num mt-1.5 text-2xl font-black leading-none md:text-3xl text-ink">{m.n_trades}</div>
         </div>
       </div>
       <div className="data-panel hud-panel glass rounded-2xl p-5  mt-3">
-        <p className="text-[13.5px] leading-relaxed">過去半年，將 <b>元大</b> 在 <b>2330 台積電</b> 的歷史規則 套用於「多側」研究， 一共有 <b className="num">29</b> 筆樣本， 歷史符合 <b className="num text-up">45%</b>， 全部加起來 <b className="num text-up">+2.28%</b>。最好的一筆 <span className="num text-up">+6.44%</span>（2026-07-28）、最差 <span className="num text-down">-7.16%</span>（2026-06-23）。</p>
+        <p className="text-[13.5px] leading-relaxed">過去半年，將 <b>{m.broker}</b> 在 <b>{m.label}</b> 的歷史規則 套用於「多側」研究， 一共有 <b className="num">{m.n_trades}</b> 筆樣本， 歷史符合 <b className="num text-up">{winPct}</b>， 全部加起來 <b className="num text-up">{totalPct}</b>。最好的一筆 <span className="num text-up">{bestPct}</span>（{m.best.entry_date}）、最差 <span className="num text-down">{worstPct}</span>（{m.worst.entry_date}）。</p>
       </div>
       <div className="mb-3 mt-9 scroll-mt-28">
         <div className="flex items-start justify-between gap-4">
@@ -131,6 +145,7 @@ export default function BacktestPage() {
         </div>
       </div>
       <div className="data-panel hud-panel glass rounded-2xl   p-0">
+        <SourceBadge provenance={MIRROR_META} note="本站無法重算" className="m-3" />
         <div className="table-scroll overflow-x-auto">
           <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-line/60 px-4 py-2.5 text-sm font-bold text-muted">
             <span>進場日</span>
@@ -139,21 +154,21 @@ export default function BacktestPage() {
             <span className="text-right">損益</span>
           </div>
           <ul>
-            {BACKTEST_TRADES.map((trade) => (
+            {m.trades.map((trade) => (
               <li
-                key={`${trade.date}-${trade.entry}`}
+                key={`${trade.entry_date}-${trade.entry}`}
                 className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-line/60 px-4 py-2.5 text-[13.5px] last:border-0"
               >
-                <span className="num">{trade.date}</span>
+                <span className="num">{trade.entry_date.slice(5)}</span>
                 <span className="num text-right">{trade.entry}</span>
                 <span className="num text-right">{trade.exit}</span>
-                <span className={`num text-right font-black ${trade.pnlClass}`}>{trade.pnl}</span>
+                <span className={`num text-right font-black ${trade.ret_pct >= 0 ? 'text-up' : 'text-down'}`}>{formatSignedPct(trade.ret_pct)}</span>
               </li>
             ))}
           </ul>
         </div>
       </div>
-      <p className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-relaxed text-muted">已扣手續費 1 折、證交稅與滑價約 0.39%（留倉來回），並假設都能以開盤／收盤價成交，實務會有落差。為歷史統計教學，非投資建議。</p>
+      <p className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-relaxed text-muted">{m.note}</p>
     </div>
   );
 }

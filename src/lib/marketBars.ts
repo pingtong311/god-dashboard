@@ -40,6 +40,7 @@
 
 import { getTradingDayStatus } from '@/lib/tradingSessionUtils';
 import type { SkynetKv } from '@/lib/godBridge';
+import type { Provenance } from '@/lib/provenance';
 
 /** 上游 TWSE「每日收盤行情(全部)」來源（MI_INDEX，type=ALL）。 */
 export const TWSE_MI_INDEX_URL = 'https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX';
@@ -103,12 +104,14 @@ export type Bar = {
  */
 export type CompactBar = [string, number, number, number, number, number];
 
-/** 來源追蹤欄位（統一格式）。 */
-export type Provenance = {
-  source: 'self-produced';
-  upstream: string;
-  upstreams?: string[];
-};
+/**
+ * 來源追蹤欄位（統一格式）。
+ *
+ * 已抽出為跨頁共用的 @/lib/provenance（含 self-produced / site-mirror /
+ * site-unreliable / absent 四種分類與 Coverage）。此處僅 re-export，
+ * 以維持既有 import（本檔與 market-bars route）不變；本層的抓取／KV 邏輯不受影響。
+ */
+export type { Provenance };
 
 /** 存進 KV 的單日全市場資料（緊湊格式）。 */
 export type StoredMarketDay = {
