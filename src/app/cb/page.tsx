@@ -11,6 +11,7 @@
 
 import type { Metadata } from 'next';
 import CbClient from './CbClient';
+import CbData from './CbData';
 import './page.css';
 
 export const metadata: Metadata = {
@@ -29,7 +30,7 @@ export default function CbPage(): React.ReactElement {
           高或低時，轉換溢價率會呈現正值或負值。這裡只列公式差異與原始欄位。
         </p>
         <p className="mt-2 text-sm text-muted">
-          盤後資料日：<b className="text-ink">尚未入庫</b>｜下一交易日盤後更新
+          賣回權時程取自櫃買中心公開 OpenAPI；轉換溢價率需 CB 盤後成交價，目前無免費資料源
         </p>
       </section>
       <section className="mt-4 rounded-xl border border-line bg-surface p-4">
@@ -100,68 +101,7 @@ export default function CbPage(): React.ReactElement {
           </div>
         </dl>
       </details>
-      <div className="mb-3 mt-9 scroll-mt-28">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span aria-hidden="true" className="section-mark" />
-            <h2 className="text-lg font-bold tracking-tight md:text-xl">
-              轉換溢價率排序（低→高）
-            </h2>
-          </div>
-        </div>
-      </div>
-      <div className="data-panel hud-panel glass rounded-2xl   p-0">
-        <div className="table-scroll overflow-x-auto">
-          <div className="sticky top-0 z-20 grid grid-cols-[minmax(0,1fr)_88px_88px_72px] gap-2 rounded-t-2xl border-b border-line/60 bg-surface px-4 py-2.5 text-sm font-bold text-muted backdrop-blur">
-            <span>可轉債</span>
-            <span className="text-right">CB市價</span>
-            <span className="text-right">轉換價值</span>
-            <span className="text-right">溢價率</span>
-          </div>
-          <div className="px-4 py-4" role="status" aria-live="polite">
-            <span className="sr-only">正在整理可轉債轉換溢價率排序…</span>
-            <div aria-hidden="true" className="grid gap-2">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="animate-pulse h-12 rounded-xl border border-line/70 bg-surface"
-                />
-              ))}
-            </div>
-            <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
-              可轉債盤後行情與轉換價值<b className="text-ink">資料尚未入庫</b>
-              ；本站目前無 CB 行情／公告資料源，待入庫後以此排序即時呈現，不預先寫死截圖數字。
-            </p>
-          </div>
-        </div>
-      </div>
-      <p className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-relaxed text-muted">
-        轉換溢價率＝可轉債市價相對轉換價值的差異。負值只表示公式差異，尚未計入流動性、借券、閉鎖期、稅費與成交限制，不代表存在可執行交易。賣回時程為公開時程表。
-      </p>
-      <div className="mb-3 mt-9 scroll-mt-28">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span aria-hidden="true" className="section-mark" />
-            <h2 className="text-lg font-bold tracking-tight md:text-xl">賣回權時程</h2>
-          </div>
-        </div>
-      </div>
-      <div className="data-panel hud-panel glass rounded-2xl   p-0">
-        <div className="p-4" role="status" aria-live="polite">
-          <span className="sr-only">正在整理可轉債賣回權時程…</span>
-          <div aria-hidden="true" className="grid gap-2">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                className="animate-pulse h-11 rounded-xl border border-line/70 bg-surface"
-              />
-            ))}
-          </div>
-          <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
-            賣回權時程<b className="text-ink">資料尚未入庫</b>；可至公開資訊觀測站或櫃買中心查詢各 CB 公開發行／賣回公告。
-          </p>
-        </div>
-      </div>
+      <CbData />
     </div>
   );
 }

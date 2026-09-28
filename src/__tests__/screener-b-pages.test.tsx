@@ -29,7 +29,6 @@ import CbPage from '@/app/cb/page';
 import LeveragePage from '@/app/leverage/page';
 import RiskPage from '@/app/risk/page';
 import RankingPage from '@/app/ranking/page';
-import { ACTIVE_ETFS } from '@/app/etf-active/etfList';
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -115,26 +114,57 @@ describe('screener-b 八頁', () => {
   });
 
   describe('/etf-active 主動式ETF', () => {
-    it('市場分類當前頁是 ETF；h1 與 40 檔掛牌清單對齊 capture', async () => {
+    it('市場分類當前頁是 ETF；h1 與 metadata 對齊 capture', async () => {
       const c = renderAt(<EtfActivePage />, '/etf-active/');
       const active = c.querySelector('nav[aria-label="市場分類"] a[aria-current="page"]');
       expect(active?.textContent).toBe('ETF');
       expect(c.querySelector('h1')?.textContent).toBe('主動式ETF');
-      expect(ACTIVE_ETFS).toHaveLength(40);
-      expect(c.querySelectorAll('button[aria-expanded]')).toHaveLength(40);
       const mod = await import('@/app/etf-active/page');
       expect(mod.metadata.title).toBe('主動式ETF｜股市大佬 TradeBoss');
     });
 
-    it('展開任一檔呈現誠實骨架，不造假持股數字', () => {
+    it('清單改抓真實 API（不再寫死 40 檔）；上游失敗時誠實呈現', async () => {
       const c = renderAt(<EtfActivePage />, '/etf-active/');
-      const btn = c.querySelector('button[aria-expanded]') as HTMLButtonElement;
-      act(() => {
-        btn.click();
+      // 全域 fetch mock 一律回 503 → 走錯誤分支
+      await act(async () => {});
+      // 誠實訊息，不造假清單
+      expect(c.textContent).toContain('暫時無法取得');
+      // 不再寫死 40 檔
+      expect(c.textContent).not.toContain('ETF 40 檔');
+      expect(c.querySelectorAll('button[aria-expanded]')).toHaveLength(0);
+    });
+
+    it('展開任一檔呈現誠實骨架，不造假持股數字', async () => {
+      // 先讓清單載入成功（改寫 fetch mock 回真實形狀）
+      const okFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          available: true,
+          date: '2026-09-24',
+          data_scope: '盤後',
+          next_update: '下一交易日 23:08',
+          note: '',
+          items: [
+            { etf_id: '00400A', name: '主動國泰動能高息', closing_price: 15.66, monthly_avg_price: 15.05, holdings: [], changes: [] },
+          ],
+        }),
       });
-      const panel = c.querySelector('[role="status"]');
-      expect(panel).not.toBeNull();
-      expect(c.textContent).toContain('資料尚未入庫');
+      (globalThis as unknown as { fetch: typeof fetch }).fetch = okFetch as unknown as typeof fetch;
+      try {
+        const c = renderAt(<EtfActivePage />, '/etf-active/');
+        await act(async () => {});
+        const btn = c.querySelector('button[aria-expanded]') as HTMLButtonElement;
+        expect(btn).not.toBeNull();
+        act(() => {
+          btn.click();
+        });
+        const panel = c.querySelector('[role="status"]');
+        expect(panel).not.toBeNull();
+        expect(c.textContent).toContain('資料尚未入庫');
+      } finally {
+        (globalThis as unknown as { fetch: typeof fetch }).fetch = fetchMock;
+      }
     });
   });
 
