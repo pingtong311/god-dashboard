@@ -376,22 +376,27 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       dataDate,
     );
 
-    // 誠實記錄缺哪些子清單與查過的路徑。
+    // 誠實記錄缺哪些子清單與查過的路徑（「我們查過什麼」本身即資產）。
     const gaps: string[] = [];
     if (twseRows === null) gaps.push('上市處置（TWSE announcement/punish）暫時無法取得。');
     if (tpexRows === null) gaps.push('上櫃處置（TPEx openapi tpex_disposal_information）暫時無法取得。');
-    gaps.push('注意股：依實站口徑暫不列示（見 attention_note）。');
     gaps.push(
-      '處置候選：需「注意交易資訊」累計判定（連續 N 營業日達漲幅/周轉率標準），無單一端點可直接取得，本站暫不自算。',
+      '注意股：依實站口徑暫不列示（見 attention_note）。TWSE announcement/notice 端點本身可用，是實站刻意不列示。',
     );
     gaps.push(
-      '融券回補期間（暫停融資融券）：查無免費公開端點（已試 TWSE announcement/credit、creditSuspension、marginSuspension、regSuspension、suspension、margin、exchangeReport/TWT48U）。',
+      '處置候選：屬「還沒做」而非「拿不到」——可由 TWSE announcement/notice 逐日累積「注意交易資訊」，再比對個股歷史漲幅／周轉率判定；本站尚未建此累計管線。',
     );
     gaps.push(
-      '暫停先賣後買（暫停當日沖銷）：查無免費公開端點（已試 TWSE announcement/daytrade、dayTradeSuspension、afterTrading/TWTB4U）。',
+      '融券回補期間（暫停融資融券）：查無免費公開端點。已試 TWSE announcement/{credit, creditSuspension, marginSuspension, regSuspension, suspension, margin}、exchangeReport/TWT48U（皆回空）。',
     );
-    gaps.push('暫停交易：查無免費公開端點（已試 TWSE announcement/regSuspension、suspension、suspended）。');
+    gaps.push(
+      '暫停先賣後買（暫停當日沖銷）：查無免費公開端點。已試 TWSE announcement/{daytrade, dayTradeSuspension}、afterTrading/TWTB4U（皆回空）。',
+    );
+    gaps.push('暫停交易：查無免費公開端點。已試 TWSE announcement/{regSuspension, suspension, suspended}（皆回空）。');
     gaps.push('當日沖銷成交量值：查無免費公開端點。');
+    gaps.push(
+      'TPEx 無對應公告端點：tpex_margin_balance、tpex_margin_transactions 皆回 HTTP 302。',
+    );
 
     const body: RiskResponse = {
       ok: true,
