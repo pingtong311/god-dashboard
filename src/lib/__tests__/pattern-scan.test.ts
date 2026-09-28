@@ -10,6 +10,7 @@
 import {
   MIN_BARS_FOR_SCAN,
   PATTERN_ORDER,
+  PATTERN_UNIVERSE_STOCKS_ONLY,
   buildPatternItem,
   createSeriesBuilder,
   detectBottomTrap,
@@ -543,24 +544,30 @@ describe('buildPatternItem', () => {
 // 掃描宇宙（排除權證等衍生性商品）
 // ---------------------------------------------------------------------------
 
-describe('isScannableCode（掃描宇宙）', () => {
-  it('保留 4 碼普通股與 TDR', () => {
-    for (const code of ['2330', '8069', '6116', '9105', '0050']) {
+describe('isScannableCode（掃描宇宙：僅 4 碼上市櫃個股）', () => {
+  it('宇宙定義為「僅 4 碼上市櫃個股」', () => {
+    expect(PATTERN_UNIVERSE_STOCKS_ONLY).toBe(true);
+  });
+
+  it('納入 4 碼上市櫃個股', () => {
+    for (const code of ['2330', '8069', '6116', '2455', '6811']) {
       expect(isScannableCode(code)).toBe(true);
     }
   });
 
-  it('保留 ETF（含英文字尾）', () => {
-    for (const code of ['006208', '00878', '00929', '00632R', '00981A']) {
-      expect(isScannableCode(code)).toBe(true);
+  it('排除 ETF（含 4 碼 00xx 與 5~6 碼、英文字尾）——本站自訂宇宙不含 ETF', () => {
+    for (const code of ['0050', '0053', '0056', '006208', '00878', '00929', '00632R', '00981A']) {
+      expect(isScannableCode(code)).toBe(false);
     }
   });
 
-  it('保留 6 碼 TDR（91xxxx）', () => {
-    expect(isScannableCode('911608')).toBe(true);
+  it('排除 TDR（4 碼 91xx 與 6 碼 91xxxx）', () => {
+    for (const code of ['9105', '9103', '911608', '911622']) {
+      expect(isScannableCode(code)).toBe(false);
+    }
   });
 
-  it('排除權證與 ETN（0[1-9]xxxx / 02xxxx）', () => {
+  it('排除權證、ETN 與受益證券（0[1-9]xxxx / 02xxxx / 0100xT）', () => {
     for (const code of ['030573', '071861', '020000', '01009T', '08345U']) {
       expect(isScannableCode(code)).toBe(false);
     }

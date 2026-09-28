@@ -222,7 +222,8 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
     const batch = window.slice(i, i + LOAD_BATCH_DAYS);
     const { days, missing: batchMissing } = await loadRange(kv, batch);
     for (const day of days) {
-      // 只掃描「股票 / ETF / TDR」，排除權證、ETN 等衍生性商品（見 isScannableCode 說明）。
+      // 宇宙：僅 4 碼上市櫃個股（見 PATTERN_UNIVERSE_STOCKS_ONLY 說明），
+      // 排除 ETF / TDR / 權證 / ETN 等（見 isScannableCode 說明）。
       for (const bar of expandBars(day.twse)) {
         if (isScannableCode(bar.code)) builder.pushBar(bar);
       }

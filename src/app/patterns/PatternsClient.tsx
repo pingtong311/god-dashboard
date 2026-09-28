@@ -16,6 +16,8 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import Link from 'next/link';
 import { PATTERN_ORDER, type PatternId } from '@/lib/patternScan';
+import SourceBadge from '@/components/SourceBadge';
+import type { Provenance } from '@/lib/provenance';
 import type { PatternScreenResponse } from '@/app/api/skynet/pattern-screen/route';
 
 type LoadState =
@@ -130,6 +132,46 @@ function CriteriaDetails({
   );
 }
 
+/**
+ * 口徑揭露（必要項）：標明來源為「本站自產」，並白話說明本頁清單與參考站的差異。
+ *
+ * 依業主要求，這裡**只**陳述三件事，且不得宣稱「我們比較準」：
+ *   1. 本頁清單是本站自算，與參考站必然不同（我們不抄參考站數字）。
+ *   2. 參考站的篩選規則無法反推（其 API 對程式化請求回 403），我們不做無根據的模仿。
+ *   3. 本站口徑參數（k=3、容差 2.5%、時間窗 15 根）與實測召回 31/38（81.6%）。
+ */
+function CalibrationDisclosure({ provenance }: { provenance: Provenance }): ReactElement {
+  return (
+    <div className="mt-4">
+      <SourceBadge provenance={provenance} />
+      <details className="group mt-2 rounded-2xl border border-line/80 bg-surface/70 p-4">
+        <summary className="flex cursor-pointer items-center justify-between text-[13px] font-black text-accent">
+          <span>本頁清單與參考站的差異（點開看）</span>
+          <span className="text-muted transition group-open:rotate-180">▾</span>
+        </summary>
+        <ul className="mt-3 list-disc space-y-1.5 pl-5 text-[12.5px] leading-relaxed text-muted">
+          <li>
+            本頁清單是<b className="text-ink">本站自算</b>的結果，與任何參考站的清單
+            <b className="text-ink">必然不同</b>——我們不抄參考站的數字。
+          </li>
+          <li>
+            參考站的篩選規則<b className="text-ink">無法反推</b>（其 API 對程式化請求回 403），
+            我們不做無根據的模仿。
+          </li>
+          <li>
+            本站口徑：轉折點左右各 3 根（k=3）、兩腳容差 2.5%、型態時間窗 15 根；實測對參考站
+            樣本的召回為 <b className="text-ink">31/38（81.6%）</b>。
+          </li>
+          <li>
+            「召回 81.6%」只代表我們找得到參考站 81.6% 的樣本；
+            <b className="text-ink">不代表我們多出來的檔數是對的，也不代表我們比較準</b>。
+          </li>
+        </ul>
+      </details>
+    </div>
+  );
+}
+
 export default function PatternsClient(): ReactElement {
   const [active, setActive] = useState<PatternId>('w_bottom');
   const [state, setState] = useState<LoadState>({ status: 'loading' });
@@ -180,6 +222,9 @@ export default function PatternsClient(): ReactElement {
           （目前 {data.availableDays ?? 0} 天，至少需 {data.minDaysRequired ?? 40} 天）。
           全市場日 K 尚在回填，待累積足夠即會自動開始辨識型態。
         </p>
+        <CalibrationDisclosure
+          provenance={{ source: 'self-produced', upstream: data.provenance?.upstream ?? '' }}
+        />
         <CriteriaDetails criteria={data.criteria} gaps={data.gaps} />
       </div>
     );
@@ -194,6 +239,9 @@ export default function PatternsClient(): ReactElement {
         資料日：<b className="text-ink">{data.data_date ?? '—'}</b>｜{data.data_scope ?? '盤後日 K'}
         <span className="ml-2">下次更新 {data.next_update ?? '—'}</span>
       </p>
+      <CalibrationDisclosure
+        provenance={{ source: 'self-produced', upstream: data.provenance?.upstream ?? '' }}
+      />
       <div className="mt-4 flex flex-wrap gap-2">
         {tabs.map((tab) => (
           <button
