@@ -5,12 +5,22 @@
  * ----------------------------------------------------------------------------
  * 向本站代理 `GET /api/skynet/risk` 取真實資料（TWSE punish + TPEx disposal 自產）。
  * 上游失敗 → 誠實錯誤狀態（不顯示假資料）。
- * 「處置中」為真實名單；其餘子清單若上游無來源，依 API 回傳的 gaps 誠實留空。
+ *
+ * 文案保真（重要，勿混淆兩種語意）：
+ *   - 「注意股」＝**本站刻意不列示**（實站 attention_available:false，永久狀態）。
+ *     一律顯示實站原文 `attention_note`（「本站暫不列示」），**不是**「資料尚未入庫」
+ *     ——後者語意會變成「之後會列」，與實站不符。故此區塊在載入中／錯誤時也照顯示。
+ *   - 「處置預警／處置中／處置候選」＝**真的會載入資料**，載入中顯示「資料尚未入庫」
+ *     骨架是正確的。
+ *
  * 版面文字與骨架樣式沿用原逐字複刻頁（risk.html）。
  */
 
 import { useEffect, useState, type ReactElement } from 'react';
 import DataCaveatDetails from '@/components/DataCaveatDetails';
+
+/** 實站注意股永久性文案（來源：capture body.attention_note，逐字）。 */
+const ATTENTION_NOTE = '注意股名單本站暫不列示，請以交易所最新公告為準。';
 
 interface DispositionItem {
   stock_id: string;
@@ -112,7 +122,7 @@ function SkeletonGrid({ label, cards }: { label: string; cards: number }): React
   );
 }
 
-/** 誠實空清單（有上游但該日無資料）。 */
+/** 誠實空清單（有上游但該日無資料／無來源）。 */
 function HonestEmpty({ note }: { note: string }): ReactElement {
   return (
     <div className="data-panel hud-panel glass rounded-2xl p-5">
@@ -145,88 +155,78 @@ export default function RiskClient(): ReactElement {
     };
   }, []);
 
-  if (state.status === 'loading') {
-    return (
-      <>
-        <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
-          資料日 <b className="text-ink">載入中…</b>
-        </p>
-        <SectionHeading>注意</SectionHeading>
-        <SkeletonGrid label="注意股名單" cards={2} />
-        <SectionHeading>處置預警／即將</SectionHeading>
-        <SkeletonGrid label="處置預警名單" cards={2} />
-        <SectionHeading>處置中</SectionHeading>
-        <SkeletonGrid label="處置中名單" cards={6} />
-        <SectionHeading>處置候選</SectionHeading>
-        <SkeletonGrid label="處置候選名單" cards={6} />
-      </>
-    );
-  }
-
-  if (state.status === 'error') {
-    return (
-      <>
-        <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
-          資料日 <b className="text-ink">尚未入庫</b>
-        </p>
-        <SectionHeading>注意</SectionHeading>
-        <div className="data-panel hud-panel glass rounded-2xl p-5">
-          <p className="text-[13.5px] leading-relaxed text-ink">
-            注意股名單本站暫不列示，請以交易所最新公告為準。
-          </p>
-        </div>
-        <SectionHeading>處置中</SectionHeading>
-        <div className="data-panel hud-panel glass rounded-2xl p-5" role="status">
-          <p className="text-[13.5px] leading-relaxed text-ink">
-            處置名單暫時無法取得（交易所上游無回應）。
-          </p>
-          <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
-            本站不顯示推測數字，請稍後重試或以交易所公告為準。
-          </p>
-        </div>
-      </>
-    );
-  }
-
-  const d = state.data;
-  const hasDisposition = d.disposition.length > 0;
+  // 注意股文案：優先取 API 的實站原文，載入中／錯誤時仍顯示同一句永久性文案。
+  const attentionNote = state.status === 'ready' ? state.data.attention_note : ATTENTION_NOTE;
+  const dataDate =
+    state.status === 'ready' ? state.data.date : state.status === 'loading' ? '載入中…' : '尚未入庫';
 
   return (
     <>
       <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
-        資料日 <b className="text-ink">{d.date || '尚未入庫'}</b>
-        <span className="ml-2">下次更新 {d.next_update}</span>
+        資料日 <b className="text-ink">{dataDate}</b>
+        {state.status === 'ready' && <span className="ml-2">下次更新 {state.data.next_update}</span>}
       </p>
 
+      {/* 注意股＝本站刻意不列示（永久狀態），永遠顯示實站原文，非載入中骨架。 */}
       <SectionHeading>注意</SectionHeading>
       <div className="data-panel hud-panel glass rounded-2xl p-5">
-        <p className="text-[13.5px] leading-relaxed text-ink">{d.attention_note}</p>
-        <p className="mt-2 text-[12.5px] text-muted">
-          下方提供處置預警／即將分盤與處置中名單。
-        </p>
+        <p className="text-[13.5px] leading-relaxed text-ink">{attentionNote}</p>
+        <p className="mt-2 text-[12.5px] text-muted">下方提供處置預警／即將分盤與處置中名單。</p>
       </div>
 
-      <SectionHeading>處置預警／即將</SectionHeading>
-      {d.disposition_upcoming.length > 0 ? (
-        <DispositionList items={d.disposition_upcoming} />
-      ) : (
-        <EmptyState title="目前沒有資料" desc="此資料日沒有即將分盤列。" />
+      {state.status === 'loading' && (
+        <>
+          <SectionHeading>處置預警／即將</SectionHeading>
+          <SkeletonGrid label="處置預警名單" cards={2} />
+          <SectionHeading>處置中</SectionHeading>
+          <SkeletonGrid label="處置中名單" cards={6} />
+          <SectionHeading>處置候選</SectionHeading>
+          <SkeletonGrid label="處置候選名單" cards={6} />
+        </>
       )}
 
-      <SectionHeading>處置中</SectionHeading>
-      {hasDisposition ? (
-        <DispositionList items={d.disposition} />
-      ) : (
-        <HonestEmpty note="此資料日交易所未公布處置名單；名單依交易所盤後公告更新。" />
+      {state.status === 'error' && (
+        <>
+          <SectionHeading>處置預警／即將</SectionHeading>
+          <EmptyState title="目前沒有資料" desc="暫時無法取得處置名單。" />
+          <SectionHeading>處置中</SectionHeading>
+          <div className="data-panel hud-panel glass rounded-2xl p-5" role="status">
+            <p className="text-[13.5px] leading-relaxed text-ink">
+              處置名單暫時無法取得（交易所上游無回應）。
+            </p>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
+              本站不顯示推測數字，請稍後重試或以交易所公告為準。
+            </p>
+          </div>
+        </>
       )}
 
-      <SectionHeading>處置候選</SectionHeading>
-      {d.disposition_candidates.length > 0 ? (
-        <SkeletonGrid label="處置候選名單" cards={6} />
-      ) : (
-        <HonestEmpty note="處置候選需依「注意交易資訊」累計判定，本站暫不自算，故不列示。" />
+      {state.status === 'ready' && (
+        <>
+          <SectionHeading>處置預警／即將</SectionHeading>
+          {state.data.disposition_upcoming.length > 0 ? (
+            <DispositionList items={state.data.disposition_upcoming} />
+          ) : (
+            <EmptyState title="目前沒有資料" desc="此資料日沒有即將分盤列。" />
+          )}
+
+          <SectionHeading>處置中</SectionHeading>
+          {state.data.disposition.length > 0 ? (
+            <DispositionList items={state.data.disposition} />
+          ) : (
+            <HonestEmpty note="此資料日交易所未公布處置名單；名單依交易所盤後公告更新。" />
+          )}
+
+          <SectionHeading>處置候選</SectionHeading>
+          {state.data.disposition_candidates.length > 0 ? (
+            <SkeletonGrid label="處置候選名單" cards={6} />
+          ) : (
+            <HonestEmpty note="處置候選需依「注意交易資訊」累計判定，本站暫不自算，故不列示。" />
+          )}
+        </>
       )}
 
+      {/* 其餘子清單：上游查無來源，永遠誠實留空（不以 0 代替）。 */}
       <SectionHeading>融券回補期間</SectionHeading>
       <HonestEmpty note="融券回補期間（暫停融資融券）查無免費公開端點，本站誠實留空；請以交易所公告為準。" />
 
