@@ -17,6 +17,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import FeatureSubNav from '@/components/FeatureSubNav';
+import SourceBadge from '@/components/SourceBadge';
+import { WHALE_MIRROR_META } from './mirror/whale-weekly-2026-09-18';
 import SwingClient from './SwingClient';
 import '../picks/screener.css';
 
@@ -36,6 +38,16 @@ export default function SwingPage() {
           <p className="mt-2 max-w-2xl text-[13.5px] leading-relaxed text-muted">把集保持股級距、均線排列、法人買賣超、營收與區間報酬拆成可核對的歷史條件。 不提供未來方向、機率或平台產生價位。</p>
           <p className="mt-2 text-[12.5px] leading-relaxed text-muted">這頁偏<b className="text-ink">波段</b>（抱幾天到幾週）。 想當沖看 <Link href="/picks/" className="text-accent underline-offset-4 hover:underline">量價觀察</Link>； 想觀察隔日沖出貨看 <Link href="/fade/" className="text-accent underline-offset-4 hover:underline">隔日沖分點股</Link>。</p>
         </section>
+        {/*
+          資料缺口揭露（放在頁首區，不塞進卡片區以免偽造實站 DOM）：
+          大戶持股的「週增減／連續週數」需 TDCC 集保歷史週序列，本站目前只累積 1 週、
+          無法自算 → 暫借實站 2026-09-18 快照（site-mirror），故標明來源與基準日。
+        */}
+        <SourceBadge
+          provenance={WHALE_MIRROR_META}
+          note="僅限大戶持股的週增減／連續週數欄位；其餘條件為本站自產"
+          className="mt-4 max-w-2xl"
+        />
         <details className="group mt-4 rounded-2xl border border-line/80 bg-surface/70 p-4">
           <summary className="flex cursor-pointer items-center justify-between text-[12.5px] font-black text-muted">
             <span>第一次用這頁？點開 30 秒說明</span>

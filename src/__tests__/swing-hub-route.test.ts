@@ -43,15 +43,20 @@ function json(payload: unknown): Response {
 }
 
 function tdccPayload() {
-  const grade = (g: string, pct: string) => ({
-    證券代號: '2330  ',
+  const grade = (code: string, g: string, pct: string) => ({
+    證券代號: code,
     '占集保庫存數比例%': pct,
     人數: '1',
     '\ufeff資料日期': '20260918',
     股數: '1',
     持股分級: g,
   });
-  return [grade('12', '10.00'), grade('13', '5.00'), grade('14', '3.00'), grade('15', '60.00'), grade('16', '0'), grade('17', '100')];
+  // 2330（不在實站快照內）＋ 2520（在快照內，用於驗證 site-mirror fallback）。
+  const rows: ReturnType<typeof grade>[] = [];
+  for (const code of ['2330  ', '2520  ']) {
+    rows.push(grade(code, '12', '10'), grade(code, '13', '5'), grade(code, '14', '3'), grade(code, '15', '60'), grade(code, '16', '0'), grade(code, '17', '100'));
+  }
+  return rows;
 }
 
 function t86Payload(date: string) {
@@ -164,6 +169,7 @@ type Body = {
   tabs: Tab[];
   note: string;
   provenance: { source: string; upstreams: string[] };
+  whale_delta_provenance: { source: string; snapshot_date?: string };
   fetchedAt: string;
 };
 
@@ -191,12 +197,17 @@ describe('GET /api/skynet/swing-hub', () => {
     expect(byId.margin.items.length).toBeGreaterThan(0);
     expect(byId.revenue.items.length).toBeGreaterThan(0);
 
-    // 大戶 delta 累積中
+    // 大戶 delta：2330 不在實站快照內 → 累積中（null）；2520 在快照內 → 填入快照值。
     expect(byId.whale_in.items[0].delta_1w).toBeNull();
-    expect(byId.whale_in.items[0].delta_4w).toBeNull();
-    expect(byId.whale_in.items[0].up_weeks).toBeNull();
     expect(body.weeksAccumulated).toBe(1);
-    expect(byId.whale_in.note).toBeTruthy();
+    expect(body.whale_delta_provenance.source).toBe('site-mirror');
+    expect(body.whale_delta_provenance.snapshot_date).toBe('2026-09-18');
+    const whale2520 = byId.whale_in.items.find((x) => x.stock_id === '2520');
+    expect(whale2520?.delta_1w).toBe(0.41);
+    expect(whale2520?.delta_4w).toBe(1.09);
+    expect(whale2520?.up_weeks).toBe(12);
+    // whale item 不應有 hint（對齊實站 DOM）
+    expect(whale2520?.hint).toBeUndefined();
 
     // 日 K tab：KV 未綁定 → 誠實留白
     expect(byId.ma60.items).toHaveLength(0);

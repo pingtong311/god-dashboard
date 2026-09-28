@@ -62,6 +62,31 @@ function toneClass(v: number | null | undefined): string {
   return v > 0 ? 'text-up' : 'text-down';
 }
 
+/**
+ * 卡片右上角主數值。
+ * - whale 頁籤：`4週 {delta_4w}%`（**含 `4週 ` 前綴**；delta_4w 缺席顯示「累積中」），
+ *   tone 依 delta_4w 正負。
+ * - 其餘頁籤：`change_pct`（foreign/trust/both/reclaim/break20…）或 `ret20`（rs/sector）。
+ * 對齊實站：只有 whale item 有 `delta_4w`，也只有 whale 頁籤帶 `4週` 前綴。
+ */
+function headline(tabId: string, item: SwingItem): { text: string; tone: string } {
+  if (tabId === 'whale_in' || tabId === 'whale_out') {
+    const v = item.delta_4w;
+    if (v === null || v === undefined || !Number.isFinite(v)) return { text: '4週 累積中', tone: '' };
+    return { text: `4週 ${v >= 0 ? '+' : ''}${v.toFixed(2)}%`, tone: toneClass(v) };
+  }
+  if (item.change_pct !== undefined) return { text: fmtPct(item.change_pct), tone: toneClass(item.change_pct) };
+  if (item.ret20 !== undefined) return { text: fmtPct(item.ret20, 1), tone: toneClass(item.ret20) };
+  return { text: '', tone: '' };
+}
+
+/** 依 tone 決定卡片左邊框色（紅漲綠跌）；無 tone 時用中性 border-l-line。 */
+function borderClassFor(tone: string): string {
+  if (tone === 'text-up') return 'border-l-up';
+  if (tone === 'text-down') return 'border-l-down';
+  return 'border-l-line';
+}
+
 /** 單一統計磚。 */
 type Tile = { label: string; value: string; tone?: string };
 
@@ -72,8 +97,15 @@ function metricTiles(tabId: string, item: SwingItem): Tile[] {
     case 'whale_out':
       return [
         { label: '大戶持股', value: `${fmt(item.big_pct)}%` },
-        { label: '千張持股', value: `${fmt(item.k_pct)}%` },
-        { label: '本週增減', value: '累積中' },
+        {
+          label: '本週增減',
+          value: item.delta_1w === null || item.delta_1w === undefined ? '累積中' : fmtPct(item.delta_1w),
+          tone: toneClass(item.delta_1w),
+        },
+        {
+          label: '連續週數',
+          value: item.up_weeks === null || item.up_weeks === undefined ? '累積中' : `${item.up_weeks} 週`,
+        },
       ];
     case 'ma60':
       return [
@@ -244,14 +276,8 @@ export default function SwingClient(): ReactElement {
                     <span aria-hidden="true" className="section-mark" />
                     <h2 className="text-lg font-bold tracking-tight md:text-xl">{active.title}</h2>
                   </div>
-                  <p className="shrink-0 text-sm text-muted">{active.items.length} 檔</p>
                 </div>
-                <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{active.desc}</p>
               </div>
-
-              {active.note && (
-                <p className="mb-3 rounded-xl bg-surface-2 px-4 py-3 text-[12.5px] leading-relaxed text-muted">{active.note}</p>
-              )}
 
               {active.items.length === 0 ? (
                 <p className="rounded-xl bg-surface-2 px-4 py-3 text-[12.5px] leading-relaxed text-muted">
@@ -259,17 +285,17 @@ export default function SwingClient(): ReactElement {
                 </p>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2">
-                  {active.items.map((item) => (
+                  {active.items.map((item) => {
+                    const head = headline(active.id, item);
+                    return (
                     <div
                       key={item.stock_id}
-                      className="data-panel hud-panel glass rounded-2xl p-5 border-l-2 border-l-line"
+                      className={`data-panel hud-panel glass rounded-2xl p-5  border-l-2 ${borderClassFor(head.tone)}`}
                     >
                       <Link href={`/stock/?id=${item.stock_id}`} className="block">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-lg font-black text-accent">{item.label}</p>
-                          <span className={`num font-black ${toneClass(item.change_pct ?? item.ret20)}`}>
-                            {item.change_pct !== undefined ? fmtPct(item.change_pct) : item.ret20 !== undefined ? fmtPct(item.ret20, 1) : ''}
-                          </span>
+                          <span className={`num font-black ${head.tone}`}>{head.text}</span>
                         </div>
                         {item.industry && <div className="mt-1 text-xs text-muted">{item.industry}</div>}
                         {item.hint && <div className="mt-1 text-[12px] leading-relaxed text-muted">{item.hint}</div>}
@@ -283,7 +309,8 @@ export default function SwingClient(): ReactElement {
                         </div>
                       </Link>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </>

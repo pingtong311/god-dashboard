@@ -242,6 +242,19 @@ export type T86Day = { date: string; items: T86NetItem[] };
 /** 集保大戶比例（單一週）。 */
 export type WhaleGrade = { bigPct: number; kPct: number; date: string };
 
+/**
+ * 大戶持股「週序列」欄位（本站尚無法自算時的 fallback 形狀）。
+ * 實際資料由 route 以 site-mirror 快照（src/app/swing/mirror/…）注入；
+ * 本層刻意不依賴 app 目錄，只吃結構型別。查無對應代號時回 null（前端顯示「累積中」）。
+ */
+export type WhaleWeeklyFallback = {
+  delta_1w: number | null;
+  delta_4w: number | null;
+  up_weeks: number | null;
+  down_weeks: number | null;
+  weeks: number | null;
+};
+
 /** 月營收列。 */
 export type RevenueRow = {
   code: string;
@@ -882,23 +895,29 @@ export function computeFill(ctx: ConditionContext, rows: ExRightRow[]): SwingIte
 /**
  * 大戶持股（whale_in / whale_out）。
  *
- * ⚠ TDCC OpenAPI 1-5 只回「當週」，無歷史週檔 → delta_1w／delta_4w／up_weeks／
- *   down_weeks 一律回 null（前端顯示「累積中」），weeks 回累積週數。
- *   故首版兩方向無法以增減判定；本站誠實作法：皆列出當週 400 張以上比例最高者
- *   （依 big_pct 由高到低），並由 route 於 tab 上加 note 說明。
+ * ⚠ TDCC OpenAPI 1-5 只回「當週」，無歷史週檔 → 本站目前**無法自算** delta_1w／
+ *   delta_4w／up_weeks／down_weeks。依業主指示以 **site-mirror 快照** fallback
+ *   （weeklyFallback，基準日 2026-09-18）；**查無對應代號時回 null**（前端顯示
+ *   「累積中」，絕不以 0 或空字串代替）。**未來本站累積足夠週數能自算時，應優先
+ *   採用自產值，fallback 僅為備援。**
+ *
+ * 註：實站 whale item **無 `hint` 欄位**，故本函式不產生 hint（對齊實站 DOM）。
  *
  * @param whale 代號 → { bigPct, kPct, date }
- * @param weeksAccumulated 已累積的週數（首版為 1）
+ * @param weeksAccumulated 本站已累積的週數（供 fallback 缺席時的 weeks）
+ * @param weeklyFallback 週序列欄位（site-mirror）；查無則該欄位為 null
  */
 export function computeWhale(
   ctx: ConditionContext,
   whale: Map<string, WhaleGrade>,
   weeksAccumulated: number,
+  weeklyFallback?: ReadonlyMap<string, WhaleWeeklyFallback>,
 ): SwingItem[] {
   const out: SwingItem[] = [];
   for (const [code, g] of whale) {
     if (!isCommonStockCode(code)) continue;
     if (!(g.bigPct > 0)) continue; // 無 400 張以上持股 → 不列入
+    const fb = weeklyFallback?.get(code);
     out.push({
       stock_id: code,
       label: labelOf(ctx.meta, code),
@@ -906,17 +925,16 @@ export function computeWhale(
       industry: industryOf(ctx.meta, code),
       big_pct: roundTo(g.bigPct),
       k_pct: roundTo(g.kPct),
-      delta_1w: null,
-      delta_4w: null,
-      up_weeks: null,
-      down_weeks: null,
-      weeks: weeksAccumulated,
+      delta_1w: fb?.delta_1w ?? null,
+      delta_4w: fb?.delta_4w ?? null,
+      up_weeks: fb?.up_weeks ?? null,
+      down_weeks: fb?.down_weeks ?? null,
+      weeks: fb?.weeks ?? weeksAccumulated,
       identity_status: 'ok',
       price_unit: 'TWD',
       price_scope: 'unavailable',
       price_as_of: ctx.asOf,
       price_status: 'checking',
-      hint: `400 張以上持股 ${g.bigPct.toFixed(2)}%（千張以上 ${g.kPct.toFixed(2)}%）；週增減累積中`,
     });
   }
   return sortDesc(out, (x) => x.big_pct ?? 0).slice(0, WHALE_RESULT_LIMIT);

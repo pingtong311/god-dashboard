@@ -462,7 +462,7 @@ describe('computeFill 除權息填息', () => {
 // ===========================================================================
 
 describe('computeWhale 大戶持股', () => {
-  it('正例：big_pct > 0 列入且 delta 為 null（累積中）；big_pct = 0 排除', () => {
+  it('正例：big_pct > 0 列入；big_pct = 0 排除；不產生 hint（對齊實站 DOM）', () => {
     const whale = new Map<string, WhaleGrade>([
       ['2520', { bigPct: 75.26, kPct: 71.3, date: '2026-09-18' }],
       ['9999', { bigPct: 0, kPct: 0, date: '2026-09-18' }],
@@ -472,10 +472,33 @@ describe('computeWhale 大戶持股', () => {
     expect(out[0].stock_id).toBe('2520');
     expect(out[0].big_pct).toBe(75.26);
     expect(out[0].k_pct).toBe(71.3);
+    expect(out[0].hint).toBeUndefined();
+  });
+
+  it('無 fallback：delta/up_weeks 為 null（累積中），weeks 回累積週數', () => {
+    const whale = new Map<string, WhaleGrade>([['2520', { bigPct: 75.26, kPct: 71.3, date: '2026-09-18' }]]);
+    const out = computeWhale(ctxOf(new Map()), whale, 1);
     expect(out[0].delta_1w).toBeNull();
     expect(out[0].delta_4w).toBeNull();
     expect(out[0].up_weeks).toBeNull();
     expect(out[0].weeks).toBe(1);
+  });
+
+  it('有 site-mirror fallback：填入週序列；查無對應代號維持 null', () => {
+    const whale = new Map<string, WhaleGrade>([
+      ['2520', { bigPct: 75.26, kPct: 71.3, date: '2026-09-18' }],
+      ['8888', { bigPct: 50, kPct: 40, date: '2026-09-18' }],
+    ]);
+    const fallback = new Map([
+      ['2520', { delta_1w: 0.41, delta_4w: 1.09, up_weeks: 12, down_weeks: 0, weeks: 15 }],
+    ]);
+    const out = computeWhale(ctxOf(new Map()), whale, 1, fallback);
+    const byId = Object.fromEntries(out.map((x) => [x.stock_id, x]));
+    expect(byId['2520'].delta_1w).toBe(0.41);
+    expect(byId['2520'].delta_4w).toBe(1.09);
+    expect(byId['2520'].up_weeks).toBe(12);
+    expect(byId['2520'].weeks).toBe(15);
+    expect(byId['8888'].delta_4w).toBeNull(); // 快照查無 → 累積中
   });
 });
 

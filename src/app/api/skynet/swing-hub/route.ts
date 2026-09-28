@@ -63,6 +63,7 @@ import {
   TPEX_OTC_URL,
   UPSTREAM_TIMEOUT_MS,
 } from '@/lib/marketBars';
+import { WHALE_MIRROR_MAP, WHALE_MIRROR_META } from '@/app/swing/mirror/whale-weekly-2026-09-18';
 
 export const dynamic = 'force-dynamic';
 
@@ -310,10 +311,12 @@ export async function GET(): Promise<NextResponse> {
 
   const tabs: SwingTab[] = [];
 
-  // whale_in / whale_out（TDCC）
-  const whaleItems = tdccReady ? computeWhale(ctx, tdcc, 1) : [];
+  // whale_in / whale_out（TDCC + site-mirror 週序列 fallback）
+  // ⚠ 週增減（delta_1w/delta_4w/up_weeks）本站尚無法自算 → 以實站 2026-09-18 快照
+  //   fallback；查無對應代號時回 null（前端顯示「累積中」）。
+  const whaleItems = tdccReady ? computeWhale(ctx, tdcc, 1, WHALE_MIRROR_MAP) : [];
   const whaleExtra = tdccReady
-    ? { note: '集保 1-5 目前僅提供當週資料，歷史週檔尚未累積，delta 與連續週數顯示「累積中」。' }
+    ? {}
     : { unavailable_reason: 'TDCC 集保戶股權分散表上游無回應。' };
   tabs.push(makeTab('whale_in', whaleItems, whaleExtra));
   tabs.push(makeTab('whale_out', whaleItems, whaleExtra));
@@ -406,6 +409,8 @@ export async function GET(): Promise<NextResponse> {
     tabs,
     note: '全部為歷史公開資料的條件篩選；不提供未來方向、機率或平台產生價位。',
     provenance: PROVENANCE,
+    // 大戶持股週增減欄位的來源（本站無法自算 → 實站快照）。
+    whale_delta_provenance: WHALE_MIRROR_META,
     fetchedAt,
   };
 
