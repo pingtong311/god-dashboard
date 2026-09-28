@@ -1,55 +1,57 @@
 /**
  * 鉅額交易（Block Trades）資料層 — 自產資料，非抄實站快照
  * ============================================================================
- * 上游：證交所「鉅額交易日成交資訊」BFIAUU（免費官方 API、免金鑰）
- *   https://www.twse.com.tw/rwd/zh/block/BFIAUU?response=json&date=YYYYMMDD
- * 回傳：{ stat:'OK', date:'20260924', title, fields, data:[[...]], selectType }
- *   data 每列 = [證券代號, 證券名稱, 交易別, 成交價, 成交股數, 成交金額]
+ * 兩個上游（皆為免費官方 API、免金鑰）：
+ *
+ * 1) 證交所（上市）「鉅額交易日成交資訊」BFIAUU
+ *      https://www.twse.com.tw/rwd/zh/block/BFIAUU?response=json&date=YYYYMMDD
+ *      回 { stat:'OK', date:'20260924', title, fields, data:[[...]], selectType }
+ *      data 每列 = [證券代號, 證券名稱, 交易別, 成交價, 成交股數, 成交金額]
+ *
+ * 2) 櫃買中心（上櫃）「上櫃鉅額交易日成交資訊」openapi
+ *      https://www.tpex.org.tw/openapi/v1/tpex_daily_qutoes_block
+ *      （資料集名稱是 qutoes，非 quotes，為 TPEX 官方拼字）
+ *      回陣列 [{ Date:'1150924', TransactionType, SettlementPeriod, Code:'5274',
+ *               Name:'信驊', TradePrice, NumberOfSharesTraded, TradeValue:'20485000',
+ *               TradingTime }, ...]
+ *      ⚠ 此端點 **swagger 無 parameters → 不支援日期參數**，一律回「最近一個有
+ *        鉅額交易的交易日」。（規格書在 https://www.tpex.org.tw/openapi/swagger.json，
+ *        注意不是 /openapi/v1/swagger.json。）
  *
  * 關鍵處理：
  * 1. 同一檔股票當日可能有多筆（不同交易別／成交價），需**按證券代號彙總**：
  *    筆數 n ＝ 該代號列數；money_yi ＝ 各列成交金額（元）加總 ÷ 1e8，四捨五入 2 位。
- * 2. 上游最後一列為「總計」彙總列（證券代號＝總計、名稱為空），**必須剔除**，
+ * 2. TWSE BFIAUU 最後一列為「總計」彙總列（證券代號＝總計、名稱為空），**必須剔除**，
  *    否則會被當成一檔股票、金額也會翻倍。
- * 3. 非交易日或當日尚未公布時 data 為空陣列，需回推前一個有資料的交易日
+ * 3. TWSE 非交易日或當日尚未公布時 data 為空陣列，需回推前一個有資料的交易日
  *    （LOOKBACK_DAYS = 10，照抄 /api/skynet/t86 的回推模式）。
+ * 4. TPEX 欄位 Code/Name 會右補空白 → 一律 trim；Date 為民國年 1150924，西元＝民國+1911。
+ * 5. 兩市（上市/上櫃）標的互斥，合併＝聯集後再依金額降冪排序。
+ *    實站 block-trades 即為「TWSE 上市 + TPEX 上櫃」合併（實測 2026-09-24 = 24 檔）。
  *
- * 資料範圍說明（誠實揭露，不補值、不捏造）：
- * BFIAUU 涵蓋「單一證券」與「配對交易」等交易別；實測 2026-09-24 有 21 檔
- * （實站同日 24 檔，另 3 檔不在 BFIAUU 中）。本層只陳述上游實際提供者，
- * 上游沒給的代號就不會出現，絕不以 0 或隨機值補齊。
+ * 日期對齊原則：以 TWSE 日期為準。TPEX 端點無日期參數，若其回傳日期與 TWSE 不同，
+ * **不硬湊**，僅在 gaps 誠實標註該批未併入。
  *
- * 已知缺口（gaps）：實站 block-trades 為「TWSE 上市 + TPEX 上櫃」合併。實測
- * 2026-09-24 實站 24 檔中，5274 信驊、5347 世界、6187 萬潤 為**上櫃（TPEX）**股，
- * 不在 TWSE BFIAUU 內。本層目前僅涵蓋 TWSE 上市部分，上櫃部分未接入 → 於
- * 回傳的 gaps 欄位誠實標註，不以 0 或猜測值補齊。
+ * 資料誠實原則：上游沒給的代號就不會出現，絕不以 0 或隨機值補齊；缺漏一律記在 gaps。
  *
- * ── TPEX 上櫃鉅額交易端點調查紀錄（2026-09-28 實測，供後續接手）─────────────
- *   ✅ 有找到、但**只有全市場分類彙總、無個股代號**（故不可用於個股清單）：
- *      https://www.tpex.org.tw/www/zh-tw/blockTrade/dailyStat?date=YYYY/MM/DD&response=json
- *      回 { date, tables:[{ title:'鉅額交易日成交量值統計',
- *        fields:[成交日期,類別,成交筆數,成交股數,成交金額(元),占全市場比重%],
- *        data:[[ '1150901','逐筆交易-組合型','0','0','0',... ], ...] }] }
- *      （類別＝逐筆/配對 × 單一型/組合型；**完全沒有證券代號**）
- *   ✅ 有找到、但**只封存遠古日期**的「個股鉅額交易」靜態頁（Big5 編碼）：
- *      https://hist.tpex.org.tw/Hist/STOCK/BLOCK_TRADE/DAILY_TRADE_INFOR/Huge_<民國YYYMMDD>.html
- *      例：Huge_951229.html（2006-12-29）確實有逐筆「資料種類/證券代號/證券名稱/
- *      成交價格/成交股數/成交值(元)/成交時間」；但 2026 年日期（Huge_1150924.html
- *      等）一律 302 → https://www.tpex.org.tw/storage/error.htm，封存已停止更新。
- *   ❌ 已試但 302（路徑不存在）：
- *      /www/zh-tw/blockTrade/{stockStat,detail,list,dailyDetail,stock,dailyStock,
- *        stockDaily,detailStat,info,stockInfo,statistic,dailyStatStock,individualStat,
- *        tradeDetail,huge,HUGE}
- *      /www/zh-tw/afterTrading/{blockTrade,blockTrading,block,bigTrade,blockDeal,blockTrades}
- *      /www/zh-tw/{mainboard/blockTrade,trading/blockTrade,blockTrade/otc}
- *      /openapi/v1/tpex_block_trade
- *   ❌ 新站區塊子頁 /zh-tw/mainboard/trading/block-trading/{stock,detail,list,query,daily}.html → 302
- *   結論：**未找到可用的「TPEX 上櫃個股鉅額交易」公開端點**；上櫃標的缺漏，如實標註。
+ * ── TPEX 端點調查紀錄（2026-09-28 實測，供後續接手，別重走冤枉路）─────────────
+ *   方法論：TPEX 新站 SPA 的 API 樣板是 `/www/{LANG}/{ACTION}`（LANG=zh-tw）；
+ *   要挖某頁呼叫哪個 action，抓該頁 HTML 找 inline 的
+ *   `tables.init({action:"..."})`。例：block-trading/day.html → action "blockTrade/dailyStat"。
+ *   但——**鉅額交易的「個股清單」不在 SPA，而在 openapi 的 tpex_daily_qutoes_block**。
+ *   ✅ 可用（本次採用）：/openapi/v1/tpex_daily_qutoes_block（個股逐筆，含代號/名稱/金額）
+ *   ⚠️ /www/zh-tw/blockTrade/dailyStat 只有「全市場分類彙總」，**無證券代號**，不可用於個股清單。
+ *   ⚠️ hist.tpex.org.tw/.../DAILY_TRADE_INFOR/Huge_<民國YYYMMDD>.html 為個股鉅額靜態頁，
+ *      但只封存遠古日期（如 2006-12），近年日期一律 302 → error.htm，不可用。
+ *   ❌ 已試但 302：/www/zh-tw/blockTrade/*（多個猜名）、/www/zh-tw/afterTrading/block*、
+ *      /openapi/v1/tpex_block_trade（名字錯，正解是 tpex_daily_qutoes_block）。
  * ───────────────────────────────────────────────────────────────────────────
  */
 
-/** 證交所鉅額交易 rwd 端點基底（勿加尾斜線）。 */
+/** 證交所（上市）鉅額交易 rwd 端點基底（勿加尾斜線）。 */
 const TWSE_BLOCK_BASE = 'https://www.twse.com.tw/rwd/zh/block/BFIAUU';
+/** 櫃買中心（上櫃）鉅額交易日成交資訊 openapi 端點（無日期參數）。 */
+const TPEX_BLOCK_URL = 'https://www.tpex.org.tw/openapi/v1/tpex_daily_qutoes_block';
 /** 上游 fetch 逾時（毫秒）。 */
 const FETCH_TIMEOUT_MS = 8_000;
 /** 未指定日期時，往回尋找最近有資料交易日的最大天數。 */
@@ -85,26 +87,37 @@ export interface BlockTradeData {
   gaps: string[];
 }
 
-/** 資料層回傳：整頁資料 + 實際命中的上游 URL（供 provenance 標記）。 */
+/** 上游來源標記（同時記錄上市與上櫃兩個來源）。 */
+export interface BlockTradeUpstream {
+  /** 證交所（上市）BFIAUU 實際命中的 URL（含 date 參數） */
+  twse: string;
+  /** 櫃買中心（上櫃）openapi URL；未取得時為 null */
+  tpex: string | null;
+}
+
+/** 資料層回傳：整頁資料 + 上游來源標記。 */
 export interface BlockTradeResult {
   data: BlockTradeData;
-  /** 實際命中的上游 URL（含 date 參數） */
-  upstream: string;
+  upstream: BlockTradeUpstream;
+}
+
+/** 櫃買中心（上櫃）openapi 回傳列形狀（只取需要的欄位）。 */
+export interface TpexBlockRow {
+  Date?: string;
+  TransactionType?: string;
+  SettlementPeriod?: string;
+  Code?: string;
+  Name?: string;
+  TradePrice?: string;
+  NumberOfSharesTraded?: string;
+  TradeValue?: string;
+  TradingTime?: string;
 }
 
 /** 固定口徑文字（逐字對齊實站 /api/p1/block-trades 的 body）。 */
 const DATA_SCOPE = '盤後';
 const NEXT_UPDATE = '下一交易日 23:08';
 const NOTE = '盤後鉅額成交金額加總，不是進出場。';
-
-/**
- * 已知資料缺口（誠實揭露）。
- * 實站為 TWSE 上市 + TPEX 上櫃合併；上櫃鉅額交易端點未找到（調查紀錄見檔頭註解），
- * 故本清單僅涵蓋 TWSE 上市 BFIAUU，上櫃標的（如 5274/5347/6187）缺漏。
- */
-const GAPS: string[] = [
-  'TPEX 上櫃個股鉅額交易端點未找到，故上櫃標的缺漏；本清單僅涵蓋證交所（上市）BFIAUU 鉅額交易。',
-];
 
 /** 產生證交所 rwd 端點要的西元日期（YYYYMMDD）。 */
 export function formatTwseDate(date: Date): string {
@@ -120,41 +133,39 @@ export function formatDisplayDate(ymd: string): string {
   return `${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6, 8)}`;
 }
 
-/** 四捨五入至小數 2 位（避免浮點尾差）。 */
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+/** 把民國年緊湊日期「1150924」轉成西元「2026-09-24」；格式不符回 null。 */
+export function parseRocCompactDate(raw: string): string | null {
+  const m = /^(\d{3})(\d{2})(\d{2})$/.exec(String(raw ?? '').trim());
+  if (!m) return null;
+  const year = Number(m[1]) + 1911;
+  return `${year}-${m[2]}-${m[3]}`;
 }
 
-/** 解析含千分位逗號的成交金額字串 → 元（無法解析回 0）。 */
+/**
+ * 金額四捨五入至小數 2 位，**對齊實站**。
+ * 實站採 `Number(x.toFixed(2))` 語意（非 Math.round）：中點值會向下取，
+ * 例：1.095 → 1.09（Math.round(1.095*100)/100 會得 1.1，與實站不符）。
+ * 實測 2026-09-24 全部 24 檔以此規則逐值吻合。
+ */
+function round2(n: number): number {
+  return Number(n.toFixed(2));
+}
+
+/** 解析含千分位逗號的金額字串 → 元（無法解析回 0）。 */
 export function parseAmountYuan(raw: unknown): number {
   const n = Number(String(raw ?? '').replace(/,/g, '').trim());
   return Number.isFinite(n) ? n : 0;
 }
 
-/**
- * 依證券代號彙總鉅額交易列。
- * - 剔除「總計」彙總列與欄位不足的畸形列。
- * - 以「元」為單位加總後再換算億元，避免逐列四捨五入造成的誤差累積。
- * - 依成交金額（元）由大到小排序；金額相同時維持上游出現順序（穩定排序）。
- */
-export function aggregateBlockTrades(rows: string[][]): BlockTradeItem[] {
-  const byCode = new Map<string, { name: string; amountYuan: number; n: number }>();
+/** 彙總用的可變結構（代號 → 名稱 / 累計金額元 / 筆數）。 */
+interface CodeAgg {
+  name: string;
+  amountYuan: number;
+  n: number;
+}
 
-  for (const row of rows) {
-    if (!Array.isArray(row) || row.length < 6) continue;
-    const code = String(row[0] ?? '').trim();
-    const name = String(row[1] ?? '').trim();
-    // 「總計」彙總列的證券代號為「總計」、名稱為空 → 剔除。
-    if (!code || code === '總計') continue;
-
-    const amountYuan = parseAmountYuan(row[5]);
-    const current = byCode.get(code) ?? { name, amountYuan: 0, n: 0 };
-    current.name = name || current.name;
-    current.amountYuan += amountYuan;
-    current.n += 1;
-    byCode.set(code, current);
-  }
-
+/** 把 Map<代號, CodeAgg> 轉成依成交金額（元）降冪排序的 items。 */
+function toSortedItems(byCode: Map<string, CodeAgg>): BlockTradeItem[] {
   const entries = Array.from(byCode.entries()).map(([code, value]) => ({
     stock_id: code,
     label: `${code} ${value.name}`.trim(),
@@ -170,6 +181,76 @@ export function aggregateBlockTrades(rows: string[][]): BlockTradeItem[] {
     n: entry.n,
     money_yi: entry.money_yi,
   }));
+}
+
+/**
+ * 依證券代號彙總「證交所（上市）BFIAUU 原始列」。
+ * - 剔除「總計」彙總列與欄位不足的畸形列。
+ * - 以「元」為單位加總後再換算億元，避免逐列四捨五入造成的誤差累積。
+ * - 依成交金額（元）由大到小排序。
+ */
+export function aggregateBlockTrades(rows: string[][]): BlockTradeItem[] {
+  const byCode = new Map<string, CodeAgg>();
+
+  for (const row of rows) {
+    if (!Array.isArray(row) || row.length < 6) continue;
+    const code = String(row[0] ?? '').trim();
+    const name = String(row[1] ?? '').trim();
+    // 「總計」彙總列的證券代號為「總計」、名稱為空 → 剔除。
+    if (!code || code === '總計') continue;
+
+    const current = byCode.get(code) ?? { name, amountYuan: 0, n: 0 };
+    current.name = name || current.name;
+    current.amountYuan += parseAmountYuan(row[5]);
+    current.n += 1;
+    byCode.set(code, current);
+  }
+
+  return toSortedItems(byCode);
+}
+
+/**
+ * 依證券代號彙總「櫃買中心（上櫃）openapi 列」。
+ * - Code/Name 右補空白 → trim。
+ * - 以 TradeValue（元）加總；無法解析視為 0。
+ */
+export function aggregateTpexBlockTrades(rows: TpexBlockRow[]): BlockTradeItem[] {
+  const byCode = new Map<string, CodeAgg>();
+
+  for (const row of rows) {
+    const code = String(row?.Code ?? '').trim();
+    const name = String(row?.Name ?? '').trim();
+    if (!code) continue;
+
+    const current = byCode.get(code) ?? { name, amountYuan: 0, n: 0 };
+    current.name = name || current.name;
+    current.amountYuan += parseAmountYuan(row?.TradeValue);
+    current.n += 1;
+    byCode.set(code, current);
+  }
+
+  return toSortedItems(byCode);
+}
+
+/**
+ * 合併多來源 items（上市 + 上櫃）：
+ * 兩市標的互斥，正常情況即為聯集；若同代號意外重複則筆數相加、金額相加。
+ * 最後依 money_yi 降冪排序。
+ */
+export function mergeBlockTradeItems(...lists: BlockTradeItem[][]): BlockTradeItem[] {
+  const byCode = new Map<string, BlockTradeItem>();
+  for (const list of lists) {
+    for (const item of list) {
+      const current = byCode.get(item.stock_id);
+      if (current) {
+        current.n += item.n;
+        current.money_yi = round2(current.money_yi + item.money_yi);
+      } else {
+        byCode.set(item.stock_id, { ...item });
+      }
+    }
+  }
+  return Array.from(byCode.values()).sort((a, b) => b.money_yi - a.money_yi);
 }
 
 /** 帶逾時的上游 fetch（逾時即 abort）。 */
@@ -192,19 +273,26 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   }
 }
 
-/** 上游 BFIAUU 回應形狀（只取需要的欄位）。 */
-interface BlockTradeRaw {
+/** 證交所 BFIAUU 回應形狀（只取需要的欄位）。 */
+interface TwseBlockRaw {
   stat?: string;
   date?: string;
   data?: string[][];
 }
 
+/** 證交所（上市）命中結果。 */
+interface TwseFound {
+  raw: TwseBlockRaw;
+  ymd: string;
+  url: string;
+}
+
 /**
- * 取得最近一個有資料交易日的鉅額交易。
+ * 取得最近一個有資料交易日的「證交所（上市）」鉅額交易。
  * 從今天往回最多 LOOKBACK_DAYS 天，逐日嘗試；單日失敗或空資料就繼續往前。
  * 全部失敗回 null（由呼叫端轉成誠實的錯誤狀態，不回假資料）。
  */
-async function fetchLatestBlockTrades(): Promise<BlockTradeResult | null> {
+async function fetchLatestTwseBlockTrades(): Promise<TwseFound | null> {
   const now = new Date();
   for (let offset = 0; offset < LOOKBACK_DAYS; offset += 1) {
     const d = new Date(now.getTime() - offset * 24 * 60 * 60 * 1000);
@@ -213,26 +301,11 @@ async function fetchLatestBlockTrades(): Promise<BlockTradeResult | null> {
     try {
       const res = await fetchWithTimeout(url);
       if (!res.ok) continue;
-      const raw = (await res.json()) as BlockTradeRaw;
+      const raw = (await res.json()) as TwseBlockRaw;
       if (raw?.stat !== 'OK' || !Array.isArray(raw.data) || raw.data.length === 0) continue;
-
-      const items = aggregateBlockTrades(raw.data);
       // 只有「總計」列而無任何個股時，視為無資料，繼續回推。
-      if (items.length === 0) continue;
-
-      const date = formatDisplayDate(String(raw.date || ymd));
-      return {
-        data: {
-          available: true,
-          date,
-          data_scope: DATA_SCOPE,
-          next_update: NEXT_UPDATE,
-          note: NOTE,
-          items,
-          gaps: GAPS,
-        },
-        upstream: url,
-      };
+      if (aggregateBlockTrades(raw.data).length === 0) continue;
+      return { raw, ymd, url };
     } catch {
       // 單日失敗就繼續往回找，不中斷整體流程。
       continue;
@@ -242,9 +315,64 @@ async function fetchLatestBlockTrades(): Promise<BlockTradeResult | null> {
 }
 
 /**
- * 對外主入口：取得鉅額交易整頁資料。
- * @returns 成功回 { data, upstream }；上游全部失敗回 null。
+ * 取得「櫃買中心（上櫃）」鉅額交易（openapi，無日期參數 → 回最近一個有資料交易日）。
+ * @returns 成功回 { rows, date }；失敗或無資料回 null。
+ */
+async function fetchTpexBlockTrades(): Promise<{ rows: TpexBlockRow[]; date: string | null } | null> {
+  try {
+    const res = await fetchWithTimeout(TPEX_BLOCK_URL);
+    if (!res.ok) return null;
+    const rows = (await res.json()) as TpexBlockRow[];
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    // 同批應為同一交易日，取第一筆的 Date（民國年）轉西元。
+    const date = parseRocCompactDate(String(rows[0]?.Date ?? ''));
+    return { rows, date };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 對外主入口：取得鉅額交易整頁資料（證交所上市 + 櫃買上櫃合併）。
+ * 以 TWSE 日期為準；TPEX 若日期不同則不併入，僅記 gaps。
+ * @returns 成功回 { data, upstream }；證交所上游全數失敗回 null。
  */
 export async function getBlockTrades(): Promise<BlockTradeResult | null> {
-  return fetchLatestBlockTrades();
+  const found = await fetchLatestTwseBlockTrades();
+  if (!found) return null;
+
+  const twseDate = formatDisplayDate(String(found.raw.date || found.ymd));
+  const twseItems = aggregateBlockTrades(found.raw.data ?? []);
+
+  // 併入櫃買中心（上櫃）鉅額交易；其端點無日期參數，故須核對資料日。
+  const tpex = await fetchTpexBlockTrades();
+  const gaps: string[] = [];
+  let items = twseItems;
+  let tpexUrl: string | null = null;
+
+  if (!tpex) {
+    gaps.push('TPEX 上櫃鉅額交易暫時無法取得，本清單僅含上市（TWSE）部分。');
+  } else {
+    tpexUrl = TPEX_BLOCK_URL;
+    if (tpex.date === twseDate) {
+      items = mergeBlockTradeItems(twseItems, aggregateTpexBlockTrades(tpex.rows));
+    } else {
+      gaps.push(
+        `TPEX 上櫃鉅額交易資料日為 ${tpex.date ?? '未知'}，與本頁資料日 ${twseDate} 不同，未併入（不硬湊）。`,
+      );
+    }
+  }
+
+  return {
+    data: {
+      available: true,
+      date: twseDate,
+      data_scope: DATA_SCOPE,
+      next_update: NEXT_UPDATE,
+      note: NOTE,
+      items,
+      gaps,
+    },
+    upstream: { twse: found.url, tpex: tpexUrl },
+  };
 }
