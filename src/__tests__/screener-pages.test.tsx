@@ -11,11 +11,14 @@
  *   2. 次導覽組合與 capture 一致（picks 有市場分類＋相關功能切換；
  *      fade/patterns/swing/tools 只有相關功能切換；
  *      dividend/block-trades/research/backtest 兩者皆無）。
- *   3. picks/fade 如實呈現 capture 的載入骨架（role="status"），不造假資料。
- *   4. patterns（38 列）、swing（40 卡）、dividend（22 列）、
- *      block-trades（24 列）、backtest（29 筆）的歷史快照數量、首末列內容、
- *      連結 href 與紅漲綠跌色類別。
- *   5. tools/research 表單控制項初始值與 4 張研究視角卡連結。
+ *   3. picks 如實呈現 capture 的載入骨架（role="status"），不造假資料；
+ *      fade 因無分點資料源，改以「本站無法提供此資料」誠實說明（無載入骨架、無具體資料日）。
+ *   4. patterns / swing 改為 mock fetch 自家 API（GET /api/skynet/pattern-screen、
+ *      /api/skynet/swing-hub），斷言渲染邏輯（頁籤、計數、清單、紅漲綠跌色）與
+ *      「資料未就緒／fetch 失敗」的誠實狀態，不再鎖死舊快照數字。
+ *   5. dividend（22 列）、block-trades（24 列）、backtest（29 筆）的歷史快照數量、
+ *      首末列內容、連結 href 與紅漲綠跌色類別。
+ *   6. tools/research 表單控制項初始值與 4 張研究視角卡連結。
  */
 
 import type { ReactElement, ReactNode } from 'react';
@@ -122,120 +125,431 @@ describe('選股股票群組 9 頁', () => {
   });
 
   describe('/fade 隔日沖分點股', () => {
-    it('h1、資料日對齊 capture，無市場分類次導覽', () => {
+    it('h1 對齊 capture、不顯示具體資料日、無市場分類次導覽', () => {
       const c = renderAt(<FadePage />, '/fade/');
       expect(c.querySelector('h1')?.textContent).toBe('隔日沖分點股');
-      expect(c.textContent).toContain('2026-09-24 盤後掃描');
+      // 本站無分點資料源，不應顯示任何具體資料日（如 2026-09-24）。
+      expect(c.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}/);
       expect(c.querySelector('nav[aria-label="市場分類"]')).toBeNull();
       expect(c.querySelector('nav[aria-label="相關功能切換"]')).not.toBeNull();
       const active = c.querySelector('nav[aria-label="相關功能切換"] a[aria-current="page"]');
       expect(active?.textContent).toBe('隔日沖');
     });
 
-    it('如實呈現 capture 載入骨架（role="status"）', () => {
+    it('誠實說明「無法提供」（無載入骨架、無具體資料日、不造假）', () => {
       const c = renderAt(<FadePage />, '/fade/');
-      const status = c.querySelector('[role="status"]');
-      expect(status).not.toBeNull();
-      expect(status?.textContent).toContain('正在比對隔日沖大戶名單…');
-      expect(status?.querySelectorAll('.animate-pulse').length).toBe(3);
+      // 永久無法取得的狀態不可長得像「載入中」：不應有 role="status"／animate-pulse 骨架。
+      expect(c.querySelector('[role="status"]')).toBeNull();
+      expect(c.querySelectorAll('.animate-pulse').length).toBe(0);
+      // 明確說明「無法提供」與原因。
+      expect(c.textContent).toContain('本站無法提供此資料');
+      expect(c.textContent).toContain('分點');
       expect(c.querySelector('table')).toBeNull();
     });
   });
 
   describe('/patterns K 線型態掃描', () => {
-    it('h1、資料日與 7 個型態頁籤計數對齊 capture', () => {
-      const c = renderAt(<PatternsPage />, '/patterns/');
+    const ORIG_FETCH = globalThis.fetch;
+
+    /** 對齊 PatternItem schema 的清單列（只帶渲染需要的欄位）。 */
+    const patItem = (
+      stock_id: string,
+      stock_name: string,
+      close: number,
+      change_pct: number,
+      low_liquidity: boolean,
+    ): Record<string, unknown> => ({
+      stock_id,
+      stock_name,
+      label: `${stock_id} ${stock_name}`,
+      close,
+      change_pct,
+      volume_lots: low_liquidity ? 80 : 2500,
+      turnover_yi: 1.2,
+      low_liquidity,
+      price_unit: 'TWD',
+      price_scope: 'eod_close',
+      price_as_of: '2026-10-01',
+      price_status: 'ok',
+      change_scope: 'eod',
+      change_as_of: '2026-10-01',
+      change_status: 'ok',
+      volume_unit: 'lots',
+      volume_scope: 'eod',
+      volume_as_of: '2026-10-01',
+      volume_status: 'ok',
+      identity_status: 'ok',
+    });
+
+    /**
+     * 小樣本 ready fixture：7 個型態皆需存在（Client 以 PATTERN_ORDER 逐項取用），
+     * 每型態僅 0-2 檔，避免鎖死舊快照的 38 筆。
+     */
+    const READY: Record<string, unknown> = {
+      ok: true,
+      ready: true,
+      data_date: '2026-10-01',
+      data_scope: '盤後日 K',
+      next_update: '下一交易日盤後',
+      scope: 'historical_geometry',
+      note: '依已發生日 K 幾何條件分類；不提供方向、進出場或平台計算價位。',
+      criteria: {
+        minBars: 40,
+        pivotLookback: 5,
+        doubleTolerancePct: 3,
+        doubleMidMinBouncePct: 4,
+        doubleRecoverMinPct: 2,
+        doubleNeckProximity: 2,
+        shoulderTolerancePct: 4,
+        headMinDepthPct: 5,
+        trapLookbackBars: 20,
+        trapBreakMinPct: 1,
+        trapRecoverMaxAgeBars: 5,
+        trapSignificantLookbackBars: 60,
+        triangleMaxRangeRatio: 0.7,
+        recentPatternMaxAgeBars: 10,
+        lowLiquidityLotsThreshold: 500,
+      },
+      availableDays: 60,
+      windowDays: 60,
+      scannedStocks: 5,
+      missing: [],
+      gaps: [],
+      patterns: {
+        w_bottom: {
+          meta: {
+            name: 'W底（雙重底）',
+            desc: '兩個相近低點與中間高點形成的歷史日 K 幾何分類。',
+            structure: '底部幾何',
+          },
+          count: 2,
+          items: [patItem('6116', '彩晶', 12.3, -0.67, false), patItem('6491', '晶碩', 300.5, 1.25, true)],
+        },
+        inv_hs: {
+          meta: {
+            name: '頭肩底',
+            desc: '左肩、較低中點與右肩形成的歷史日 K 幾何分類。',
+            structure: '底部幾何',
+          },
+          count: 1,
+          items: [patItem('2330', '台積電', 600, 0.85, false)],
+        },
+        bottom_trap: {
+          meta: {
+            name: '破底翻（空頭陷阱）',
+            desc: '價格曾低於前低，之後於同一觀察窗收回的歷史狀態。',
+            structure: '跌破收回',
+          },
+          count: 0,
+          items: [],
+        },
+        m_top: {
+          meta: {
+            name: 'M頭（雙重頂）',
+            desc: '兩個相近高點與中間低點形成的歷史日 K 幾何分類。',
+            structure: '頂部幾何',
+          },
+          count: 1,
+          items: [patItem('2603', '長榮', 210, -1.1, false)],
+        },
+        hs_top: {
+          meta: {
+            name: '頭肩頂',
+            desc: '左肩、較高中點與右肩形成的歷史日 K 幾何分類。',
+            structure: '頂部幾何',
+          },
+          count: 0,
+          items: [],
+        },
+        false_break: {
+          meta: {
+            name: '假突破（多頭陷阱）',
+            desc: '價格曾高於前高，之後於同一觀察窗收回的歷史狀態。',
+            structure: '突破收回',
+          },
+          count: 0,
+          items: [],
+        },
+        triangle: {
+          meta: {
+            name: '收斂三角',
+            desc: '後段區間收斂於前段區間的歷史日 K 幾何分類。',
+            structure: '區間收斂',
+          },
+          count: 1,
+          items: [patItem('2454', '聯發科', 880, 0.3, false)],
+        },
+      },
+    };
+
+    /** 未就緒（日 K 累積不足）的誠實回應。 */
+    const NOT_READY: Record<string, unknown> = {
+      ok: true,
+      ready: false,
+      availableDays: 12,
+      minDaysRequired: 40,
+      reason: 'insufficient_data',
+      message: '日 K 資料累積中，尚無法辨識型態（目前 12 天，至少需 40 天）。',
+      criteria: { minBars: 40 },
+      gaps: [],
+    };
+
+    beforeEach(() => {
+      // jsdom 環境沒有全域 fetch；以最小可用替身回傳 ready fixture。
+      globalThis.fetch = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => READY,
+      })) as unknown as typeof fetch;
+    });
+    afterEach(() => {
+      globalThis.fetch = ORIG_FETCH;
+    });
+
+    it('h1、資料日與 7 個型態頁籤（計數由 API 決定）對齊 capture', async () => {
+      const c = await renderAtAsync(<PatternsPage />, '/patterns/');
       expect(c.querySelector('h1')?.textContent).toBe('K 線型態掃描');
-      expect(c.textContent).toContain('資料日：2026-09-24');
+      expect(c.textContent).toContain(`資料日：${READY.data_date}`);
       const tabs = texts(c, 'button[type="button"]');
+      // 標籤文字逐字對齊 capture；括號內計數來自 API（不寫死舊快照 38/3/3/10/11/14/17）。
       expect(tabs).toEqual([
-        'W底（雙重底）（38）',
-        '頭肩底（3）',
-        '破底翻（空頭陷阱）（3）',
-        'M頭（雙重頂）（10）',
-        '頭肩頂（11）',
-        '假突破（多頭陷阱）（14）',
-        '收斂三角（17）',
+        'W底（雙重底）（2）',
+        '頭肩底（1）',
+        '破底翻（空頭陷阱）（0）',
+        'M頭（雙重頂）（1）',
+        '頭肩頂（0）',
+        '假突破（多頭陷阱）（0）',
+        '收斂三角（1）',
       ]);
     });
 
-    it('W底為選取態（bg-accent），其餘為未選取態', () => {
-      const c = renderAt(<PatternsPage />, '/patterns/');
+    it('W底為選取態（bg-accent），其餘為未選取態', async () => {
+      const c = await renderAtAsync(<PatternsPage />, '/patterns/');
       const tabs = Array.from(c.querySelectorAll('button[type="button"]'));
       expect(tabs[0].className).toContain('bg-accent');
       expect(tabs[1].className).toContain('bg-surface');
     });
 
-    it('符合清單 38 列，首列 6116 彩晶、末列 6491 晶碩，連結 /signal/?id=', () => {
-      const c = renderAt(<PatternsPage />, '/patterns/');
+    it('符合清單依選取型態渲染（首列 6116、末列 6491），連結 /signal/?id=', async () => {
+      const c = await renderAtAsync(<PatternsPage />, '/patterns/');
       const rows = c.querySelectorAll('[data-stock-result-scope] li');
-      expect(rows.length).toBe(38);
+      expect(rows.length).toBe(2);
       const firstLink = rows[0].querySelector('a');
       expect(firstLink?.getAttribute('href')).toBe('/signal/?id=6116');
       expect(firstLink?.textContent).toBe('6116 彩晶');
-      const lastLink = rows[37].querySelector('a');
+      const lastLink = rows[1].querySelector('a');
       expect(lastLink?.getAttribute('href')).toBe('/signal/?id=6491');
       expect(lastLink?.textContent).toBe('6491 晶碩');
     });
 
-    it('量小標記與紅漲綠跌色類別對齊 capture', () => {
-      const c = renderAt(<PatternsPage />, '/patterns/');
-      expect(c.textContent).toContain('⚠量小');
+    it('量小標記只出現在 low_liquidity 的列，且漲跌色類別為紅漲綠跌', async () => {
+      const c = await renderAtAsync(<PatternsPage />, '/patterns/');
+      const rows = Array.from(c.querySelectorAll('[data-stock-result-scope] li'));
+      // ⚠量小 由 fixture 的 low_liquidity 驅動：只有 6491（true）帶標記。
+      const lowLi = rows.filter((r) => r.textContent?.includes('⚠量小'));
+      expect(lowLi.length).toBe(1);
+      expect(lowLi[0].textContent).toContain('6491');
+      // 每列各有一個漲跌色 span（紅漲綠跌）。
       const changes = c.querySelectorAll(
         '[data-stock-result-scope] li span.text-up, [data-stock-result-scope] li span.text-down',
       );
-      expect(changes.length).toBe(38);
-      // 首列 -0.67% 為綠跌
-      const first = c.querySelector('[data-stock-result-scope] li');
-      expect(first?.querySelector('.text-down')).not.toBeNull();
-      expect(first?.textContent).toContain('-0.67%');
+      expect(changes.length).toBe(2);
+      // 首列 -0.67% 為綠跌。
+      expect(rows[0].querySelector('.text-down')).not.toBeNull();
+      expect(rows[0].textContent).toContain('-0.67%');
     });
 
-    it('頁尾口徑註記對齊 capture', () => {
-      const c = renderAt(<PatternsPage />, '/patterns/');
+    it('頁尾口徑註記對齊 capture', async () => {
+      const c = await renderAtAsync(<PatternsPage />, '/patterns/');
       expect(c.textContent).toContain(
         '依已發生日 K 幾何條件分類；不提供方向、進出場或平台計算價位。',
       );
     });
+
+    it('日 K 累積不足時顯示誠實「累積中」提示，不造假型態清單', async () => {
+      globalThis.fetch = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => NOT_READY,
+      })) as unknown as typeof fetch;
+      const c = await renderAtAsync(<PatternsPage />, '/patterns/');
+      expect(c.textContent).toContain('日 K 資料累積中');
+      expect(c.textContent).toContain('12');
+      expect(c.textContent).toContain('40');
+      // 未就緒時不得出現任何型態頁籤或假造清單。
+      expect(texts(c, 'button[type="button"]').length).toBe(0);
+      expect(c.querySelectorAll('[data-stock-result-scope] li').length).toBe(0);
+      expect(c.textContent).not.toContain('符合的股票');
+    });
+
+    it('fetch 失敗時顯示錯誤態，不崩潰、不顯示假資料', async () => {
+      globalThis.fetch = jest.fn(async () => {
+        throw new Error('network');
+      }) as unknown as typeof fetch;
+      const c = await renderAtAsync(<PatternsPage />, '/patterns/');
+      expect(c.querySelector('h1')?.textContent).toBe('K 線型態掃描');
+      expect(c.textContent).toContain('暫時無法取得');
+      expect(c.querySelectorAll('[data-stock-result-scope] li').length).toBe(0);
+      expect(texts(c, 'button[type="button"]').length).toBe(0);
+    });
   });
 
   describe('/swing 波段條件', () => {
-    it('h1、資料週期與 16 個條件頁籤對齊 capture', () => {
-      const c = renderAt(<SwingPage />, '/swing/');
+    const ORIG_FETCH = globalThis.fetch;
+
+    /** 對齊 SwingItem schema 的卡片。 */
+    const swingCard = (
+      stock_id: string,
+      label: string,
+      extra: Record<string, unknown> = {},
+    ): Record<string, unknown> => ({ stock_id, label, ...extra });
+
+    /** 16 個條件頁籤（標題逐字對齊實站；計數由 items 決定）。 */
+    const TABS: Record<string, unknown>[] = [
+      {
+        id: 'whale_in',
+        title: '大戶持股比例增加',
+        desc: '400 張以上持股級距的四週比例增加。',
+        items: [
+          swingCard('2520', '2520 冠德', { change_pct: 1.09, big_pct: 45.2, k_pct: 30.1 }),
+          swingCard('2603', '2603 長榮', { change_pct: -0.5, big_pct: 40.0, k_pct: 20.0 }),
+        ],
+        note: '集保 1-5 目前僅提供當週資料，歷史週檔尚未累積，delta 與連續週數顯示「累積中」。',
+      },
+      { id: 'whale_out', title: '大戶持股比例減少', desc: '400 張以上持股級距的四週比例減少。', items: [] },
+      {
+        id: 'ma60',
+        title: '收盤／月線／季線排列',
+        desc: '資料日收盤 > MA20 > MA60，且 MA20 較前值增加。',
+        items: [swingCard('2330', '2330 台積電', { close: 600, ma20: 590, ma60: 580 })],
+      },
+      { id: 'pullback', title: '距月線正負 2%', desc: '資料日收盤高於 MA60，且距 MA20 在正負 2% 內。', items: [] },
+      { id: 'foreign', title: '外資連買', desc: '外資連續 3 個資料日買超。', items: [] },
+      { id: 'trust', title: '投信連買', desc: '投信連續 3 個資料日買超。', items: [] },
+      { id: 'both', title: '雙法人同買', desc: '當日外資＋投信同時買超。', items: [] },
+      { id: 'reclaim', title: '收盤由月線下方轉為上方', desc: '前一資料日收盤低於 MA20，本資料日收盤高於 MA20。', items: [] },
+      { id: 'break20', title: '20 日新高且量增', desc: '資料日收盤為近 20 日新高，且成交量符合量增條件。', items: [] },
+      { id: 'rs', title: '20 日區間報酬排序', desc: '近 20 日區間報酬與成交金額皆符合門檻。', items: [] },
+      { id: 'sector', title: '族群 20 日報酬排序', desc: '族群 20 日平均報酬及個股區間報酬符合門檻。', items: [] },
+      { id: 'margin', title: '融資餘額下降', desc: '融資餘額較約 20 日前下降，並列同期區間報酬。', items: [] },
+      { id: 'revenue', title: '月營收增減條件', desc: '最近月營收 MoM 與 YoY 符合頁面所列門檻。', items: [] },
+      { id: 'fill', title: '除權息填息', desc: '近期除權息個股相對參考價回升進度——填息／貼息觀察。', items: [] },
+      { id: 'badnews', title: '負面敘事與當日跌幅', desc: '新聞標題規則分類為負面，並列資料日實際漲跌幅。', items: [] },
+      { id: 'smart', title: '融資／大戶／量價交集', desc: '同時符合融資餘額、400 張以上持股級距與量價門檻。', items: [] },
+    ];
+
+    /** ready fixture（小樣本：僅 whale_in 2 張、ma60 1 張）。 */
+    const READY: Record<string, unknown> = {
+      ok: true,
+      data_date: '2026-10-01',
+      data_scope: '盤後歷史條件',
+      next_update: '下一交易日盤後',
+      week: '2026-09-25',
+      weeksAccumulated: 1,
+      tabs: TABS,
+      note: '全部為歷史公開資料的條件篩選；不提供未來方向、機率或平台產生價位。',
+    };
+
+    /** 未就緒（資料源無回應）的誠實回應：tabs 存在但 items 為空並帶原因。 */
+    const NOT_READY: Record<string, unknown> = {
+      ok: true,
+      data_date: '2026-10-01',
+      data_scope: '盤後歷史條件',
+      next_update: '下一交易日盤後',
+      week: '',
+      weeksAccumulated: 0,
+      tabs: [
+        {
+          id: 'whale_in',
+          title: '大戶持股比例增加',
+          desc: '400 張以上持股級距的四週比例增加。',
+          items: [],
+          unavailable_reason: 'TDCC 集保戶股權分散表上游無回應。',
+        },
+        {
+          id: 'ma60',
+          title: '收盤／月線／季線排列',
+          desc: '資料日收盤 > MA20 > MA60。',
+          items: [],
+          unavailable_reason: '全市場日 K 目前僅累積 5 個交易日，尚未達本條件所需的 61 日；資料累積中。',
+        },
+      ],
+      note: '全部為歷史公開資料的條件篩選；不提供未來方向、機率或平台產生價位。',
+    };
+
+    beforeEach(() => {
+      // jsdom 環境沒有全域 fetch；以最小可用替身回傳 ready fixture。
+      globalThis.fetch = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => READY,
+      })) as unknown as typeof fetch;
+    });
+    afterEach(() => {
+      globalThis.fetch = ORIG_FETCH;
+    });
+
+    it('h1、資料週期與條件頁籤（計數由 API 決定）對齊 capture', async () => {
+      const c = await renderAtAsync(<SwingPage />, '/swing/');
       expect(c.querySelector('h1')?.textContent).toBe('波段條件');
-      expect(c.textContent).toContain('集保資料週期：2026-09-18');
-      expect(c.textContent).toContain('價格資料日：2026-09-24');
-      // 單一維度／交集篩選 2 顆 + 16 個條件頁籤
+      expect(c.textContent).toContain(`集保資料週期：${READY.week}`);
+      expect(c.textContent).toContain(`價格資料日：${READY.data_date}`);
+      // 單一維度／交集篩選 2 顆 + 條件頁籤（數量由 fixture 決定，不寫死 18）。
       const tabLabels = texts(c, 'button[type="button"]');
-      expect(tabLabels.length).toBe(18);
+      expect(tabLabels.length).toBe(TABS.length + 2);
       expect(tabLabels).toContain('單一維度');
       expect(tabLabels).toContain('🔗 交集篩選');
       const holderTab = tabLabels.find((t) => t.startsWith('大戶持股比例增加'));
-      expect(holderTab).toBe('大戶持股比例增加(40)');
+      expect(holderTab).toBe('大戶持股比例增加(2)');
     });
 
-    it('大戶持股卡片 40 張，首卡 2520 冠德連結 /stock/?id=2520', () => {
-      const c = renderAt(<SwingPage />, '/swing/');
+    it('預設頁籤卡片依 API 渲染（首卡 2520 冠德），連結 /stock/?id=', async () => {
+      const c = await renderAtAsync(<SwingPage />, '/swing/');
       const cards = c.querySelectorAll('.grid.gap-3 > div');
-      expect(cards.length).toBe(40);
+      expect(cards.length).toBe(2);
       const firstLink = cards[0].querySelector('a');
       expect(firstLink?.getAttribute('href')).toBe('/stock/?id=2520');
       expect(firstLink?.textContent).toContain('2520 冠德');
-      expect(firstLink?.textContent).toContain('12 週');
     });
 
-    it('卡片左邊框依 4 週報酬紅漲綠跌（text-up → border-l-up）', () => {
-      const c = renderAt(<SwingPage />, '/swing/');
+    it('卡片漲跌數值依紅漲綠跌上色（text-up／text-down）', async () => {
+      const c = await renderAtAsync(<SwingPage />, '/swing/');
       const cards = c.querySelectorAll('.grid.gap-3 > div');
-      expect(cards[0].className).toContain('border-l-up');
-      expect(cards[0].textContent).toContain('4週 +1.09%');
+      // 正報酬 → 紅漲。
+      expect(cards[0].querySelector('.text-up')).not.toBeNull();
+      expect(cards[0].textContent).toContain('+1.09%');
+      // 負報酬 → 綠跌。
+      expect(cards[1].querySelector('.text-down')).not.toBeNull();
+      expect(cards[1].textContent).toContain('-0.50%');
     });
 
-    it('頁尾口徑註記對齊 capture', () => {
-      const c = renderAt(<SwingPage />, '/swing/');
+    it('頁尾口徑註記對齊 capture', async () => {
+      const c = await renderAtAsync(<SwingPage />, '/swing/');
       expect(c.textContent).toContain(
         '全部為歷史公開資料的條件篩選；不提供未來方向、機率或平台產生價位。',
       );
+    });
+
+    it('資料源未就緒時顯示該條件的誠實說明，不造假卡片', async () => {
+      globalThis.fetch = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => NOT_READY,
+      })) as unknown as typeof fetch;
+      const c = await renderAtAsync(<SwingPage />, '/swing/');
+      expect(c.textContent).toContain('TDCC 集保戶股權分散表上游無回應');
+      // 未就緒時不得渲染任何假造卡片。
+      expect(c.querySelectorAll('.grid.gap-3 > div').length).toBe(0);
+    });
+
+    it('fetch 失敗時顯示錯誤態，不崩潰、不顯示假資料', async () => {
+      globalThis.fetch = jest.fn(async () => {
+        throw new Error('network');
+      }) as unknown as typeof fetch;
+      const c = await renderAtAsync(<SwingPage />, '/swing/');
+      expect(c.querySelector('h1')?.textContent).toBe('波段條件');
+      expect(c.textContent).toContain('暫時無法取得');
+      expect(c.querySelectorAll('.grid.gap-3 > div').length).toBe(0);
     });
   });
 
