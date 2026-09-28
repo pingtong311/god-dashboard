@@ -62,6 +62,20 @@ function renderAt(element: ReactElement, pathname: string): HTMLDivElement {
   return container;
 }
 
+/**
+ * 非同步渲染：等 Client 元件 useEffect 內的 fetch 完成後再回傳容器。
+ * 用於 /dividend、/block-trades 等「Server 頁面 + Client 資料區」頁面。
+ */
+async function renderAtAsync(element: ReactElement, pathname: string): Promise<HTMLDivElement> {
+  mockUsePathname.mockReturnValue(pathname);
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  await act(async () => {
+    createRoot(container).render(element);
+  });
+  return container;
+}
+
 /** 取得容器內所有符合 selector 的文字內容（trim 後）。 */
 function texts(container: HTMLElement, selector: string): string[] {
   return Array.from(container.querySelectorAll<HTMLElement>(selector)).map((el) =>
@@ -266,54 +280,119 @@ describe('選股股票群組 9 頁', () => {
   });
 
   describe('/dividend 除權息行事曆', () => {
-    it('h1 與「即將除權息（30 天內）」標題對齊 capture，無次導覽', () => {
-      const c = renderAt(<DividendPage />, '/dividend/');
+    const ORIG_FETCH = globalThis.fetch;
+    beforeEach(() => {
+      // jsdom 環境沒有 Response 建構子，改用最小可用的替身物件。
+      globalThis.fetch = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          available: true,
+          items: [
+            { stock_id: '1235', label: '1235 興泰', industry: '食品工業', ex_date: '2026-09-24', days_left: 0, cash_dividend: 0.5, stock_dividend: 0.5, close: 35.5, cash_yield_pct: 1.41 },
+            { stock_id: '9927', label: '9927 泰銘', industry: '其他', ex_date: '2026-10-01', days_left: 7, cash_dividend: 5, stock_dividend: 0, close: 70.2, cash_yield_pct: 7.12 },
+            { stock_id: '6834', label: '6834 天二科技', industry: '電子零組件業', ex_date: '2026-10-02', days_left: 8, cash_dividend: 0, stock_dividend: 0, close: null, cash_yield_pct: null },
+          ],
+          note: '除息＝發現金、除權＝發股票…非投資建議。',
+        }),
+      })) as unknown as typeof fetch;
+    });
+    afterEach(() => {
+      globalThis.fetch = ORIG_FETCH;
+    });
+
+    it('h1 與「即將除權息（30 天內）」標題對齊 capture，無次導覽', async () => {
+      const c = await renderAtAsync(<DividendPage />, '/dividend/');
       expect(c.querySelector('h1')?.textContent).toBe('除權息行事曆');
       expect(c.querySelector('h2')?.textContent).toBe('即將除權息（30 天內）');
       expect(c.querySelector('nav[aria-label="市場分類"]')).toBeNull();
       expect(c.querySelector('nav[aria-label="相關功能切換"]')).toBeNull();
     });
 
-    it('22 列除息行程，首列 1235 興泰含配股註記，連結個股頁', () => {
-      const c = renderAt(<DividendPage />, '/dividend/');
+    it('顯示自產真實除息列，首列 1235 興泰含配股註記，連結個股頁', async () => {
+      const c = await renderAtAsync(<DividendPage />, '/dividend/');
       const rows = c.querySelectorAll('.table-scroll li');
-      expect(rows.length).toBe(22);
+      expect(rows.length).toBe(3);
       const first = rows[0];
       expect(first.textContent).toContain('09-24');
       expect(first.querySelector('a')?.getAttribute('href')).toBe('/stock/?id=1235');
       expect(first.textContent).toContain('含配股 0.5 元');
     });
 
-    it('高殖利率標記 text-up（9927 泰銘 7.12%）', () => {
-      const c = renderAt(<DividendPage />, '/dividend/');
+    it('高殖利率標記 text-up（9927 泰銘 7.12%）', async () => {
+      const c = await renderAtAsync(<DividendPage />, '/dividend/');
       const rows = Array.from(c.querySelectorAll('.table-scroll li'));
       const row = rows.find((r) => r.textContent?.includes('9927'));
       expect(row?.textContent).toContain('7.12%');
       expect(row?.querySelector('.text-up')).not.toBeNull();
     });
+
+    it('缺收盤價的列殖利率顯示「—」，不填 0', async () => {
+      const c = await renderAtAsync(<DividendPage />, '/dividend/');
+      const rows = Array.from(c.querySelectorAll('.table-scroll li'));
+      const row = rows.find((r) => r.textContent?.includes('6834'));
+      expect(row?.textContent).toContain('—');
+    });
   });
 
   describe('/block-trades 鉅額交易', () => {
-    it('h1、資料日與更新時間對齊 capture，無次導覽', () => {
-      const c = renderAt(<BlockTradesPage />, '/block-trades/');
+    const ORIG_FETCH = globalThis.fetch;
+    beforeEach(() => {
+      // jsdom 環境沒有 Response 建構子，改用最小可用的替身物件。
+      globalThis.fetch = jest.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          available: true,
+          date: '2026-09-24',
+          data_scope: '盤後',
+          next_update: '下一交易日 23:08',
+          note: '盤後鉅額成交金額加總，不是進出場。',
+          items: [
+            { stock_id: '6669', label: '6669 緯穎', n: 1, money_yi: 15.19 },
+            { stock_id: '1402', label: '1402 遠東新', n: 1, money_yi: 0.18 },
+          ],
+        }),
+      })) as unknown as typeof fetch;
+    });
+    afterEach(() => {
+      globalThis.fetch = ORIG_FETCH;
+    });
+
+    it('h1、資料日與更新時間對齊 capture，無次導覽', async () => {
+      const c = await renderAtAsync(<BlockTradesPage />, '/block-trades/');
       expect(c.querySelector('h1')?.textContent).toBe('鉅額交易');
       expect(c.textContent).toContain('資料日');
       expect(c.textContent).toContain('下次更新 下一交易日 23:08');
       expect(c.querySelector('nav[aria-label="市場分類"]')).toBeNull();
     });
 
-    it('資料日 24 檔清單，首列 6669 緯穎 15.19 億，末列 1402 遠東新', () => {
-      const c = renderAt(<BlockTradesPage />, '/block-trades/');
+    it('顯示自產真實清單（金額由大到小），連結個股頁', async () => {
+      const c = await renderAtAsync(<BlockTradesPage />, '/block-trades/');
       const rows = c.querySelectorAll('.data-panel ul > li');
-      expect(rows.length).toBe(24);
-      expect(c.querySelector('h2')?.textContent).toBe('資料日 24 檔');
+      expect(rows.length).toBe(2);
+      expect(c.querySelector('h2')?.textContent).toBe('資料日 2 檔');
       const first = rows[0].querySelector('a');
       expect(first?.getAttribute('href')).toBe('/stock/?id=6669');
       expect(first?.textContent).toContain('6669 緯穎');
       expect(first?.textContent).toContain('15.19 億');
-      const last = rows[23].querySelector('a');
+      const last = rows[1].querySelector('a');
       expect(last?.textContent).toContain('1402 遠東新');
       expect(last?.textContent).toContain('0.18 億');
+    });
+
+    it('載入中顯示誠實骨架（role="status"），不造假數字', () => {
+      // fetch 永不 resolve，藉此捕捉載入中狀態。
+      globalThis.fetch = jest.fn(() => new Promise<Response>(() => {})) as unknown as typeof fetch;
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      act(() => {
+        createRoot(container).render(<BlockTradesPage />);
+      });
+      const status = container.querySelector('[role="status"]');
+      expect(status).not.toBeNull();
+      expect(status?.textContent).toContain('正在整理鉅額交易資料…');
+      expect(container.querySelectorAll('.data-panel ul > li').length).toBe(0);
     });
   });
 
