@@ -143,7 +143,7 @@ describe('SOURCE_LABELS', () => {
   it('四種來源都有中文短標籤', () => {
     expect(SOURCE_LABELS['self-produced']).toBe('本站自產');
     expect(SOURCE_LABELS['site-mirror']).toBe('實站快照');
-    expect(SOURCE_LABELS['site-unreliable']).toBe('本站不提供');
+    expect(SOURCE_LABELS['site-unreliable']).toBe('本站刻意不提供');
     expect(SOURCE_LABELS['absent']).toBe('資料未入庫');
   });
 });

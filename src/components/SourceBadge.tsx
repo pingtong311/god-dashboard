@@ -10,7 +10,9 @@
  * 四種來源的文案（繁體中文、讓一般使用者看懂）：
  *   self-produced    → 「資料來源：本站自產（<可讀上游名稱>）」
  *   site-mirror      → 「資料來源：實站快照（基準日 <snapshot_date>，非即時[；<note>]）」
- *   site-unreliable  → 「本站不提供此欄位：<omitted_reason>」
+ *   site-unreliable  → 「本站刻意不提供此欄位：<omitted_reason>」
+ *                      （＝實站欄位內容本身不可信，我們刻意不借、不輸出；
+ *                        與「算不出來」(site-mirror) 及「未入庫」(absent) 不同）
  *   absent           → 「資料未入庫」
  *
  * 為 Server Component（無 client state），可直接在 Server / Client 頁面使用。
@@ -68,7 +70,7 @@ export default function SourceBadge({ provenance, note, className }: SourceBadge
     case 'site-unreliable':
       body = (
         <>
-          <b className="text-ink">本站不提供此欄位</b>
+          <b className="text-ink">本站刻意不提供此欄位</b>
           {omitted_reason ? `：${omitted_reason}` : ''}
         </>
       );

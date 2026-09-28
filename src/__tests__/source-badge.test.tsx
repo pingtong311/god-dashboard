@@ -51,14 +51,14 @@ describe('SourceBadge', () => {
     expect(c.querySelector('[data-source="site-mirror"]')).not.toBeNull();
   });
 
-  it('site-unreliable → 「本站不提供此欄位」+ omitted_reason', () => {
+  it('site-unreliable → 「本站刻意不提供此欄位」+ omitted_reason', () => {
     const p: Provenance = {
       source: 'site-unreliable',
       upstream: '',
       omitted_reason: '實站標記內部矛盾（一致率 85.0% 僅等於全部判中性）。',
     };
     const c = render(<SourceBadge provenance={p} />);
-    expect(c.textContent).toContain('本站不提供此欄位');
+    expect(c.textContent).toContain('本站刻意不提供此欄位');
     expect(c.textContent).toContain('內部矛盾');
     expect(c.querySelector('[data-source="site-unreliable"]')).not.toBeNull();
   });
