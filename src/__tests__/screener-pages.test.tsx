@@ -323,6 +323,18 @@ describe('選股股票群組 9 頁', () => {
       ]);
     });
 
+    it('hero 資料日列與「無下次更新」對齊 capture', async () => {
+      const c = await renderAtAsync(<PatternsPage />, '/patterns/');
+      // 規格（來自 capture patterns.html，hero 第 3 個 <p>）：
+      //   <p class="mt-2 text-sm text-muted">資料日：{date}｜盤後日 K</p>
+      // capture 中「盤後日 K」×1。
+      const heroLine = c.querySelector('section.hero-hud p.mt-2.text-sm.text-muted');
+      expect(heroLine?.textContent).toBe(`資料日：${READY.data_date}｜盤後日 K`);
+      // 規格（來自 capture patterns.html）：不得出現「下次更新」（本站自創，實站 patterns 無）。
+      // capture 中「下次更新」×0。
+      expect(c.textContent).not.toContain('下次更新');
+    });
+
     it('W底為選取態（bg-accent），其餘為未選取態', async () => {
       const c = await renderAtAsync(<PatternsPage />, '/patterns/');
       const tabs = Array.from(c.querySelectorAll('button[type="button"]'));
@@ -411,8 +423,22 @@ describe('選股股票群組 9 頁', () => {
         title: '大戶持股比例增加',
         desc: '400 張以上持股級距的四週比例增加。',
         items: [
-          swingCard('2520', '2520 冠德', { change_pct: 1.09, big_pct: 45.2, k_pct: 30.1 }),
-          swingCard('2603', '2603 長榮', { change_pct: -0.5, big_pct: 40.0, k_pct: 20.0 }),
+          // whale item 欄位（對齊實站 schema：無 change_pct／ret20；有 delta_1w／delta_4w／up_weeks）：
+          // 首卡 delta_4w 為正（紅漲 border-l-up），次卡為負（綠跌 border-l-down）。
+          swingCard('2520', '2520 冠德', {
+            big_pct: 74.97,
+            delta_1w: 0.41,
+            delta_4w: 1.09,
+            up_weeks: 12,
+            industry: '建材營造',
+          }),
+          swingCard('2603', '2603 長榮', {
+            big_pct: 40.0,
+            delta_1w: -0.2,
+            delta_4w: -0.5,
+            up_weeks: null,
+            industry: '航運業',
+          }),
         ],
         note: '集保 1-5 目前僅提供當週資料，歷史週檔尚未累積，delta 與連續週數顯示「累積中」。',
       },
@@ -512,15 +538,52 @@ describe('選股股票群組 9 頁', () => {
       expect(firstLink?.textContent).toContain('2520 冠德');
     });
 
-    it('卡片漲跌數值依紅漲綠跌上色（text-up／text-down）', async () => {
+    it('卡片顏色邊框（border-l-up／border-l-down）與 p-5 雙空格對齊 capture', async () => {
       const c = await renderAtAsync(<SwingPage />, '/swing/');
       const cards = c.querySelectorAll('.grid.gap-3 > div');
-      // 正報酬 → 紅漲。
+      // 規格（來自 capture swing.html）：卡片 class 為 `… p-5  border-l-2 border-l-up`
+      // ——「p-5」後為「兩個空格」（實站動態 class 佔位留下的），capture 中 `p-5  border-l-2`×40。
+      expect(cards[0].className).toContain('p-5  border-l-2');
+      // 規格（來自 capture）：依 4 週報酬紅漲綠跌——`border-l-up`×40、`border-l-line`×0。
+      expect(cards[0].className).toContain('border-l-up'); // 正報酬 → 紅漲
+      expect(cards[1].className).toContain('border-l-down'); // 負報酬 → 綠跌
+    });
+
+    it('卡片右上角 4週 前綴與紅漲綠跌色對齊 capture', async () => {
+      const c = await renderAtAsync(<SwingPage />, '/swing/');
+      const cards = c.querySelectorAll('.grid.gap-3 > div');
+      // 規格（來自 capture swing.html）：右上角主數值含「4週 」前綴（capture 中「4週」×40）。
+      expect(cards[0].textContent).toContain('4週 +1.09%');
+      expect(cards[1].textContent).toContain('4週 -0.50%');
+      // 紅漲綠跌：正為 text-up（紅）、負為 text-down（綠）。
       expect(cards[0].querySelector('.text-up')).not.toBeNull();
-      expect(cards[0].textContent).toContain('+1.09%');
-      // 負報酬 → 綠跌。
       expect(cards[1].querySelector('.text-down')).not.toBeNull();
-      expect(cards[1].textContent).toContain('-0.50%');
+    });
+
+    it('三顆統計磚標籤為 大戶持股／本週增減／連續週數（對齊 capture）', async () => {
+      const c = await renderAtAsync(<SwingPage />, '/swing/');
+      const cards = c.querySelectorAll('.grid.gap-3 > div');
+      // 規格（來自 capture swing.html）：磚標籤固定為此三者（capture 中「連續週數」×40）。
+      const labels = Array.from(cards[0].querySelectorAll('[class*="text-[11px]"]')).map((el) =>
+        el.textContent?.trim(),
+      );
+      expect(labels).toEqual(['大戶持股', '本週增減', '連續週數']);
+      // 連續週數值為 `{n} 週`（fixture up_weeks=12）。
+      expect(cards[0].textContent).toContain('12 週');
+    });
+
+    it('不得出現自創欄位（千張持股／{n} 檔／note 橫幅／whale hint）', async () => {
+      const c = await renderAtAsync(<SwingPage />, '/swing/');
+      const cards = c.querySelectorAll('.grid.gap-3 > div');
+      // 規格（來自 capture swing.html）：`千張持股`×0——本站自創，實站無此磚。
+      expect(c.textContent).not.toContain('千張持股');
+      // 規格（來自 capture）：`檔`×0——不得出現「{n} 檔」計數列。
+      expect(c.textContent).not.toContain('檔');
+      // 規格（來自 capture）：`note`×0——不得出現逐頁籤的 note 橫幅。
+      // fixture 的 whale_in 帶有 note 字串；若 UI 渲染 note 橫幅，此斷言會失敗。
+      expect(c.textContent).not.toContain('集保 1-5 目前僅提供當週資料');
+      // 規格（來自 capture）：`text-[12px]`×0——whale 卡片不得有 hint 區塊（實站 whale item 無 hint）。
+      expect(cards[0].outerHTML).not.toContain('text-[12px]');
     });
 
     it('頁尾口徑註記對齊 capture', async () => {
