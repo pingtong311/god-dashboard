@@ -66,6 +66,7 @@ export interface MarginMaintResponse {
   items_note: string;
   price_date: string;
   method: string;
+  gaps: string[];
   provenance: { source: string; upstream: string; upstreams: string[] };
   fetchedAt: string;
 }
@@ -283,6 +284,20 @@ const ITEMS_NOTE =
 const METHOD =
   'market_maintenance = Σ(個股融資今日餘額張 × 1000 × 收盤價) ÷ 市場融資金額(仟元) × 1000 × 100%';
 
+/**
+ * 「我們查過什麼」的死路清單（本身即資產，上游封閉後不可能重走）。
+ * 逐檔融資維持率確認**不存在**於任何免費官方端點。
+ */
+const MARGIN_GAPS: string[] = [
+  '逐檔融資金額（元）：不存在於公開端點，故逐檔維持率無法直接取得。',
+  'TWSE openapi `exchangeReport/MI_MARGN`：逐檔僅「交易單位(張)」欄（買進/賣出/現金償還/前日餘額/今日餘額/限額），無金額。',
+  'TWSE rwd `marginTrading/MI_MARGN?selectType=ALL`：第 1 表「信用交易統計」僅提供全市場融資金額(仟元)；第 2 表逐檔仍僅張。selectType=MS/01/02/03 僅依產業別過濾，欄位不變。',
+  'TWSE openapi swagger（143 paths）：融資類端點僅 `exchangeReport/MI_MARGN` 一個。',
+  'TPEx openapi `tpex_mainboard_margin_balance`：有 MarginPurchaseUtilizationRate（融資使用率），但無金額、無維持率。',
+  'TPEx `tpex_margin_balance`、`tpex_margin_transactions`：皆回 HTTP 302（不存在）。',
+  '結論：逐檔維持率非官方欄位；本站在此僅提供可自算的大盤維持率，個股維持率誠實留空（不以 0 代替）。',
+];
+
 export async function GET(_req: NextRequest): Promise<NextResponse> {
   try {
     const [margn, priceData] = await Promise.all([fetchLatestMiMargn(), fetchClosingPrices()]);
@@ -309,6 +324,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
       items_note: ITEMS_NOTE,
       price_date: priceData?.date ?? '',
       method: METHOD,
+      gaps: MARGIN_GAPS,
       provenance: {
         source: 'self-produced',
         upstream: TWSE_MI_MARGN,
