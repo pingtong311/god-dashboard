@@ -18,6 +18,34 @@
  * BFIAUU 涵蓋「單一證券」與「配對交易」等交易別；實測 2026-09-24 有 21 檔
  * （實站同日 24 檔，另 3 檔不在 BFIAUU 中）。本層只陳述上游實際提供者，
  * 上游沒給的代號就不會出現，絕不以 0 或隨機值補齊。
+ *
+ * 已知缺口（gaps）：實站 block-trades 為「TWSE 上市 + TPEX 上櫃」合併。實測
+ * 2026-09-24 實站 24 檔中，5274 信驊、5347 世界、6187 萬潤 為**上櫃（TPEX）**股，
+ * 不在 TWSE BFIAUU 內。本層目前僅涵蓋 TWSE 上市部分，上櫃部分未接入 → 於
+ * 回傳的 gaps 欄位誠實標註，不以 0 或猜測值補齊。
+ *
+ * ── TPEX 上櫃鉅額交易端點調查紀錄（2026-09-28 實測，供後續接手）─────────────
+ *   ✅ 有找到、但**只有全市場分類彙總、無個股代號**（故不可用於個股清單）：
+ *      https://www.tpex.org.tw/www/zh-tw/blockTrade/dailyStat?date=YYYY/MM/DD&response=json
+ *      回 { date, tables:[{ title:'鉅額交易日成交量值統計',
+ *        fields:[成交日期,類別,成交筆數,成交股數,成交金額(元),占全市場比重%],
+ *        data:[[ '1150901','逐筆交易-組合型','0','0','0',... ], ...] }] }
+ *      （類別＝逐筆/配對 × 單一型/組合型；**完全沒有證券代號**）
+ *   ✅ 有找到、但**只封存遠古日期**的「個股鉅額交易」靜態頁（Big5 編碼）：
+ *      https://hist.tpex.org.tw/Hist/STOCK/BLOCK_TRADE/DAILY_TRADE_INFOR/Huge_<民國YYYMMDD>.html
+ *      例：Huge_951229.html（2006-12-29）確實有逐筆「資料種類/證券代號/證券名稱/
+ *      成交價格/成交股數/成交值(元)/成交時間」；但 2026 年日期（Huge_1150924.html
+ *      等）一律 302 → https://www.tpex.org.tw/storage/error.htm，封存已停止更新。
+ *   ❌ 已試但 302（路徑不存在）：
+ *      /www/zh-tw/blockTrade/{stockStat,detail,list,dailyDetail,stock,dailyStock,
+ *        stockDaily,detailStat,info,stockInfo,statistic,dailyStatStock,individualStat,
+ *        tradeDetail,huge,HUGE}
+ *      /www/zh-tw/afterTrading/{blockTrade,blockTrading,block,bigTrade,blockDeal,blockTrades}
+ *      /www/zh-tw/{mainboard/blockTrade,trading/blockTrade,blockTrade/otc}
+ *      /openapi/v1/tpex_block_trade
+ *   ❌ 新站區塊子頁 /zh-tw/mainboard/trading/block-trading/{stock,detail,list,query,daily}.html → 302
+ *   結論：**未找到可用的「TPEX 上櫃個股鉅額交易」公開端點**；上櫃標的缺漏，如實標註。
+ * ───────────────────────────────────────────────────────────────────────────
  */
 
 /** 證交所鉅額交易 rwd 端點基底（勿加尾斜線）。 */
@@ -53,6 +81,8 @@ export interface BlockTradeData {
   note: string;
   /** 依成交金額由大到小排序的統計列 */
   items: BlockTradeItem[];
+  /** 已知資料缺口（誠實揭露；無缺口時為空陣列） */
+  gaps: string[];
 }
 
 /** 資料層回傳：整頁資料 + 實際命中的上游 URL（供 provenance 標記）。 */
@@ -66,6 +96,15 @@ export interface BlockTradeResult {
 const DATA_SCOPE = '盤後';
 const NEXT_UPDATE = '下一交易日 23:08';
 const NOTE = '盤後鉅額成交金額加總，不是進出場。';
+
+/**
+ * 已知資料缺口（誠實揭露）。
+ * 實站為 TWSE 上市 + TPEX 上櫃合併；上櫃鉅額交易端點未找到（調查紀錄見檔頭註解），
+ * 故本清單僅涵蓋 TWSE 上市 BFIAUU，上櫃標的（如 5274/5347/6187）缺漏。
+ */
+const GAPS: string[] = [
+  'TPEX 上櫃個股鉅額交易端點未找到，故上櫃標的缺漏；本清單僅涵蓋證交所（上市）BFIAUU 鉅額交易。',
+];
 
 /** 產生證交所 rwd 端點要的西元日期（YYYYMMDD）。 */
 export function formatTwseDate(date: Date): string {
@@ -183,7 +222,15 @@ async function fetchLatestBlockTrades(): Promise<BlockTradeResult | null> {
 
       const date = formatDisplayDate(String(raw.date || ymd));
       return {
-        data: { available: true, date, data_scope: DATA_SCOPE, next_update: NEXT_UPDATE, note: NOTE, items },
+        data: {
+          available: true,
+          date,
+          data_scope: DATA_SCOPE,
+          next_update: NEXT_UPDATE,
+          note: NOTE,
+          items,
+          gaps: GAPS,
+        },
         upstream: url,
       };
     } catch {

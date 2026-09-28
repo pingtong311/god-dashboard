@@ -352,6 +352,7 @@ describe('選股股票群組 9 頁', () => {
             { stock_id: '6669', label: '6669 緯穎', n: 1, money_yi: 15.19 },
             { stock_id: '1402', label: '1402 遠東新', n: 1, money_yi: 0.18 },
           ],
+          gaps: [],
         }),
       })) as unknown as typeof fetch;
     });

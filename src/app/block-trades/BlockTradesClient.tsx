@@ -150,6 +150,15 @@ export default function BlockTradesClient(): React.ReactElement {
           </ul>
         )}
       </div>
+      {status === 'ok' && data && data.gaps.length > 0 && (
+        <div className="mt-3 grid gap-1">
+          {data.gaps.map((gap, i) => (
+            <p key={i} className="text-[11.5px] leading-relaxed text-muted">
+              ※ {gap}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

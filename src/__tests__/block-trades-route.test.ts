@@ -94,6 +94,7 @@ describe('GET /api/skynet/block-trades', () => {
       data_scope: string;
       next_update: string;
       items: Array<{ stock_id: string; money_yi: number }>;
+      gaps: string[];
       provenance: { source: string; upstream: string };
       fetchedAt: string;
     };
@@ -104,6 +105,9 @@ describe('GET /api/skynet/block-trades', () => {
     expect(body.next_update).toBe('下一交易日 23:08');
     expect(body.items.map((i) => i.stock_id)).toEqual(['2330', '6669']);
     expect(body.items[0].money_yi).toBe(20);
+    // 已知缺口如實標註（TPEX 上櫃未接入），不以 0 補齊
+    expect(Array.isArray(body.gaps)).toBe(true);
+    expect(body.gaps.some((g) => g.includes('TPEX'))).toBe(true);
     expect(body.provenance.source).toBe('self-produced');
     expect(body.provenance.upstream).toContain('BFIAUU');
     expect(body.provenance.upstream).toContain('date=');

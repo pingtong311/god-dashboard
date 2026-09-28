@@ -7,7 +7,11 @@
  * 形狀（成功）：
  *   { available:true, date:'YYYY-MM-DD', data_scope:'盤後', next_update:'下一交易日 23:08',
  *     note:'盤後鉅額成交金額加總，不是進出場。', items:[{stock_id,label,n,money_yi}],
+ *     gaps:['<已知缺口說明>'],
  *     provenance:{ source:'self-produced', upstream:'<實際 URL>' }, fetchedAt:'<ISO>' }
+ *
+ * 已知缺口（gaps）：本清單僅涵蓋 TWSE 上市 BFIAUU；TPEX 上櫃個股鉅額交易端點
+ * 未找到（調查紀錄見 block-trades-data.ts 檔頭註解），故上櫃標的缺漏，如實標註。
  *
  * 失敗（上游全數失敗／無資料）：
  *   502 + { ok:false, error:'block_trades_upstream_error' }（絕不回假數字）
