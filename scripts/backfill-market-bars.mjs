@@ -93,6 +93,7 @@ function printHelp() {
   --verify        每次寫入後讀回比對
   --dry-run       只抓取組裝，不寫 KV
   --min-gap-ms=N  上游請求最小間隔毫秒（預設 400）
+  --retries=N     單邊無資料時的重試次數（預設 2；用於對抗上游間歇性限流）
   --namespace-id  覆寫 KV namespace id`);
 }
 
@@ -104,6 +105,7 @@ function parseArgs(argv) {
     verify: false,
     dryRun: false,
     minGapMs: 400,
+    retries: 2,
     namespaceId: '',
   };
   // 同時支援 `--flag=value` 與 `--flag value` 兩種寫法（用法說明用等號形式，
@@ -128,6 +130,10 @@ function parseArgs(argv) {
       const { value, next } = readValue(raw, i);
       args.minGapMs = Number.parseInt(value, 10);
       i = next;
+    } else if (name === '--retries') {
+      const { value, next } = readValue(raw, i);
+      args.retries = Number.parseInt(value, 10);
+      i = next;
     } else if (name === '--namespace-id') {
       const { value, next } = readValue(raw, i);
       args.namespaceId = value;
@@ -142,6 +148,7 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(args.days) || args.days <= 0) args.days = 120;
   if (!Number.isFinite(args.minGapMs) || args.minGapMs < 0) args.minGapMs = 400;
+  if (!Number.isFinite(args.retries) || args.retries < 0) args.retries = 2;
   return args;
 }
 
@@ -315,7 +322,7 @@ async function main() {
     lastReqAt = Date.now();
   };
 
-  const summary = { stored: 0, skipped: 0, noData: 0, failed: 0 };
+  const summary = { stored: 0, skipped: 0, noData: 0, partial: 0, failed: 0 };
   const startedAt = Date.now();
 
   for (const ymd of window) {
@@ -334,23 +341,38 @@ async function main() {
       continue;
     }
 
-    let twse;
-    let tpex;
-    try {
-      await throttle();
-      twse = await fetchTwseDay(date);
-      await throttle();
-      tpex = await fetchTpexDay(date);
-    } catch (err) {
-      console.log(`✘ ${ymd}  抓取失敗：${err.message}`);
-      summary.failed += 1;
-      continue;
+    // 抓取 TWSE + TPEX；若只有一邊成功（另一邊疑似被上游間歇性限流），
+    // 針對失敗那側重試（--retries 次），避免把「被限流的空資料」誤存成真資料。
+    // 兩邊都空 → 很可能是真休市日，不重試（省上游請求）。
+    const fetchSide = async (fn) => {
+      try {
+        await throttle();
+        return await fn(date);
+      } catch {
+        return null;
+      }
+    };
+    let twse = await fetchSide(fetchTwseDay);
+    let tpex = await fetchSide(fetchTpexDay);
+    // 只要不是「兩邊都拿到」就重試（涵蓋單邊限流與雙邊同時被限流）；
+    // 真休市日會在重試耗盡後被判為 noData（多花幾次請求，換取不因限流漏資料）。
+    for (let r = 0; r < args.retries && !(twse && tpex); r += 1) {
+      await sleep(1500);
+      if (!twse) twse = await fetchSide(fetchTwseDay);
+      if (!tpex) tpex = await fetchSide(fetchTpexDay);
     }
 
     if (!twse && !tpex) {
       console.log(`⚠ ${ymd}  上游無資料（可能為未收錄之休市日）`);
       summary.noData += 1;
       continue;
+    }
+    if (!twse || !tpex) {
+      // 重試後仍單邊無資料：仍寫入（有資料那側是真的），但明確標記，不假裝完整。
+      console.log(
+        `⚠ ${ymd}  單邊無資料（TWSE=${twse ? 'ok' : '空'}、TPEX=${tpex ? 'ok' : '空'}）——重試 ${args.retries} 次後仍缺`,
+      );
+      summary.partial += 1;
     }
 
     const tradeDate = twse?.tradeDate ?? tpex?.tradeDate ?? ymd;
@@ -406,6 +428,7 @@ async function main() {
   console.log(`成功寫入：${summary.stored}`);
   console.log(`跳過    ：${summary.skipped}（已存在或非交易日）`);
   console.log(`無資料  ：${summary.noData}`);
+  console.log(`單邊缺  ：${summary.partial}（重試後仍只有 TWSE 或 TPEX 一邊有資料）`);
   console.log(`失敗    ：${summary.failed}`);
   console.log(`耗時    ：${elapsed}s（平均 ${perDay}s/日）`);
 
