@@ -16,12 +16,22 @@
  * 【資料策略（誠實，不造假）】
  * - 策略目錄 19 筆：資料（key/name/category/desc）逐字取自實站 API 快照
  *   captured/login-capture/api/blackstockai.com_api_strategies_.json，以靜態呈現。
- *   註：快照中 key=short_inc 的 name 為「融券大增」、desc 為「融券餘額較前一資料日
- *   增加 ≥ 5%。」，與 key（short＝融券）及 desc 一致；task 交辦清單把此筆寫成
- *   「融資大增」應為誤記，故本頁照快照原文呈現，不自作更正。
+ *   註（命名勘誤，已更正）：原推論把 key=short_inc 記成「融資大增」，是**語意相反**的
+ *   錯誤（融資＝看多、融券＝看空），會讓條件選股結果反向。**已更正**：實站 API 快照中
+ *   short_inc 的 name 為「融券大增」、desc 為「融券餘額較前一資料日增加 ≥ 5%。」，
+ *   與 key（short＝融券）一致。更正依據＝實站 API 快照的 key
+ *   （captured/login-capture/api/blackstockai.com_api_strategies_.json）。
+ *   同理，news 第二筆的 key 為 bad_news_hold（非 bad_news_vol）。請勿再依舊 spec 改回。
  * - 實站本頁另含兩區塊「融資／大戶／量價條件交集」與「估值條件篩選」，其資料來自
  *   會員 API（/api/smart-accumulation、/api/value-screen）。本複刻站未接此資料源，
  *   故以「本站無法提供」的靜態說明呈現——不用 0 代替、不捏造、不以載入中骨架佯裝。
+ *   該兩區塊的「本站無法提供此清單」文字為**本站自撰政策文字（實站無此段）**，
+ *   不列入「逐字對齊 capture」；僅區塊標題與 hint 逐字取自實站。
+ *
+ * 【導覽入口（已查證）】
+ * 實站 /strategy/ 不是孤兒：實站 /research/ 的「切換研究視角」卡（客觀條件目錄／
+ * 「策略條件庫」）以 <a href="/strategy/"> 連入。本站 src/app/research/page.tsx:61
+ * 已一致複刻該連結，故 /strategy 於本站同樣可從 /research 進入。
  *
  * 為 Server Component：資料為靜態，無需 client state。
  */
