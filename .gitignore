@@ -25,6 +25,8 @@
 
 # Cloudflare Workers build artifacts (deploy:cf 產出；勿入 git，會把 build 檔掃進 commit)
 .open-next/
+# 建置失敗時由腳本留下的 .open-next 備份（每份可達 90MB+，同樣勿入 git）
+.open-next.bak-*/
 open-next.config.mjs
 cf-template/
 .wrangler/

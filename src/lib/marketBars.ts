@@ -256,6 +256,17 @@ export function todayTaipeiYmd(): string {
 
 /**
  * 由 endDate（含）往前取最近 count 個「交易日」（weekday 且非休市），以升冪回傳。
+ *
+ * ⚠ 回傳順序是「最舊 → 最新」（升冪），此為**刻意**設計、非偶然：
+ *   日 K 是時間序列，下游（loadRange 組裝的序列、圖表、patternScan／swingConditions
+ *   掃描器）都預期時間軸由舊到新；維持升冪讓呼叫端不必再自行排序。
+ *   實作上「由 endDate 往回蒐集、最後 reverse()」，故天然得到升冪。
+ *
+ *   副作用（操作時須知）：回填工具 backfill-market-bars.mjs 依此陣列順序逐日寫入，
+ *   因此是「先補最舊、後補最新」。若回填中途中斷，缺的會是**最近**幾天——而
+ *   /patterns、/swing 需要的正是最近的日 K。故中斷後務必重跑補齊（工具冪等，
+ *   已存在的 key 會自動跳過）；或改用較小的 --to／視窗，優先補最近 N 天。
+ *
  * @param endDate 視窗結束日（UTC 午夜 Date）
  * @param count 需要幾個交易日
  */
@@ -268,6 +279,7 @@ export function buildTradingDayWindow(endDate: Date, count: number): string[] {
     const d = new Date(endDate.getTime() - i * 24 * 60 * 60 * 1000);
     if (isTradingDay(d)) out.push(formatYmd(d));
   }
+  // 由新到舊蒐集後反轉 → 刻意回傳「最舊 → 最新」升冪（理由與副作用見上方 JSDoc）。
   return out.reverse();
 }
 
