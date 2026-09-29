@@ -1,251 +1,199 @@
 /** @jest-environment node */
 
 /**
- * `/api/skynet/swing-hub` 路由測試
+ * /api/skynet/swing-hub —— 路由行為測試（離線預算版）
  * ----------------------------------------------------------------------------
- * 以 mock 上游 fetch + mock godBridge.getKv 驗證：
- *   1. 各資料源正常時，對應 tab 有 items；badnews 固定留白。
- *   2. 大戶 delta 欄位為 null（累積中），回應帶 weeksAccumulated。
- *   3. KV 可用時，日 K 條件（ma60）能命中（端到端走 loadRange）。
- *   4. 反向實驗：所有上游失敗時，HTTP 仍為 200，且每個 tab 皆 items 空 +
- *      unavailable_reason（絕不以假資料或整體 500 回應）。
+ * 背景：本端點原本在單次請求內讀約 65 個交易日全市場日 K + 打 5 個上游，
+ *   在 Cloudflare Free plan（CPU 上限 10ms）上直接爆 503 error code: 1102。
+ *   業主裁示改為「離線預算 + 寫入 KV」：route **只讀 KV key `scan:swing-hub`**。
  *
- * 全程不打真實上游。
+ * 本測試驗證：
+ *   1. KV 有預算結果 → 原樣回傳（16 個 tab）+ `computedAt` + `precomputed:true`。
+ *   2. KV 無值 → 200 + `ready:false` + `reason:'not_precomputed'` + 誠實文案
+ *      （說清楚是「每日盤後離線預算」，**不可**長得像「載入中」），且不帶 tabs。
+ *   3. KV 值損壞 → 不崩，回 ready:false。
+ *   4. KV 未綁定 → 回 ready:false（不拋錯）。
+ *   5. 反向實驗：route **不得**在 Edge 上重算——只讀一次 `scan:swing-hub`，
+ *      且不打任何上游（globalThis.fetch 全程不得被呼叫）。
+ *
+ * 純計算邏輯的測試在 src/lib/__tests__/swing-conditions.test.ts 與
+ * src/lib/__tests__/scanPayload.test.ts（組裝層），兩者皆需保持全綠。
  */
 
-import { GET } from '@/app/api/skynet/swing-hub/route';
+import { SCAN_KV_KEY_SWING_HUB, type SwingHubTab } from '@/lib/scanPayload';
 
 const mockGetKv = jest.fn();
 jest.mock('@/lib/godBridge', () => ({ getKv: () => mockGetKv() }));
 
-const TDCC_URL = 'https://openapi.tdcc.com.tw/v1/opendata/1-5';
-const T86_URL = 'https://www.twse.com.tw/rwd/zh/fund/T86';
-const MARGN_URL = 'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN';
-const REV_URL = 'https://openapi.twse.com.tw/v1/opendata/t187ap05_L';
-const EXRIGHT_URL = 'https://www.twse.com.tw/rwd/zh/exRight/TWT48U';
-
 const ORIGINAL_FETCH = globalThis.fetch;
+
+/** 16 個頁籤的 id（對齊實站 schema；預算結果應含全部 16 個）。 */
+const TAB_IDS = [
+  'whale_in',
+  'whale_out',
+  'ma60',
+  'pullback',
+  'foreign',
+  'trust',
+  'both',
+  'reclaim',
+  'break20',
+  'rs',
+  'sector',
+  'margin',
+  'revenue',
+  'fill',
+  'badnews',
+  'smart',
+];
+
+/** 預算結果範例（與 scripts/precompute-scan.mjs 寫入 KV 的形狀一致）。 */
+const STORED_PAYLOAD = {
+  ok: true,
+  ready: true,
+  data_date: '2026-09-24',
+  data_scope: '盤後歷史條件',
+  next_update: '下一交易日盤後',
+  week: '2026-09-18',
+  weeksAccumulated: 1,
+  tabs: TAB_IDS.map((id) => ({
+    id,
+    title: id,
+    desc: `${id} 說明`,
+    items: id === 'ma60' ? [{ stock_id: '2330', label: '2330 台積電', close: 600 }] : [],
+    ...(id === 'badnews' ? { unavailable_reason: '本站尚無新聞資料源。' } : {}),
+  })),
+  note: '全部為歷史公開資料的條件篩選；不提供未來方向、機率或平台產生價位。',
+  provenance: { source: 'self-produced', upstreams: ['tdcc', 't86'] },
+  whale_delta_provenance: { source: 'site-mirror', snapshot_date: '2026-09-18' },
+  computedAt: '2026-09-24T14:10:00.000Z',
+};
+
+/** Map 實作的假 KV。 */
+function makeKvStore(initial?: Record<string, string>): {
+  map: Map<string, string>;
+  kv: { get: jest.Mock; put: jest.Mock };
+} {
+  const map = new Map<string, string>(Object.entries(initial ?? {}));
+  return {
+    map,
+    kv: {
+      get: jest.fn(async (key: string) => map.get(key) ?? null),
+      put: jest.fn(async (key: string, value: string) => {
+        map.set(key, value);
+      }),
+    },
+  };
+}
+
+/** 監視上游 fetch：route 一旦打上游就視為違規（Edge 不得重算）。 */
+function installFetchGuard(): jest.Mock {
+  const fn = jest.fn(async () => new Response('{}', { status: 200 }));
+  globalThis.fetch = fn as unknown as typeof fetch;
+  return fn;
+}
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   mockGetKv.mockReset();
+  jest.restoreAllMocks();
 });
 
-// ---------------------------------------------------------------------------
-// 上游 payload 產生器
-// ---------------------------------------------------------------------------
+describe('swing-hub route：KV 有預算結果', () => {
+  it('原樣回傳 16 個 tab + computedAt + precomputed:true', async () => {
+    const store = makeKvStore({ [SCAN_KV_KEY_SWING_HUB]: JSON.stringify(STORED_PAYLOAD) });
+    mockGetKv.mockResolvedValue(store.kv);
+    const fetchSpy = installFetchGuard();
 
-function json(payload: unknown): Response {
-  return new Response(JSON.stringify(payload), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
-function tdccPayload() {
-  const grade = (code: string, g: string, pct: string) => ({
-    證券代號: code,
-    '占集保庫存數比例%': pct,
-    人數: '1',
-    '\ufeff資料日期': '20260918',
-    股數: '1',
-    持股分級: g,
-  });
-  // 2330（不在實站快照內）＋ 2520（在快照內，用於驗證 site-mirror fallback）。
-  const rows: ReturnType<typeof grade>[] = [];
-  for (const code of ['2330  ', '2520  ']) {
-    rows.push(grade(code, '12', '10'), grade(code, '13', '5'), grade(code, '14', '3'), grade(code, '15', '60'), grade(code, '16', '0'), grade(code, '17', '100'));
-  }
-  return rows;
-}
-
-function t86Payload(date: string) {
-  const row = (code: string, name: string, foreignLots: number, trustLots: number) => {
-    const r = Array.from({ length: 19 }, () => '0');
-    r[0] = code;
-    r[1] = name;
-    r[4] = String(foreignLots * 1000);
-    r[10] = String(trustLots * 1000);
-    r[18] = String((foreignLots + trustLots) * 1000);
-    return r;
-  };
-  return {
-    stat: 'OK',
-    date,
-    data: [row('2330', '台積電', 100, 10), row('2317', '鴻海', 50, 5), row('2454', '聯發科', 80, 8)],
-  };
-}
-
-function margnPayload(date: string) {
-  const bal = date >= '20260901' ? '8000' : '9000';
-  const r = Array.from({ length: 16 }, () => '0');
-  r[0] = '2330';
-  r[1] = '台積電';
-  r[6] = bal; // index 6 = 融資今日餘額
-  return { stat: 'OK', date, tables: [{ data: [] }, { data: [r] }] };
-}
-
-function revPayload() {
-  return [
-    {
-      公司代號: '2330',
-      公司名稱: '台積電',
-      產業別: '半導體業',
-      '營業收入-上月比較增減(%)': '5',
-      '營業收入-去年同月增減(%)': '10',
-      資料年月: '11508',
-    },
-  ];
-}
-
-// ---------------------------------------------------------------------------
-// fetch 安裝器
-// ---------------------------------------------------------------------------
-
-function twseYmd(d: Date): string {
-  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
-}
-
-/** 最近 10 個日曆天中最新的 3 天（＝視為有 T86 資料的日期）。 */
-function latestThreeDates(): Set<string> {
-  const now = new Date();
-  const all: string[] = [];
-  for (let off = 0; off < 10; off += 1) all.push(twseYmd(new Date(now.getTime() - off * 86_400_000)));
-  all.sort();
-  return new Set(all.slice(-3));
-}
-
-function installFetch(opts: { ok: boolean; okDates?: Set<string> }): void {
-  globalThis.fetch = jest.fn(async (input: unknown) => {
-    const url = String(input);
-    if (!opts.ok) return new Response('upstream down', { status: 500 });
-    if (url.startsWith(TDCC_URL)) return json(tdccPayload());
-    if (url.startsWith(T86_URL)) {
-      const date = /date=(\d{8})/.exec(url)?.[1] ?? '';
-      if (opts.okDates && !opts.okDates.has(date)) return json({ stat: '很抱歉，沒有符合條件的資料!' });
-      return json(t86Payload(date));
-    }
-    if (url.startsWith(MARGN_URL)) {
-      const date = /date=(\d{8})/.exec(url)?.[1] ?? '';
-      return json(margnPayload(date));
-    }
-    if (url.startsWith(REV_URL)) return json(revPayload());
-    if (url.startsWith(EXRIGHT_URL)) return json({ stat: 'OK', data: [] });
-    return new Response('not found', { status: 404 });
-  }) as unknown as typeof fetch;
-}
-
-/** 假 KV：對每個 mkt:bars:<date> 回一個單調遞增的 2330 序列。 */
-const fakeKv = {
-  get: async (key: string): Promise<string | null> => {
-    const m = /mkt:bars:(\d{4}-\d{2}-\d{2})/.exec(key);
-    if (!m) return null;
-    const date = m[1];
-    const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse('2020-01-01T00:00:00Z')) / 86_400_000);
-    const close = 100 + days;
-    return JSON.stringify({
-      date,
-      twse: [['2330', close, close, close, close, 1000]],
-      tpex: [],
-      counts: { twse: 1, tpex: 0 },
-      rawCounts: { twse: 1, tpex: 0 },
-      fetchedAt: 't',
-      provenance: { source: 'self-produced', upstream: 'x' },
-    });
-  },
-  put: async (): Promise<void> => {},
-};
-
-// ---------------------------------------------------------------------------
-// 測試
-// ---------------------------------------------------------------------------
-
-type Tab = { id: string; title: string; desc: string; items: Array<Record<string, unknown>>; unavailable_reason?: string; note?: string };
-type Body = {
-  ok: boolean;
-  data_date: string;
-  week: string;
-  weeksAccumulated: number;
-  tabs: Tab[];
-  note: string;
-  provenance: { source: string; upstreams: string[] };
-  whale_delta_provenance: { source: string; snapshot_date?: string };
-  fetchedAt: string;
-};
-
-describe('GET /api/skynet/swing-hub', () => {
-  it('上游正常（KV 未綁定）：上游 tab 有 items、日 K tab 誠實留白、badnews 固定留白', async () => {
-    mockGetKv.mockResolvedValue(undefined);
-    installFetch({ ok: true, okDates: latestThreeDates() });
-
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { GET } = require('@/app/api/skynet/swing-hub/route') as {
+      GET: () => Promise<{ status: number; json: () => Promise<unknown> }>;
+    };
     const res = await GET();
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as Body;
-    const byId = Object.fromEntries(body.tabs.map((t) => [t.id, t])) as Record<string, Tab>;
+    const body = (await res.json()) as Record<string, unknown>;
 
+    expect(res.status).toBe(200);
     expect(body.ok).toBe(true);
-    expect(body.provenance.source).toBe('self-produced');
-    expect(typeof body.fetchedAt).toBe('string');
-    expect(body.tabs).toHaveLength(16);
+    expect(body.ready).toBe(true);
+    expect(body.precomputed).toBe(true);
+    expect(body.computedAt).toBe('2026-09-24T14:10:00.000Z');
+    expect(body.data_date).toBe('2026-09-24');
 
-    // 上游可自產的 tab
-    expect(byId.foreign.items.length).toBeGreaterThan(0);
-    expect(byId.trust.items.length).toBeGreaterThan(0);
-    expect(byId.both.items.length).toBeGreaterThan(0);
-    expect(byId.whale_in.items.length).toBeGreaterThan(0);
-    expect(byId.whale_out.items.length).toBeGreaterThan(0);
-    expect(byId.margin.items.length).toBeGreaterThan(0);
-    expect(byId.revenue.items.length).toBeGreaterThan(0);
+    const tabs = body.tabs as SwingHubTab[];
+    expect(tabs).toHaveLength(16);
+    expect(tabs.map((t) => t.id)).toEqual(TAB_IDS);
+    expect(tabs.find((t) => t.id === 'ma60')?.items).toHaveLength(1);
+    // 大戶週增減來源（實站快照）如實保留。
+    expect(body.whale_delta_provenance).toEqual({
+      source: 'site-mirror',
+      snapshot_date: '2026-09-18',
+    });
 
-    // 大戶 delta：2330 不在實站快照內 → 累積中（null）；2520 在快照內 → 填入快照值。
-    expect(byId.whale_in.items[0].delta_1w).toBeNull();
-    expect(body.weeksAccumulated).toBe(1);
-    expect(body.whale_delta_provenance.source).toBe('site-mirror');
-    expect(body.whale_delta_provenance.snapshot_date).toBe('2026-09-18');
-    const whale2520 = byId.whale_in.items.find((x) => x.stock_id === '2520');
-    expect(whale2520?.delta_1w).toBe(0.41);
-    expect(whale2520?.delta_4w).toBe(1.09);
-    expect(whale2520?.up_weeks).toBe(12);
-    // whale item 不應有 hint（對齊實站 DOM）
-    expect(whale2520?.hint).toBeUndefined();
-
-    // 日 K tab：KV 未綁定 → 誠實留白
-    expect(byId.ma60.items).toHaveLength(0);
-    expect(byId.ma60.unavailable_reason).toBeTruthy();
-
-    // badnews 固定留白
-    expect(byId.badnews.items).toHaveLength(0);
-    expect(byId.badnews.unavailable_reason).toBe('本站尚無新聞資料源。');
+    // 反向實驗：只讀一次 scan:swing-hub，且不打任何上游。
+    expect(store.kv.get).toHaveBeenCalledTimes(1);
+    expect(store.kv.get).toHaveBeenCalledWith(SCAN_KV_KEY_SWING_HUB);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
+});
 
-  it('KV 可用：日 K 條件（ma60）能命中（端到端走 loadRange）', async () => {
-    mockGetKv.mockResolvedValue(fakeKv);
-    installFetch({ ok: true, okDates: latestThreeDates() });
+describe('swing-hub route：尚未預算（誠實 not-ready）', () => {
+  it('KV 無值 → 200 + ready:false + reason:not_precomputed，不帶 tabs 冒充', async () => {
+    const store = makeKvStore();
+    mockGetKv.mockResolvedValue(store.kv);
 
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { GET } = require('@/app/api/skynet/swing-hub/route') as {
+      GET: () => Promise<{ status: number; json: () => Promise<unknown> }>;
+    };
     const res = await GET();
+    const body = (await res.json()) as {
+      ok: boolean;
+      ready: boolean;
+      reason: string;
+      message: string;
+      tabs?: unknown;
+    };
+
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Body;
-    const ma60 = body.tabs.find((t) => t.id === 'ma60') as Tab;
-    expect(ma60.items.length).toBeGreaterThan(0);
-    expect(ma60.unavailable_reason).toBeUndefined();
-    expect(ma60.items[0].stock_id).toBe('2330');
+    expect(body.ok).toBe(true);
+    expect(body.ready).toBe(false);
+    expect(body.reason).toBe('not_precomputed');
+    expect(body.message).toContain('離線預算');
+    expect(body.message).toContain('不是載入中');
+    // 不可回空 tabs 假裝掃過。
+    expect(body.tabs).toBeUndefined();
   });
 
-  it('反向實驗：所有上游失敗 → HTTP 200，且每個 tab items 空 + unavailable_reason', async () => {
-    mockGetKv.mockResolvedValue(undefined);
-    installFetch({ ok: false });
+  it('KV 值損壞（非 JSON）→ 不崩，回 ready:false', async () => {
+    const store = makeKvStore({ [SCAN_KV_KEY_SWING_HUB]: '<<<broken' });
+    mockGetKv.mockResolvedValue(store.kv);
 
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { GET } = require('@/app/api/skynet/swing-hub/route') as {
+      GET: () => Promise<{ status: number; json: () => Promise<unknown> }>;
+    };
     const res = await GET();
-    expect(res.status).toBe(200); // 絕不整體 500
-    const body = (await res.json()) as Body;
+    const body = (await res.json()) as { ready: boolean; tabs?: unknown };
 
-    for (const tab of body.tabs) {
-      expect(tab.items).toHaveLength(0);
-      expect(tab.unavailable_reason).toBeTruthy();
-    }
-    // 大戶 tab 亦誠實標示上游無回應
-    const whale = body.tabs.find((t) => t.id === 'whale_in') as Tab;
-    expect(whale.unavailable_reason).toContain('TDCC');
-    expect(body.weeksAccumulated).toBe(0);
+    expect(res.status).toBe(200);
+    expect(body.ready).toBe(false);
+    expect(body.tabs).toBeUndefined();
+  });
+
+  it('KV 未綁定 → 200 + ready:false，不拋錯', async () => {
+    mockGetKv.mockResolvedValue(undefined);
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { GET } = require('@/app/api/skynet/swing-hub/route') as {
+      GET: () => Promise<{ status: number; json: () => Promise<unknown> }>;
+    };
+    const res = await GET();
+    const body = (await res.json()) as { ok: boolean; ready: boolean; reason: string; message: string };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.ready).toBe(false);
+    expect(body.reason).toBe('not_precomputed');
+    expect(body.message).toContain('KV 尚未綁定');
   });
 });

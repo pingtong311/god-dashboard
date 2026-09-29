@@ -30,6 +30,10 @@ export type SwingTab = {
 /** 端點回應（對齊實站 schema）。 */
 export type SwingHubResponse = {
   ok: boolean;
+  /** 離線預算就緒與否：false 表示「尚未預算」（永久狀態，不可顯示成載入中）。 */
+  ready?: boolean;
+  /** 尚未預算時的誠實說明。 */
+  message?: string;
   data_date: string;
   data_scope: string;
   next_update: string;
@@ -42,6 +46,7 @@ export type SwingHubResponse = {
 type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; data: SwingHubResponse }
+  | { status: 'notReady'; message: string }
   | { status: 'error' };
 
 /** 數值格式化：無值顯示破折號（誠實留白）。 */
@@ -192,7 +197,13 @@ export default function SwingClient(): ReactElement {
       .then((res) => res.json())
       .then((json: SwingHubResponse) => {
         if (cancelled) return;
-        if (json && json.ok === true && Array.isArray(json.tabs)) {
+        // 尚未預算（本站採每日盤後離線預算）→ 誠實顯示原因，**不可**顯示成載入中。
+        if (json && json.ok === true && json.ready === false) {
+          setState({
+            status: 'notReady',
+            message: json.message ?? '本站採每日盤後離線預算，目前尚無預算結果。',
+          });
+        } else if (json && json.ok === true && Array.isArray(json.tabs)) {
           setState({ status: 'ready', data: json });
         } else {
           setState({ status: 'error' });
@@ -231,6 +242,14 @@ export default function SwingClient(): ReactElement {
       {state.status === 'error' ? (
         <p className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-[12.5px] leading-relaxed text-muted">
           波段條件清單暫時無法取得（資料管線無回應），稍後重試；不先放推測數字。
+        </p>
+      ) : state.status === 'notReady' ? (
+        // 尚未預算：明確說是「離線預算尚無結果」，不給載入骨架（那是永久狀態，不是等待）。
+        <p
+          role="status"
+          className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-[12.5px] leading-relaxed text-muted"
+        >
+          {state.message}
         </p>
       ) : state.status === 'loading' ? (
         <>

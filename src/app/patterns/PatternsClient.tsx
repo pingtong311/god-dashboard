@@ -190,7 +190,9 @@ export default function PatternsClient(): ReactElement {
 
   const data = state.data;
 
-  // 資料尚未累積足夠 → 誠實狀態（不回空 patterns 假裝掃過）。
+  // 資料尚未就緒 → 誠實狀態（不回空 patterns 假裝掃過）。
+  // 優先顯示端點給的 message：本站採「每日盤後離線預算」，尚未預算是**永久狀態**，
+  // 必須說清楚，不可寫成「載入中」。
   if (!data.ready || !data.patterns) {
     return (
       <div className="mt-4">
@@ -198,9 +200,15 @@ export default function PatternsClient(): ReactElement {
           role="status"
           className="rounded-xl bg-surface-2 px-4 py-3 text-[13px] leading-relaxed text-muted"
         >
-          <b className="text-ink">日 K 資料累積中</b>
-          （目前 {data.availableDays ?? 0} 天，至少需 {data.minDaysRequired ?? 40} 天）。
-          全市場日 K 尚在回填，待累積足夠即會自動開始辨識型態。
+          {data.message ? (
+            data.message
+          ) : (
+            <>
+              <b className="text-ink">日 K 資料累積中</b>
+              （目前 {data.availableDays ?? 0} 天，至少需 {data.minDaysRequired ?? 40} 天）。
+              全市場日 K 尚在回填，待累積足夠即會自動開始辨識型態。
+            </>
+          )}
         </p>
         <CalibrationDisclosure
           provenance={{ source: 'self-produced', upstream: data.provenance?.upstream ?? '' }}

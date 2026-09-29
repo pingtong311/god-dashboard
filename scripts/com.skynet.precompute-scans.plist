@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    skynet-dashboard · 每日盤後「離線預算」排程（方案 A 的觸發器）
+
+    幹嘛用：
+      把 /api/skynet/pattern-screen、/swing-hub、/cb 三個端點的「重計算」從
+      Cloudflare Workers（Free plan CPU 上限 10ms，線上會 503/1102、/cb 會 502）
+      搬到本機每日盤後跑，結果寫進 KV，Worker 只讀不重算。
+
+    每日做的事（順序很重要）：
+      1) backfill-market-bars --days=3 --force
+         把最近 3 個交易日的全市場日 K 回填/刷新進 KV（mkt:bars:<date>）。
+         --force 確保「今天收盤後最終版」會覆寫早先半殘的盤中資料。
+      2) precompute-scan --only=all
+         讀 KV 日 K → 算型態掃描 / 16 波段條件 / CB 溢價率 → 寫 scan:* 三 key。
+         日 K 不足 MIN_BARS_FOR_SCAN(40) 時會主動停手，不寫假資料。
+
+    ⚠ 首次（或 KV 被清空後）須先手動回填一次長視窗，預算腳本才有足夠日 K：
+         node scripts/backfill-market-bars.mjs --days=120
+       之後這支每日排程只補最近 3 天即可維持新鮮度。
+
+    ⚠ 預算腳本會呼叫 wrangler（需先 `npx wrangler login` 或設 CLOUDFLARE_API_TOKEN），
+       並寫入線上 KV namespace 043f75b7...（skynet-dashboard-skynet-cache）。
+
+    安裝（在 BOSS 本機終端機，非沙箱）：
+        cp scripts/com.skynet.precompute-scans.plist ~/Library/LaunchAgents/
+        launchctl load ~/Library/LaunchAgents/com.skynet.precompute-scans.plist
+        launchctl start com.skynet.precompute-scans   # 立即試跑一次
+
+    查狀態 / 日誌：
+        launchctl list | grep skynet
+        tail -f /tmp/skynet-precompute.log
+
+    卸載：
+        launchctl unload ~/Library/LaunchAgents/com.skynet.precompute-scans.plist
+  -->
+  <key>Label</key>
+  <string>com.skynet.precompute-scans</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>cd /Users/sheng-feng/Project/skynet/skynet-dashboard &amp;&amp; /usr/bin/env node scripts/backfill-market-bars.mjs --days=3 --force &gt;&gt; /tmp/skynet-precompute.log 2&gt;&amp;1 &amp;&amp; /usr/bin/env node scripts/precompute-scan.mjs --only=all &gt;&gt; /tmp/skynet-precompute.log 2&gt;&amp;1</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/sheng-feng/Project/skynet/skynet-dashboard</string>
+
+  <!-- 每日 16:35 台北時間（台股 13:30 收盤，TWSE/TPEX 資料約 15:00–16:00 定稿） -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>16</integer>
+    <key>Minute</key>
+    <integer>35</integer>
+  </dict>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key>
+    <string>/Users/sheng-feng</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/skynet-precompute.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/skynet-precompute.err.log</string>
+
+  <!-- 開機/登入不強制立即跑；只按日曆時間觸發。如需開機即跑，改 true。 -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <!-- 若前一次還在跑，跳過本次（避免重疊寫入）。 -->
+  <key>AbandonProcessGroup</key>
+  <true/>
+</dict>
+</plist>

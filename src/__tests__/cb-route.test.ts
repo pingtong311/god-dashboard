@@ -1,131 +1,98 @@
 /** @jest-environment node */
 
 /**
- * 單元測試 — `/api/skynet/cb`（可轉債發行資料 + 賣回權時程 + 自產轉換溢價率排序）。
+ * 單元測試 — `/api/skynet/cb`（只讀 KV 的離線預算結果）
  *
- * 驗證重點：
- *   - put_schedule 由 PutOptionDate / PutOptionPrice 建出、依賣回日排序、空賣回日剔除
- *   - calendar 由 IssueDate / ListingDate / MaturityDate 建出
- *   - items 由 TPEX「轉換公司債資訊看板」日行情檔（cbdrs001）自產（轉換價值＝標的股價×100÷轉換價；折價率＝CB收市價÷轉換價值−1），升冪取前 30
- *   - provenance.source === 'self-produced'
- *   - 上游失敗 → 502 cb_upstream_error
- *   - CSV 抓不到時 items 為空並附 items_unavailable_reason（誠實說明）
+ * 重構後的行為契約（與原本「Edge 上即時打上游」完全不同）：
+ *   1. KV（`scan:cb`）有值 → 200 + 內容原樣回傳 + `computedAt` + `precomputed:true`
+ *   2. KV 無值 → 200 + `available:false` + 誠實說明（不是 502、不是空陣列假裝成功）
+ *   3. KV 值損壞（非 JSON）→ 不崩，一樣走 not-ready
+ *   4. KV 未綁定 / KV get 拋錯 → 一樣走 not-ready
+ *   5. 舊格式（裸 CbResponse，無信封）→ computedAt 退回 fetchedAt
  *
- * 全程 mock 上游 fetch，不打真實櫃買中心。
+ * ★ 最重要的回歸守衛：**route 絕對不得打上游、不得重算**。
+ *   因此每個測試都把 `globalThis.fetch` 換成「一被呼叫就丟錯」的 mock——
+ *   若哪天有人在 route 裡加回 fetch TPEX，測試會立刻紅（線上會立刻回到 502/1102）。
+ *
+ * 純計算邏輯（BIG5／UTF-8 編碼、20 欄對位、千分位、升冪取前 30、CSV 404…）
+ * 的覆蓋已搬到 `src/lib/__tests__/cbPremium.test.ts`，本檔不再重複。
  */
 
 import { GET } from '@/app/api/skynet/cb/route';
-import type { CbResponse } from '@/app/api/skynet/cb/route';
+import { CB_KV_KEY, buildCbKvValue, type CbResponse } from '@/lib/cbPremium';
+
+// ⚠ @opennextjs/cloudflare 為 ESM-only，Jest（CJS）無法直接載入 → 以 mock 模組取代。
+// 委派到 module-scope 的 jest.fn（見 futures-route.kv.qa.test.ts 同款寫法）。
+const mockGetCloudflareContext = jest.fn();
+jest.mock('@opennextjs/cloudflare', () => ({
+  getCloudflareContext: (...args: unknown[]) => mockGetCloudflareContext(...args),
+}));
 
 const ORIGINAL_FETCH = globalThis.fetch;
-const ISSUANCE_URL = 'bond_ISSBD5_data';
-const CB_DAILY_LIST_URL = 'www/zh-tw/bond/cbDaily';
-const CB_FILE_CODE = 'cbdrs001';
 
-/**
- * CSV fixture（與上游現行規格一致：CRLF 分隔、BIG5 編碼、20 欄）。
- *
- * 以 base64 存放「真正的 BIG5 位元組」是刻意的：若用 UTF-8 字串餵給 mock，
- * route 端解碼後中文欄位名會成亂碼、欄位對不上而靜默清空 items，測不出真實行為。
- * 產生方式：`python3 -c "...csv.encode('big5')... | base64"`（見本檔註解）。
- */
-const CB_CSV_BIG5_BASE64 = [
-  'VElUTEUswuC0q6S9pXG2xbjqsFSs3apPDQpEQVRBREFURSyk6bTBOjExNaZ+MDmk6zI0pOkNCkhFQURFUiy2xajppU69WCy2',
-  'xajpwrK62SzC4LSrsF+k6SzC4LSrqLSk6SzC4LSru/mu5iykVaa4wuC0q7v5rualza7EpOm0wSyzzKrxveamXsV2sF+k6Syz',
-  'zKrxveamXsV2qLSk6SyzzKrxveamXsV2u/mu5iyxaqjuxaumXrBfpOkssWqo7sWrpl6otKTpLLFqqO7Fq6Zeu/mu5iyy16Tu',
-  'wmTCabZSveak6Syt7KlstW+m5sFgw0IspFek66mztW+m5r5sw0IswuC2xbDRptK7+a7mLMLgtKu80Kq6qtGyvLv5ruYssLGk',
-  '7qXmqfawX6TpLLCxpO6l5qn2qLSk6SyyvK2xp1Gydg0KIkJPRFkiLCIxMTAxMSIsIqV4qmSkQKXDICAiLCIyMDI0LzEyLzEw',
-  'IiwiMjAyOS8xMi8xMCIsIjM2LjUwMDAiLCIiLCIiLCIiLCIiLCIiLCIiLCIiLCIiLCI4LDAwMCwwMDAsMDAwIiwiIiwiMzUu',
-  'MDAiLCIzNi41MCIsIiIsIiIsIjAuMDAwMDAiDQoiQk9EWSIsIjIyMjExIiwipGql0qRAICAiLCIyMDI1LzA4LzE0IiwiMjAy',
-  'OC8wNS8xMyIsIjgyLjE2MDAiLCIiLCIiLCIiLCIiLCIiLCIiLCIiLCIiLCIxLDAwMCwwMDAsMDAwIiwiIiwiMTg3LjAwIiwi',
-  'MTY0LjAwIiwiIiwiIiwiMC4wMDAwMCINCiJCT0RZIiwiOTk5OTkiLCK1TL3mpl4gICIsIiIsIiIsIiIsIiIsIiIsIiIsIiIs',
-  'IiIsIiIsIiIsIiIsIiIsIiIsIiIsIiIsIiIsIiIsIjAuMDAwMDAi',
-].join('');
-
-/** 同一份 CSV 的 UTF-8 版本（驗證解碼器也吃 UTF-8，不因編碼改變而靜默清空）。 */
-function csvUtf8(): string {
-  return new TextDecoder('big5').decode(Buffer.from(CB_CSV_BIG5_BASE64, 'base64'));
+/** 一筆完整的預算結果（模擬本機腳本算完寫進 KV 的內容）。 */
+function samplePayload(): CbResponse {
+  return {
+    available: true,
+    date: '2026-09-28',
+    data_scope: '盤後',
+    next_update: '下一交易日盤後',
+    items: [
+      {
+        cb_id: '11011',
+        cb_name: '台泥一永',
+        conversion_price: 36.5,
+        underlying_price: 36.5,
+        cb_price: 35.0,
+        conversion_value: 100,
+        premium_pct: -65.0,
+        outstanding: 8_000_000_000,
+        coupon_rate: 0,
+        due_date: '2029-12',
+      },
+    ],
+    put_schedule: [
+      { cb_id: '11011', name: '台泥一永', put_price: 100, put_date: '2025-09-11', end_date: '' },
+    ],
+    calendar: [
+      {
+        cb_id: '11011',
+        name: '台泥一永',
+        issue_date: '2024-12-10',
+        listing_date: '2024-12-10',
+        maturity_date: '2029-12-10',
+      },
+    ],
+    note: '轉換溢價率＝可轉債市價相對轉換價值的差異。',
+    items_unavailable_reason: '',
+    provenance: { source: 'self-produced', upstream: 'https://www.tpex.org.tw/openapi/v1/bond_ISSBD5_data' },
+    fetchedAt: '2026-09-29T05:00:00.000Z',
+  };
 }
 
-/** CSV 回應內容模式：BIG5（上游現況）／UTF-8（上游若改編碼）／缺檔。 */
-type CsvMode = 'big5' | 'utf8' | 'missing';
-
-function csvResponse(mode: CsvMode): Response {
-  if (mode === 'missing') return new Response('not found', { status: 404 });
-  const big5Bytes = Buffer.from(CB_CSV_BIG5_BASE64, 'base64');
-  if (mode === 'big5') {
-    return new Response(big5Bytes, {
-      status: 200,
-      headers: { 'Content-Type': 'text/csv; charset=big5' },
-    });
-  }
-  return new Response(csvUtf8(), {
-    status: 200,
-    headers: { 'Content-Type': 'text/csv; charset=utf-8' },
-  });
-}
-
-function mockFetch(payloads: Map<string, unknown>, status = 200, csvMode: CsvMode = 'big5') {
-  globalThis.fetch = jest.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
-    for (const [key, payload] of payloads) {
-      if (url.includes(key)) {
-        return new Response(JSON.stringify(payload), {
-          status,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-    }
-    // CSV endpoint（BIG5 或 UTF-8 位元組）
-    if (url.includes('storage/bond_zone/tradeinfo/cb/')) {
-      return csvResponse(csvMode);
-    }
-    return new Response('not found', { status: 404 });
+/** 每次測試開始：把 fetch 換成「一被呼叫就丟錯」的守衛。 */
+function guardNoUpstreamFetch() {
+  globalThis.fetch = jest.fn(() => {
+    throw new Error('route 不得打上游：CB 已改為離線預算 + 讀 KV');
   }) as unknown as typeof fetch;
 }
 
-function cbRow(over: Record<string, string> = {}) {
-  return {
-    Date: '20260928',
-    IssuerCode: '1101',
-    IssuerName: '台泥',
-    BondCode: '11011',
-    ShortName: '台泥一永',
-    IssueDate: '20241210',
-    MaturityDate: '20291210',
-    ListingDate: '20241210',
-    OutstandingAmount: '8000000000',
-    CouponRate: '0.000000',
-    PutOptionDate: '20271210',
-    PutOptionPrice: '100.0000',
-    'Conversion/ExchangePriceAtIssuance': '36.5000',
-    ...over,
-  };
+/** 模擬 KV 綁定：store 為 key → 原始字串值；getThrows 可模擬 KV 讀取拋錯。 */
+function mockKv(store: Map<string, string>, getThrows = false) {
+  const get = jest.fn(async (key: string) => {
+    if (getThrows) throw new Error('KV unavailable');
+    return store.get(key) ?? null;
+  });
+  const put = jest.fn(async (key: string, value: string) => {
+    store.set(key, value);
+  });
+  mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: { get, put } } });
+  return { get, put };
 }
 
-function makeIssuancePayload() {
-  return [
-    cbRow({ BondCode: '22211', ShortName: '大甲一', PutOptionDate: '20271210', PutOptionPrice: '101.003' }),
-    cbRow({ BondCode: '11011', ShortName: '台泥一永', PutOptionDate: '20250911', PutOptionPrice: '100.0000' }),
-    cbRow({ BondCode: '99999', ShortName: '無賣回', PutOptionDate: '' }),
-    cbRow({ BondCode: '', ShortName: '未掛牌' }),
-  ];
-}
-
-function makeCbDailyListPayload(dateStr: string = '115/09/24') {
-  return {
-    date: '20260930',
-    tables: [
-      {
-        title: '轉(交)換債日統計報表',
-        type: '轉換公司債資訊看板',
-        fields: ['資料日期', '檔案下載'],
-        data: [
-          [dateStr, '/storage/bond_zone/tradeinfo/cb/2026/202609/RSdrs001.20260924-C.csv', '/storage/bond_zone/tradeinfo/cb/2026/202609/CBdrs001.20260924-C.xls'],
-        ],
-      },
-    ],
-  };
+/** 模擬「KV 未綁定」：env.SKYNET_CACHE 缺席。 */
+function mockKvUnbound() {
+  mockGetCloudflareContext.mockResolvedValue({ env: {} });
 }
 
 afterEach(() => {
@@ -133,140 +100,136 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-describe('GET /api/skynet/cb', () => {
-  it('建出 put_schedule、calendar、items（自產轉換溢價率排序，取前 30）', async () => {
-    const payloads = new Map<string, unknown>();
-    payloads.set(ISSUANCE_URL, makeIssuancePayload());
-    payloads.set(CB_DAILY_LIST_URL, makeCbDailyListPayload());
-    mockFetch(payloads);
+describe('GET /api/skynet/cb（只讀 KV）', () => {
+  it('KV 有 scan:cb → 內容原樣回傳 + computedAt + precomputed:true', async () => {
+    guardNoUpstreamFetch();
+    const payload = samplePayload();
+    const store = new Map<string, string>([
+      [CB_KV_KEY, buildCbKvValue(payload, '2026-09-29T13:45:00.000Z')],
+    ]);
+    const { get } = mockKv(store);
 
     const res = await GET();
     expect(res.status).toBe(200);
-    const body = (await res.json()) as CbResponse;
+    const body = (await res.json()) as CbResponse & { computedAt: string; precomputed: boolean };
 
+    expect(get).toHaveBeenCalledWith(CB_KV_KEY);
+    expect(body.precomputed).toBe(true);
+    expect(body.computedAt).toBe('2026-09-29T13:45:00.000Z');
+    // 其餘欄位與預算結果逐欄一致（前端不用改）
     expect(body.available).toBe(true);
     expect(body.date).toBe('2026-09-28');
+    expect(body.items).toEqual(payload.items);
+    expect(body.put_schedule).toEqual(payload.put_schedule);
+    expect(body.calendar).toEqual(payload.calendar);
     expect(body.provenance.source).toBe('self-produced');
-
-    // put_schedule：只留有賣回日者，且依日期升冪
-    expect(body.put_schedule.map((r) => r.cb_id)).toEqual(['11011', '22211']);
-    expect(body.put_schedule[0]).toEqual({
-      cb_id: '11011',
-      name: '台泥一永',
-      put_price: 100,
-      put_date: '2025-09-11',
-      end_date: '',
-    });
-    expect(body.put_schedule[1].put_price).toBe(101.003);
-
-    // calendar：有發行日者
-    expect(body.calendar.map((r) => r.cb_id).sort()).toEqual(['11011', '22211', '99999']);
-    expect(body.calendar[0].maturity_date).toBe('2029-12-10');
-
-    // items：自產溢價率排序（升冪），前 30
-    // 11011: 轉換價值=36.50*100/36.5=100, 折價率=(35/100-1)*100=-65.00%
-    // 22211: 轉換價值=164*100/82.16=199.61, 折價率=(187/199.61-1)*100=-6.32%
-    expect(body.items.length).toBeGreaterThan(0);
-    expect(body.items.length).toBeLessThanOrEqual(30);
-    expect(body.items[0].cb_id).toBe('11011'); // 最低折價率（最負）排第一
-    expect(body.items[0].premium_pct).toBe(-65.0);
-    expect(body.items.find((x) => x.cb_id === '22211')?.premium_pct).toBe(-6.32);
-    // 千分位逗號（"8,000,000,000"）必須被正確解析，不能被逗號切斷成 8
-    expect(body.items[0].outstanding).toBe(8_000_000_000);
-    expect(body.items_unavailable_reason).toBe(''); // 有資料時為空
+    // 守衛：route 全程不得呼叫 fetch
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it('上游若改餵 UTF-8 的 CSV → 仍正確解析（不因編碼改變而靜默清空）', async () => {
-    const payloads = new Map<string, unknown>();
-    payloads.set(ISSUANCE_URL, makeIssuancePayload());
-    payloads.set(CB_DAILY_LIST_URL, makeCbDailyListPayload());
-    mockFetch(payloads, 200, 'utf8');
+  it('舊格式（裸 CbResponse 無信封）→ 讀得動，computedAt 退回 fetchedAt', async () => {
+    guardNoUpstreamFetch();
+    const store = new Map<string, string>([[CB_KV_KEY, JSON.stringify(samplePayload())]]);
+    mockKv(store);
 
     const res = await GET();
-    const body = (await res.json()) as CbResponse;
+    const body = (await res.json()) as CbResponse & { computedAt: string; precomputed: boolean };
 
-    expect(body.items).toHaveLength(2); // 99999 缺價被剔除
-    expect(body.items[0].cb_id).toBe('11011');
-    // 中文欄位名必須正確解出（亂碼會導致欄位對不上 → items 清空）
-    expect(body.items[0].cb_name).toBe('台泥一永');
-    expect(body.items[0].premium_pct).toBe(-65.0);
+    expect(res.status).toBe(200);
+    expect(body.precomputed).toBe(true);
+    expect(body.computedAt).toBe('2026-09-29T05:00:00.000Z');
+    expect(body.items).toHaveLength(1);
   });
 
-  it('CSV 檔案本身 404 → items 為空、附誠實說明（不影響 put_schedule）', async () => {
-    const payloads = new Map<string, unknown>();
-    payloads.set(ISSUANCE_URL, makeIssuancePayload());
-    payloads.set(CB_DAILY_LIST_URL, makeCbDailyListPayload());
-    mockFetch(payloads, 200, 'missing');
-
-    const res = await GET();
-    const body = (await res.json()) as CbResponse;
-
-    expect(body.items).toEqual([]);
-    expect(body.items_unavailable_reason).toContain('暫時無法取得');
-    expect(body.put_schedule.map((r) => r.cb_id)).toEqual(['11011', '22211']);
-  });
-
-  it('CB 日行情檔抓不到時 → items 為空、附誠實說明', async () => {
-    const payloads = new Map<string, unknown>();
-    payloads.set(ISSUANCE_URL, makeIssuancePayload());
-    // 故意不給 CB_DAILY_LIST_URL，或給 404
-    payloads.set(CB_DAILY_LIST_URL, { stat: '參數輸入錯誤' });
-    mockFetch(payloads);
+  it('KV 無值 → 200 + available:false + 誠實說明（不是 502）', async () => {
+    guardNoUpstreamFetch();
+    mockKv(new Map<string, string>());
 
     const res = await GET();
     expect(res.status).toBe(200);
-    const body = (await res.json()) as CbResponse;
+    const body = (await res.json()) as CbResponse & {
+      ok: boolean;
+      computedAt: string;
+      precomputed: boolean;
+    };
 
+    expect(body.ok).toBe(true);
+    expect(body.available).toBe(false);
+    expect(body.precomputed).toBe(false);
     expect(body.items).toEqual([]);
-    expect(body.items_unavailable_reason).toContain('暫時無法取得');
+    expect(body.put_schedule).toEqual([]);
+    expect(body.calendar).toEqual([]);
+    // 誠實說明：講清楚是「盤後離線預算，目前尚無結果」，且不能寫得像載入中
+    expect(body.items_unavailable_reason).toContain('預算');
+    expect(body.items_unavailable_reason).not.toContain('載入中');
+    expect(body.computedAt).toBe('');
     expect(body.provenance.source).toBe('self-produced');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it('賣回價空值 → put_price 為 null（不是 0）', async () => {
-    const payloads = new Map<string, unknown>();
-    payloads.set(ISSUANCE_URL, [cbRow({ BondCode: '11011', PutOptionPrice: '' })]);
-    payloads.set(CB_DAILY_LIST_URL, makeCbDailyListPayload());
-    mockFetch(payloads);
+  it('KV 值損壞（非 JSON）→ 不崩，走 not-ready', async () => {
+    guardNoUpstreamFetch();
+    mockKv(new Map<string, string>([[CB_KV_KEY, '{ this is not json ]}']]));
 
     const res = await GET();
-    const body = (await res.json()) as CbResponse;
-    expect(body.put_schedule).toHaveLength(1);
-    expect(body.put_schedule[0].put_price).toBeNull();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as CbResponse & { ok: boolean; precomputed: boolean };
+
+    expect(body.ok).toBe(true);
+    expect(body.available).toBe(false);
+    expect(body.precomputed).toBe(false);
+    expect(body.items).toEqual([]);
+    expect(body.items_unavailable_reason).toContain('預算');
   });
 
-  it('上游失敗 → 502 cb_upstream_error', async () => {
-    const payloads = new Map<string, unknown>();
-    payloads.set(ISSUANCE_URL, {});
-    mockFetch(payloads, 500);
+  it('KV 值是 JSON 但缺 items（形狀不對）→ 走 not-ready', async () => {
+    guardNoUpstreamFetch();
+    mockKv(new Map<string, string>([[CB_KV_KEY, JSON.stringify({ date: '2026-09-28' })]]));
 
     const res = await GET();
-    expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ ok: false, error: 'cb_upstream_error' });
+    const body = (await res.json()) as CbResponse & { ok: boolean; precomputed: boolean };
+
+    expect(res.status).toBe(200);
+    expect(body.available).toBe(false);
+    expect(body.precomputed).toBe(false);
   });
 
-  it('上游回非陣列 → 502', async () => {
-    const payloads = new Map<string, unknown>();
-    payloads.set(ISSUANCE_URL, { foo: 'bar' });
-    payloads.set(CB_DAILY_LIST_URL, makeCbDailyListPayload());
-    mockFetch(payloads);
+  it('KV 未綁定（env.SKYNET_CACHE 缺席）→ 走 not-ready', async () => {
+    guardNoUpstreamFetch();
+    mockKvUnbound();
 
     const res = await GET();
-    expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ ok: false, error: 'cb_upstream_error' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as CbResponse & { ok: boolean; precomputed: boolean };
+
+    expect(body.ok).toBe(true);
+    expect(body.available).toBe(false);
+    expect(body.precomputed).toBe(false);
+    expect(body.items_unavailable_reason).toContain('預算');
   });
 
-  it('items 排序正確：折價率升冪（負值在前）', async () => {
-    const payloads = new Map<string, unknown>();
-    payloads.set(ISSUANCE_URL, makeIssuancePayload());
-    payloads.set(CB_DAILY_LIST_URL, makeCbDailyListPayload());
-    mockFetch(payloads);
+  it('KV get 拋錯 → 不拋 5xx，走 not-ready', async () => {
+    guardNoUpstreamFetch();
+    mockKv(new Map<string, string>([[CB_KV_KEY, 'whatever']]), true);
 
     const res = await GET();
-    const body = (await res.json()) as CbResponse;
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as CbResponse & { ok: boolean; precomputed: boolean };
 
-    // 驗證升冪排序
-    for (let i = 1; i < body.items.length; i++) {
-      expect(body.items[i].premium_pct).toBeGreaterThanOrEqual(body.items[i - 1].premium_pct ?? -Infinity);
-    }
+    expect(body.ok).toBe(true);
+    expect(body.available).toBe(false);
+    expect(body.precomputed).toBe(false);
+  });
+
+  it('getCloudflareContext 本身拋錯（非 Workers 環境）→ 走 not-ready', async () => {
+    guardNoUpstreamFetch();
+    mockGetCloudflareContext.mockRejectedValue(new Error('no cloudflare context'));
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as CbResponse & { ok: boolean; precomputed: boolean };
+
+    expect(body.ok).toBe(true);
+    expect(body.available).toBe(false);
   });
 });
