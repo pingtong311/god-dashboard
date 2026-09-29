@@ -3,25 +3,26 @@
 /**
  * 可轉債 — 兩張主表（用戶端資料載入）
  * ----------------------------------------------------------------------------
- * 資料來源：GET /api/skynet/cb（櫃買中心 OpenAPI /bond_ISSBD5_data）。
+ * 資料來源：GET /api/skynet/cb（櫃買中心 /bond_ISSBD5_data + CB 日行情檔 cbdrs001）。
  *
- * 誠實分工（見 route.ts 調查註解）：
- *   1) 轉換溢價率排序（低→高）：需 CB 盤後成交價才能算溢價率，TPEX/TWSE 免費 OpenAPI
- *      皆無此欄位 → items 恆為空陣列 → 誠實呈現載入骨架 +「資料尚未入庫」，
- *      並說明原因，絕不用 0 或假數字湊出排序。
- *   2) 賣回權時程：上游直接有 PutOptionDate / PutOptionPrice → 以真實資料呈現。
+ * 誠實分工（見 route.ts 資料源註解）：
+ *   1) 轉換溢價率排序（低→高）：由 TPEX「轉換公司債資訊看板」日行情檔自產
+ *      （轉換價值＝標的股價×100÷轉換價；折價率＝CB 收市價÷轉換價值−1），
+ *      升冪取前 30，與實站 30/30 吻合。
+ *   2) 賣回權時程：上游 ISSBD5 直接有 PutOptionDate / PutOptionPrice → 真實資料。
+ *   上游暫時失敗時一律誠實顯示「暫時無法取得」，絕不用 0 或假數字湊排序。
  */
 
 import { useEffect, useState, type ReactElement } from 'react';
-import type { CbResponse, CbPutScheduleRow } from '@/app/api/skynet/cb/route';
+import type { CbResponse, CbPutScheduleRow, CbItem } from '@/app/api/skynet/cb/route';
 
 type LoadState =
   | { status: 'loading' }
   | { status: 'ready'; data: CbResponse }
   | { status: 'error' };
 
-/** 溢價率表格骨架（無資料源，誠實呈現）。 */
-function PremiumSkeleton({ reason }: { reason?: string }): ReactElement {
+/** 溢價率表格載入骨架（僅資料載入中顯示）。 */
+function PremiumSkeleton(): ReactElement {
   return (
     <div className="px-4 py-4" role="status" aria-live="polite">
       <span className="sr-only">正在整理可轉債轉換溢價率排序…</span>
@@ -30,10 +31,6 @@ function PremiumSkeleton({ reason }: { reason?: string }): ReactElement {
           <div key={i} className="animate-pulse h-12 rounded-xl border border-line/70 bg-surface" />
         ))}
       </div>
-      <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
-        可轉債盤後行情與轉換價值<b className="text-ink">資料尚未入庫</b>
-        ；{reason ?? '本站目前無 CB 盤後成交價資料源，待入庫後以此排序即時呈現，不預先寫死截圖數字。'}
-      </p>
     </div>
   );
 }
@@ -86,6 +83,7 @@ export default function CbData(): ReactElement {
   }, []);
 
   const putSchedule: CbPutScheduleRow[] = state.status === 'ready' ? state.data.put_schedule : [];
+  const items: CbItem[] = state.status === 'ready' ? state.data.items : [];
   const reason = state.status === 'ready' ? state.data.items_unavailable_reason : undefined;
 
   return (
@@ -109,7 +107,44 @@ export default function CbData(): ReactElement {
             <span className="text-right">轉換價值</span>
             <span className="text-right">溢價率</span>
           </div>
-          <PremiumSkeleton reason={reason} />
+          {state.status === 'loading' ? (
+            <PremiumSkeleton />
+          ) : items.length === 0 ? (
+            <div className="px-4 py-4" role="status" aria-live="polite">
+              <p className="text-[12.5px] leading-relaxed text-muted">
+                轉換溢價率排序<b className="text-ink">暫時無法取得</b>；
+                {reason ?? '上游櫃買中心管線無回應或無資料，稍後重試，不先放推測數字。'}
+              </p>
+            </div>
+          ) : (
+            <ul>
+              {items.map((row) => (
+                <li
+                  key={row.cb_id}
+                  className="grid grid-cols-[minmax(0,1fr)_88px_88px_72px] items-center gap-2 border-b border-line/60 px-4 py-2.5 last:border-0"
+                >
+                  <div className="min-w-0">
+                    <span className="block truncate font-bold">
+                      <span className="num">{row.cb_id}</span> {row.cb_name}
+                    </span>
+                    <span className="text-xs text-muted">
+                      轉換價 {formatNum(row.conversion_price)}｜票息 {formatNum(row.coupon_rate)}%｜到期{' '}
+                      {row.due_date || '—'}
+                    </span>
+                  </div>
+                  <span className="num text-right">{formatNum(row.cb_price)}</span>
+                  <span className="num text-right">{formatNum(row.conversion_value)}</span>
+                  <span
+                    className={`num text-right font-black ${
+                      (row.premium_pct ?? 0) < 0 ? 'text-up' : 'text-down'
+                    }`}
+                  >
+                    {formatNum(row.premium_pct)}%
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
       <p className="mt-4 rounded-xl bg-surface-2 px-4 py-3 text-sm leading-relaxed text-muted">

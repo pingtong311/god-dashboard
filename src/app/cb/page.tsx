@@ -3,15 +3,17 @@
  * ----------------------------------------------------------------------------
  * 逐字複刻 captured/login-capture/html/cb.html 的 <main> 內容。
  *
- * 資料誠實原則：可轉債（CB）的轉換溢價率排序、賣回權時程與發行／掛牌行事曆
- * 本站無資料源（無 CB 行情／公告 API），一律以 `role="status"` 載入骨架 +
- * 「資料尚未入庫」誠實呈現，絕不寫死 capture 截圖裡的數字。
+ * 資料來源（皆自產，見 api/skynet/cb/route.ts）：
+ *   - 轉換溢價率排序（items）：TPEX「轉換公司債資訊看板」日行情檔（cbdrs001）自產。
+ *   - 賣回權時程／發行行事曆：TPEX OpenAPI /bond_ISSBD5_data。
+ * 上游暫時失敗時，前端一律以「暫時無法取得」誠實呈現，絕不寫死 capture 截圖裡的數字。
  * 頁面文字（公式說明、外部官方查詢入口、口徑提醒）為靜態說明，逐字照抄。
  */
 
 import type { Metadata } from 'next';
 import CbClient from './CbClient';
 import CbData from './CbData';
+import CbHeroStatus from './CbHeroStatus';
 import './page.css';
 
 export const metadata: Metadata = {
@@ -29,9 +31,7 @@ export default function CbPage(): React.ReactElement {
           可轉債（CB）＝可以「換成股票」的公司債。當它的市價比「立刻換成股票的價值」
           高或低時，轉換溢價率會呈現正值或負值。這裡只列公式差異與原始欄位。
         </p>
-        <p className="mt-2 text-sm text-muted">
-          賣回權時程取自櫃買中心公開 OpenAPI；轉換溢價率需 CB 盤後成交價，目前無免費資料源
-        </p>
+        <CbHeroStatus />
       </section>
       <section className="mt-4 rounded-xl border border-line bg-surface p-4">
         <h2 className="font-black">找競拍定價或議價成交？</h2>
