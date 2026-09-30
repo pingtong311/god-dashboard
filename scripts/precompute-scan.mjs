@@ -13,11 +13,12 @@
  *   **503 error code: 1102**（超出資源限制）。本機 `npx jest` 全綠，證明不是邏輯錯，
  *   是 Edge 的資源天花板。業主裁示：改為「離線預算 + 寫入 KV」。
  *
- * 產出（寫入 KV 的兩個 key）：
+ * 產出（寫入 KV 的三個 key）：
  *   scan:pattern-screen   ← 7 種型態的掃描結果（src/lib/scanPayload.ts 組裝）
  *   scan:swing-hub        ← 16 個波段條件頁籤結果（同上）
- *   兩個 route 只讀這兩個 key；KV 無值時 route 回 200 + ready:false +
- *   reason:'not_precomputed' + 誠實文案（不偽裝成「載入中」）。
+ *   scan:cb               ← 可轉債轉換溢價率（src/lib/cbPremium.ts 組裝）
+ *   三個 route 只讀這三個 key；KV 無值時 route 回 200 + ready:false / not-ready +
+ *   誠實文案（不偽裝成「載入中」）。
  *
  * 重用既有邏輯（不重寫，避免兩套實作漂移）
  *   scanPayload.ts / marketBars.ts 是 TypeScript（含 `@/` 路徑別名），無法被純 Node
@@ -44,7 +45,7 @@
  * 選項
  *   --days=N            型態掃描回看的交易日數（預設 70＝scanPayload.SCAN_WINDOW_TRADING_DAYS）
  *   --to=YYYY-MM-DD     視窗結束日（預設今天，台北時區）
- *   --only=all|pattern-screen|swing-hub   只算其中一項（預設 all）
+ *   --only=all|pattern-screen|swing-hub|cb   只算其中一項（預設 all）
  *   --dry-run           只計算不寫 KV（同時把 JSON 存到 --out-dir）
  *   --out-dir=<dir>     dry-run 的輸出目錄（預設 .scan-cache）
  *   --verify            寫入後以 `kv key get` 讀回並比對位元組數
@@ -93,7 +94,7 @@ function printHelp() {
 
   --days=N            型態掃描回看的交易日數（預設 70）
   --to=YYYY-MM-DD     視窗結束日（預設今天，台北時區）
-  --only=all|pattern-screen|swing-hub   只算其中一項（預設 all）
+  --only=all|pattern-screen|swing-hub|cb   只算其中一項（預設 all）
   --dry-run           只計算不寫 KV（同時把 JSON 存到 --out-dir）
   --out-dir=<dir>     dry-run 的輸出目錄（預設 .scan-cache）
   --verify            寫入後讀回並比對位元組數
@@ -154,7 +155,7 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(args.days) || args.days <= 0) args.days = 0;
   if (!Number.isFinite(args.minGapMs) || args.minGapMs < 0) args.minGapMs = 400;
-  if (!['all', 'pattern-screen', 'swing-hub'].includes(args.only)) args.only = 'all';
+  if (!['all', 'pattern-screen', 'swing-hub', 'cb'].includes(args.only)) args.only = 'all';
   return args;
 }
 
@@ -259,10 +260,11 @@ async function main() {
   const nsId = args.namespaceId || process.env.SKYNET_KV_NAMESPACE_ID || DEFAULT_NAMESPACE_ID;
   const wantPattern = args.only === 'all' || args.only === 'pattern-screen';
   const wantSwing = args.only === 'all' || args.only === 'swing-hub';
+  const wantCb = args.only === 'all' || args.only === 'cb';
 
   console.log('=== 全市場掃描「離線預算」工具 ===');
   console.log(`KV namespace id : ${nsId}`);
-  console.log(`寫入 key        : ${wantPattern ? 'scan:pattern-screen ' : ''}${wantSwing ? 'scan:swing-hub' : ''}`);
+  console.log(`寫入 key        : ${wantPattern ? 'scan:pattern-screen ' : ''}${wantSwing ? 'scan:swing-hub ' : ''}${wantCb ? 'scan:cb' : ''}`);
   console.log(`TTL             : ${SCAN_TTL_SECONDS}s（7 天）`);
   console.log(`模式            : ${args.dryRun ? `DRY-RUN（不寫入，輸出至 ${args.outDir}）` : '寫入 KV'}`);
   console.log('');
@@ -282,7 +284,13 @@ async function main() {
   // 2. 載入既有實作（esbuild bundle）
   const scan = await bundleAndImport('scanPayload.ts');
   const bars = await bundleAndImport('marketBars.ts');
-  console.log('✔ 已載入 src/lib/scanPayload.ts + src/lib/marketBars.ts（esbuild bundle）\n');
+  console.log('✔ 已載入 src/lib/scanPayload.ts + src/lib/marketBars.ts（esbuild bundle）');
+  let cb = null;
+  if (wantCb) {
+    cb = await bundleAndImport('cbPremium.ts');
+    console.log('✔ 已載入 src/lib/cbPremium.ts（esbuild bundle）');
+  }
+  console.log('');
 
   const {
     SCAN_KV_KEY_PATTERN_SCREEN,
@@ -371,14 +379,18 @@ async function main() {
   console.log(`\n已讀取 ${days.length} 天；缺漏 ${missing.length} 天${missing.length ? `（${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}）` : ''}`);
 
   // 5. 誠實底線：日數不足一律停手，絕不寫入「假裝掃過」的結果
-  if (days.length < MIN_BARS_FOR_SCAN) {
-    console.error(
-      `✘ 日 K 僅 ${days.length} 天，不足 ${MIN_BARS_FOR_SCAN} 天，停止預算（不寫入 KV）。\n` +
-        '  請先執行：node scripts/backfill-market-bars.mjs --days=120',
-    );
-    await scan.cleanup();
-    await bars.cleanup();
-    process.exit(2);
+  //    （僅影響 pattern-screen / swing-hub；cb 不依賴日 K，不受此限）
+  if (wantPattern || wantSwing) {
+    if (days.length < MIN_BARS_FOR_SCAN) {
+      console.error(
+        `✘ 日 K 僅 ${days.length} 天，不足 ${MIN_BARS_FOR_SCAN} 天，停止預算（不寫入 KV）。\n` +
+          '  請先執行：node scripts/backfill-market-bars.mjs --days=120',
+      );
+      if (cb) await cb.cleanup();
+      await scan.cleanup();
+      await bars.cleanup();
+      process.exit(2);
+    }
   }
 
   // 6. 組裝並寫入
@@ -419,6 +431,29 @@ async function main() {
     console.log(`  16 頁籤命中：${tabSummary}`);
   }
 
+  // 6b. 可轉債（cb）：獨立抓取 TPEX 發行資料與日行情檔，不依賴日 K
+  if (wantCb && cb) {
+    console.log(`\n— cb（可轉債轉換溢價率）：抓取 TPEX 發行資料與日行情檔…`);
+    await throttle();
+    const { CB_KV_KEY, buildCbPayload } = cb.mod;
+    let built = null;
+    try {
+      built = await buildCbPayload();
+    } catch (err) {
+      console.error(`✘ cb 預算拋錯（上游異常）：${err?.message ?? err}`);
+      built = null;
+    }
+    if (!built || built.ok !== true) {
+      console.error('✘ cb 預算失敗（上游無法取得），本次不寫入 scan:cb。');
+    } else {
+      const computedAt = new Date().toISOString();
+      const envelope = { computedAt, payload: built.payload };
+      results.push({ key: CB_KV_KEY, payload: envelope, label: 'cb' });
+      const bytes = Buffer.byteLength(JSON.stringify(envelope), 'utf8');
+      console.log(`  cb payload：${(bytes / 1024).toFixed(1)} KB（available=${built.payload.available}）`);
+    }
+  }
+
   // 7. 寫入（或 dry-run 存檔）
   for (const { key, payload, label } of results) {
     const json = JSON.stringify(payload);
@@ -450,6 +485,7 @@ async function main() {
   }
 
   await rm(tmpDir, { recursive: true, force: true });
+  if (cb) await cb.cleanup();
   await scan.cleanup();
   await bars.cleanup();
   console.log('\n=== 完成 ===');
