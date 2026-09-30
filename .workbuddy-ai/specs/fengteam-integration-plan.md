@@ -150,3 +150,51 @@ FengTeam 端點綁在 `127.0.0.1:4010`，峰子 App 跑在 Cloudflare 邊緣（�
 - **NVIDIA NIM**：金鑰已實測有效並設為 Worker secret；程式碼內 3 個已下架的模型 id 已校正（commit `e02f68c`）。
 - FengTeam 的 `data/api/app/` payload 目前多為空——**這不是故障，是還沒開盤**。不要把它當成資料源壞掉。
 - `FENGTEAM_APP_RESPONSIBILITY_MAPPING.md` 開頭自標 **HISTORICAL**（v3.0 四池已廢止），引用時需注意。
+
+---
+
+## 八、定期與 FengTeam 協同同步步驟（BOSS 2026-09-30 裁定）
+
+> **裁定背景**：BOSS 已與 FengTeam 專案團隊說明同步計劃。兩邊同屬一個專案（前端峰子 App / 後端 God 辦公室），但**搭建部署必須有同步進度**——避免 FengTeam 在搭建 / 修改 / 部署時，把我方產生的**關聯性**（god-office 介接端點、KV key 命名、provenance 標記、推送契約）改掉。
+>
+> **原則**：兩邊只要有「同步關聯性」＋「搭建計劃」，就直接部署；同步點以下列清單為準。
+
+### 8.1 不可擅自改動的「凍結關聯性」清單（雙方共用）
+
+以下由本團隊產生並已生產驗證，FengTeam 側任何改動都必須先與本團隊對齊：
+
+| 類別 | 凍結項目 | 現狀 / 出處 |
+|---|---|---|
+| 推送端點 | `POST /api/skynet/god/ingest` | 已上線，Bearer `GOD_INGEST_TOKEN` 專用權杖（見 `god-office-interface-spec.md`、`god-ingest-handoff.md`） |
+| 白名單端點 | `latest-date` `dashboard` `radar` `sector-sniper` `daily-highlights` `warroom-boards` | 6 個，改白名單需雙方協議 |
+| KV key 命名 | `god:<endpoint>`、`scan:cb`、`scan:pattern-screen`、`scan:swing-hub` | 峰子 App 讀取層依此命名；改名會讓讀取層失效 |
+| 推送權杖 | `GOD_INGEST_TOKEN` | 專用、只能寫 `god-ingest`；輪替需雙方協議，不影響其他系統 |
+| 推送契約 | `scripts/god-push.mjs`（endpoint 由檔名推斷、payload ≤256KB、KV TTL 7 天、單檔失敗不中斷） | 已實測；手寫 POST 須用白名單值，不可抄檔內 `endpoint` 路徑欄 |
+| 資料誠實原則 | `ready:false` / `honest_gap` 誠實標示，絕不填假數字 | 本專案最高原則，雙方共用 |
+| 來源標記 | `provenance.source`（`self-produced` / `site-mirror`） | `site-benchmark-alignment-plan.md` §一，自產率儀表板 |
+
+### 8.2 同步頻率與方式
+
+| 項目 | 約定 |
+|---|---|
+| **例行同步** | 每週一次例行對齊會議（或書面同步），雙方各報告當週搭建 / 部署進度與任何涉及 8.1 凍結項的變更意向 |
+| **重大變更前預告** | 任一方要改動 8.1 任一凍結項（端點、KV key、權杖、契約、provenance）前，**必須先發預告**給對方，待確認不衝突才動 |
+| **單一改動窗口** | 沿用 §五 決定事項 3 的建議——**峰子 App 的讀取層與契約由本團隊為單一窗口**，FengTeam 不直接改峰子 repo 的介接程式碼；FengTeam 只負責產出 `data/api/app/*.json` 並用 `god-push.mjs` 推送 |
+| **部署計劃互告知** | 雙方各自的部署（峰子 `deploy:cf`、FengTeam `god-loop` 排程與 app-server）變更前互告知，避免任一邊上線改掉關聯性 |
+| **離線授權通道** | BOSS 離開電腦時，授權 / 回覆經 WorkBuddy 助理轉手機 Telegram 收發（BOSS 2026-09-30 裁定） |
+
+### 8.3 衝突防護（實作層）
+
+1. **契約測試鎖**：峰子 repo 保留 `god-office-interface-spec.md` 的契約驗證（白名單、payload 上限、權杖範圍）；任何改動跑 `god-push.mjs --dry-run` 先行驗證。
+2. **KV 最終一致性**：FengTeam 推完後間隔 ≥60 秒再讀（地雷 3），避免誤判失敗。
+3. **凍結項變更審查**：涉及 8.1 的 PR / 部署，本團隊 review 通過才合併；FengTeam 側改動前先確認未觸及凍結 key 與端點語義（特別是 `scope` 欄位——不同 endpoint 語義不同，見 `god-vs-site-data-comparison.md` §四）。
+
+### 8.4 當前同步狀態（2026-09-30）
+
+- ✅ 介接契約已實作並生產驗證通過（部署版本 `1a9a6a81`）。
+- ✅ 已接頁面：`/today/`（dashboard）、`/radar/`（radar）。
+- ⏳ 待接頁面：`/picks/`（sector-sniper）。
+- ⏳ 已可收發但未接頁面：`latest-date`、`daily-highlights`、`warroom-boards`、`sector-sniper`（4 端點先推不會壞）。
+- ✅ 推送交接包已給 FengTeam（`god-ingest-handoff.md` 含權杖、端點、腳本、地雷說明）。
+
+> **下一步**：雙方確認本 §八 同步機制 → 各自有搭建計劃即直接部署（峰子 `deploy:cf` 含 Plan A 預算化；FengTeam `god-push.mjs` 排程）→ 部署後端到端複驗（God 產出 → KV → 峰子頁面）。

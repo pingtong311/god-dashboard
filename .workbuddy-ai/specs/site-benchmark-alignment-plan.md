@@ -1,8 +1,8 @@
 # 實站標竿對齊計畫 v1.0
 
-- 日期：2026-09-28
+- 日期：2026-09-28（2026-09-30 複檢修正）
 - 撰寫：峰子 App 團隊（天網）
-- 狀態：**待 BOSS 核准後開工**
+- 狀態：**P0-1 已收口（route 全建好，剩 Plan A 部署）；P0-2/P0-3/P0-4 待開工**
 - 依據：BOSS 裁示 1–4 + 92 份實站 API 完整度清單（逐份分類）
 
 ---
@@ -256,4 +256,43 @@ stock-force    fade-watch    intraday-indicators    （+ market-center/historica
 - 混合類 4 份（`radar`、`swing-hub`、`market-center/historical-styles`、`member/research-score`）需**逐欄**決定資料源，不可整支當 A
 - 需人工確認 1 項：`industry-momentum` 的 `source` 欄自稱 FinMind 付費 dataset，但揭露欄位（產業成交金額）可由 TWSE 官方表自算 → 判 A，但若要求完全比照實站數字需再確認
 
-本計畫為唯讀分析後的文件產出，未修改任何程式碼或資料。
+---
+
+## 七、2026-09-30 複檢修正：P0-1「13 頁缺口」已收口（重要）
+
+> 原 P0-1 列「13 個頁面已建、route 缺」——此判定已過時。經 `src/app/api/` 全量盤點（48 支 route.ts）+ 13 頁逐一複檢，現況如下：
+
+### 13 頁複檢結果
+
+| 路徑 | 頁面 | API route | 真實資料狀態 |
+|---|---|---|---|
+| `/backtest` | ✅ | `api/skynet/backtest` | ✅ 自產（限 2330×auto site-mirror，其他標 `ok:false` 誠實錯誤） |
+| `/block-trades` | ✅ | `api/skynet/block-trades` | ✅ 自產（TWSE BFIAUU + TPEX，失敗回 502 不造假） |
+| `/dividend` | ✅ | `api/skynet/dividend-calendar` | ✅ 自產（含自算殖利率） |
+| `/risk` | ✅ | `api/skynet/risk` | ✅ 自產（TWSE punish + TPEX disposal） |
+| `/etf-active` | ✅ | `api/skynet/etf-active` | ✅ 自產（TWSE opendata） |
+| `/margin-maint` | ✅ | `api/skynet/margin-maint` | ✅ 自產（大盤維持率自算） |
+| `/trump` | ✅ | `api/skynet/trump-radar` | ✅ 自產（Google News + 白宮 RSS + KV 快取） |
+| `/patterns` | ✅ | `api/skynet/pattern-screen` | ⚠️ **KV-only**：讀 `scan:pattern-screen`，未預算回 `ready:false` |
+| `/swing` | ✅ | `api/skynet/swing-hub` | ⚠️ **KV-only**：讀 `scan:swing-hub`，未預算回 `ready:false` |
+| `/cb` | ✅ | `api/skynet/cb` | ⚠️ **KV-only**：讀 `scan:cb`，未預算回 `not_precomputed` |
+| `/fade` | ✅ | — | 誠實靜態頁（分點逐筆為付費源，`hasChannelData` 恆 false，無假數據） |
+| `/strategy` | ✅ | — | 誠實靜態頁（19 條策略快照展示，兩區塊標「本站無法提供」） |
+| `/sim` | —（路徑錯位） | `api/skynet/market-overview` + `kline` | ✅ 實際在 `/skynet/day-trading-sim`，已接真實 API |
+
+### 關鍵結論
+
+1. **「route 缺」的問題已不存在**——13 頁全部已有對應 route（或設計上即為誠實靜態頁、或路徑錯位已解決）。
+2. **唯一真實剩餘缺口**：`pattern-screen` / `swing-hub` / `cb` 三條 route 雖已建好，但為 **KV-only 薄讀取層**，需離線 `scripts/precompute-scan.mjs` 每日盤後寫入 KV 才會有真實資料。這正是 **Plan A（Edge 預算化）的交付物**，程式碼已實作並提交（`86737b7`）——現況只差 **BOSS 本機部署排程**（backfill → precompute → deploy:cf → 裝 launchd plist）。
+3. **P0-1 的施工優先級已轉移**：從「補 route」變成「部署 Plan A 讓 3 條 KV 路由上線」。
+
+### 修正後的施工順序
+
+| # | 項目 | 狀態 |
+|---|---|---|
+| P0-1 | 13 頁資料層 | ✅ 收口（route 全建；3 條 KV 路由待 Plan A 部署） |
+| P0-2 | `provenance.source` 標記機制 | ⏳ 待開工（設計已定義，尚未全量落地） |
+| P0-3 | 標竿對照腳本 | ⏳ 待開工 |
+| P0-4 | A 類 47 份施工清單 | ⏳ 待開工（其中基本面/財報、分點 B3 等已在 `data-source-matrix.md` §2 落地） |
+
+本計畫為唯讀分析後的文件產出，未修改任何程式碼或資料（§七為狀態複檢說明）。
