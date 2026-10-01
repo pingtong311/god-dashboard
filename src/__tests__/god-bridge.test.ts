@@ -121,11 +121,15 @@ afterAll(() => {
 });
 
 describe('isGodEndpoint（白名單邊界）', () => {
-  it('白名單 6 個端點皆為 true，且數量為 6', () => {
-    expect(GOD_ENDPOINTS).toHaveLength(6);
+  it('白名單 7 個端點皆為 true，且數量為 7', () => {
+    expect(GOD_ENDPOINTS).toHaveLength(7);
     for (const endpoint of GOD_ENDPOINTS) {
       expect(isGodEndpoint(endpoint)).toBe(true);
     }
+  });
+
+  it('第 7 端點 target-evidence 在白名單內（2026-10-01 新增）', () => {
+    expect(isGodEndpoint('target-evidence')).toBe(true);
   });
 
   it('白名單外與非字串值皆為 false', () => {

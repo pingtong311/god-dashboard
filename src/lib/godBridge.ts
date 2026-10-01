@@ -23,7 +23,7 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
 /**
- * 允許的 6 個標準化端點白名單（GOD 辦公室 http://127.0.0.1:4010/api/* 產出）。
+ * 允許的 7 個標準化端點白名單（GOD 辦公室 http://127.0.0.1:4010/api/* 產出）。
  * 以 `as const` 宣告，供 `GodEndpoint` 型別推導與執行期白名單判斷共用（單一真相來源）。
  */
 export const GOD_ENDPOINTS = [
@@ -33,6 +33,7 @@ export const GOD_ENDPOINTS = [
   'sector-sniper',
   'daily-highlights',
   'warroom-boards',
+  'target-evidence',
 ] as const;
 
 /** 白名單端點聯合型別（由 GOD_ENDPOINTS 推導，新增端點只需改一處）。 */
