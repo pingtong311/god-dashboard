@@ -34,7 +34,7 @@ import styles from './review.module.css';
 /* ── War Room 元件（15 個孤兒元件整合）───────────────────────────── */
 import SniperPanel from '@/components/warroom/SniperPanel';
 import MonitoringManager from '@/components/warroom/MonitoringManager';
-import SignalReviewPanel from '@/components/warroom/SignalReviewPanel';
+import SignalReviewPanel, { type SignalReviewRow } from '@/components/warroom/SignalReviewPanel';
 import P1TriggerPanel from '@/components/warroom/P1TriggerPanel';
 import P2ScanPanel from '@/components/warroom/P2ScanPanel';
 import MOPSPanel from '@/components/warroom/MOPSPanel';
@@ -189,6 +189,68 @@ type DailyReportsData = {
     duplicateFiltered?: number;
     deliveryMode?: string;
   };
+};
+
+/* 訊號日誌（/api/skynet/signal-log）回傳的單筆對帳結果 */
+type ReconciledSignal = {
+  id: string;
+  ticker: string;
+  signal_date: string;
+  entry_price: number;
+  target_price: number;
+  stop_loss: number;
+  reason: string;
+  invalid_condition: string;
+  confidence: number | null;
+  source: string;
+  logged_at: string;
+  outcome: 'win' | 'loss' | 'ambiguous' | 'open' | null;
+  outcome_reason: string;
+  outcome_message: string;
+  resolved_date: string | null;
+  bars_checked: number;
+  last_bar_date: string | null;
+  last_close: number | null;
+  return_pct: number | null;
+  unrealized_pct: number | null;
+  window_exhausted: boolean;
+};
+
+type SignalLogResponse = {
+  ok?: boolean;
+  date?: string;
+  window_days?: number;
+  signals?: ReconciledSignal[];
+  note?: string;
+  bars?: {
+    scanned_dates?: string[];
+    available_dates?: string[];
+    missing_dates?: string[];
+  };
+  provenance?: Record<string, unknown>;
+};
+
+type SignalStats = {
+  total_signals: number;
+  settled_signals: number;
+  win_count: number;
+  loss_count: number;
+  ambiguous_count: number;
+  open_count: number;
+  unresolved_count: number;
+  win_rate: number | null;
+  sample_sufficient: boolean;
+  sample_note: string;
+  avg_return_pct: number | null;
+  max_drawdown_pct: number | null;
+};
+
+type SignalStatsResponse = {
+  ok?: boolean;
+  signal_dates?: string[];
+  stats?: SignalStats;
+  truncated?: boolean;
+  truncated_note?: string | null;
 };
 
 type DashboardData = {
@@ -370,6 +432,30 @@ function dataUrl(type: string): string {
   return `https://skynet-cmd.duckdns.org/webhook/skynet-dashboard?type=${encodeURIComponent(type)}&_ts=${Date.now()}`;
 }
 
+/** 把 /api/skynet/signal-log 的對帳結果映射到 SignalReviewPanel 的資料型別。
+ * 誠實原則：只放真實欄位。日 K 對帳不記錄盤中高低價序列，故 MFE/MAE（max/minPrice）
+ * 以進場價為基準（=0%），最新價取 last_close（取不到即以進場價占位、不捏造其它數字）。 */
+function reconciledToRow(sig: ReconciledSignal): SignalReviewRow {
+  const entry = Number(sig.entry_price) || 0;
+  const latest = Number.isFinite(sig.last_close) ? (sig.last_close as number) : entry;
+  return {
+    key: sig.id,
+    date: sig.signal_date,
+    ticker: sig.ticker,
+    name: '',
+    action: 'BUY',
+    entryPrice: entry,
+    targetPrice: Number(sig.target_price) || null,
+    stopPrice: Number(sig.stop_loss) || null,
+    latestPrice: latest,
+    maxPrice: entry,
+    minPrice: entry,
+    confidence: sig.confidence ?? 0,
+    observations: Number(sig.bars_checked) || 0,
+    updatedAt: sig.resolved_date ?? sig.logged_at,
+  };
+}
+
 export default function ReviewPage() {
   const [view, setView] = useState<ViewKey>('decisions');
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
@@ -384,6 +470,14 @@ export default function ReviewPage() {
   const [decisionError, setDecisionError] = useState('');
   const [reportsData, setReportsData] = useState<DailyReportsData>({ days: [], reports: [] });
   const [selectedReportDate, setSelectedReportDate] = useState('');
+
+  /* ── 訊號日誌（/api/skynet/signal-log）對帳狀態 ───────────────── */
+  const [signalStats, setSignalStats] = useState<SignalStats | null>(null);
+  const [signalStatsNote, setSignalStatsNote] = useState('');
+  const [signalLogReconciled, setSignalLogReconciled] = useState<ReconciledSignal[]>([]);
+  const [signalLogDate, setSignalLogDate] = useState('');
+  const [signalLogLoading, setSignalLogLoading] = useState(false);
+  const [signalLogStatus, setSignalLogStatus] = useState('');
 
   /* ── 狙擊手編輯器狀態 ───────────────────────────────────────── */
   const [sniperItems, setSniperItems] = useState<SniperItem[]>([]);
@@ -445,6 +539,40 @@ export default function ReviewPage() {
       setMonitoringError(e instanceof Error ? e.message : '監控清單讀取失敗');
     } finally {
       setMonitoringLoading(false);
+    }
+  }, []);
+
+  /* ── 訊號日誌勝率統計（誠實：樣本不足不自稱勝率）────────────── */
+  const loadSignalStats = useCallback(async () => {
+    setSignalLogLoading(true);
+    setSignalLogStatus('');
+    try {
+      const res = await fetchJson('/api/skynet/signal-log/stats');
+      const stats = (res.stats ?? null) as SignalStats | null;
+      setSignalStats(stats);
+      setSignalStatsNote(
+        res.truncated ? String(res.truncated_note ?? '統計未涵蓋全部資料') : stats?.sample_note ?? '',
+      );
+      // 順帶抓最近一個有訊號的日期做對帳明細（誠實：沒訊號就空，不補假資料）
+      const dates: string[] = Array.isArray(res.signal_dates) ? (res.signal_dates as string[]) : [];
+      const latest = dates[dates.length - 1] ?? '';
+      if (latest) {
+        const dayRes = await fetchJson(`/api/skynet/signal-log?date=${encodeURIComponent(latest)}&window=10`);
+        const reconciled = Array.isArray(dayRes.signals) ? (dayRes.signals as ReconciledSignal[]) : [];
+        setSignalLogReconciled(reconciled);
+        setSignalLogDate(latest);
+        if (dayRes.note) setSignalLogStatus(String(dayRes.note));
+      } else {
+        setSignalLogReconciled([]);
+        setSignalLogDate('');
+      }
+    } catch (e) {
+      setSignalStats(null);
+      setSignalStatsNote('');
+      setSignalLogReconciled([]);
+      setSignalLogStatus(e instanceof Error ? e.message : '訊號日誌讀取失敗');
+    } finally {
+      setSignalLogLoading(false);
     }
   }, []);
 
@@ -659,9 +787,12 @@ export default function ReviewPage() {
 
   /* ── 週期性重載 ─────────────────────────────────────────────── */
   useEffect(() => {
-    const timer = window.setInterval(() => loadData(true), 60_000);
+    const timer = window.setInterval(() => {
+      loadData(true);
+      loadSignalStats();
+    }, 60_000);
     return () => window.clearInterval(timer);
-  }, [loadData]);
+  }, [loadData, loadSignalStats]);
 
   useEffect(() => {
     try {
@@ -670,7 +801,8 @@ export default function ReviewPage() {
     } catch {}
     loadData();
     loadNotificationsData();
-  }, [loadData, loadNotificationsData]);
+    loadSignalStats();
+  }, [loadData, loadNotificationsData, loadSignalStats]);
 
   useEffect(() => {
     if (view === 'sniper-editor') {
@@ -986,6 +1118,49 @@ export default function ReviewPage() {
                 <MetricCard label="平均報酬" value={percent(data.performance.avgReturn)} note="來源現有摘要" tone={(data.performance.avgReturn || 0) >= 0 ? 'green' : 'red'} />
                 <MetricCard label="校準樣本" value={String(data.performance.predictionSamples ?? 0)} note="樣本不足時不宣稱準確率" />
               </div>
+
+              {/* 訊號日誌勝率（誠實：樣本不足時不宣稱勝率，win_rate 為 null 時顯示「—」） */}
+              <div className={styles.metrics} style={{ marginTop: 12 }}>
+                <MetricCard
+                  label="訊號勝率（日 K 對帳）"
+                  value={signalStats && signalStats.win_rate != null ? percent(signalStats.win_rate) : '—'}
+                  note={
+                    signalStats == null
+                      ? '訊號日誌尚未建立，或本端 API 未回訊'
+                      : signalStats.sample_sufficient
+                        ? `已結算 ${signalStats.settled_signals} 筆，勝率 ${signalStats.win_count}/${signalStats.settled_signals}`
+                        : `已結算 ${signalStats.settled_signals} 筆（樣本 < 30，僅參考）`
+                  }
+                  tone={signalStats?.win_rate != null && signalStats.win_rate >= 0 ? 'green' : 'neutral'}
+                />
+                <MetricCard
+                  label="平均報酬（結算）"
+                  value={signalStats && signalStats.avg_return_pct != null ? percent(signalStats.avg_return_pct) : '—'}
+                  note="以結算價位（目標/停損）計算，未結算不計入"
+                />
+                <MetricCard
+                  label="最大回撤"
+                  value={signalStats && signalStats.max_drawdown_pct != null ? percent(signalStats.max_drawdown_pct) : '—'}
+                  note="依結算順序累積報酬曲線計，無結算即為「—」"
+                />
+                <MetricCard
+                  label="未結算訊號"
+                  value={String(signalStats?.open_count ?? 0)}
+                  note={signalStats?.unresolved_count ? `另有 ${signalStats.unresolved_count} 筆取不到日 K，無法判定` : '所有對帳皆可判定'}
+                />
+              </div>
+              {signalStatsNote ? <p className={styles.inlineError}>{signalStatsNote}</p> : null}
+
+              <section className={styles.panel} style={{ marginTop: 17 }}>
+                <div className={styles.panelHeader}>
+                  <div><strong>訊號日誌對帳</strong><span>{signalLogDate ? `以 ${signalLogDate} 對帳` : '尚無訊號日誌可對帳'}</span></div>
+                  <button className={styles.smallRefresh} onClick={loadSignalStats} disabled={signalLogLoading}>
+                    <RefreshCw size={14} className={signalLogLoading ? styles.spinning : ''} />
+                  </button>
+                </div>
+                <SignalReviewPanel rows={signalLogReconciled.map(reconciledToRow)} />
+                {signalLogStatus ? <p className={styles.inlineError}>{signalLogStatus}</p> : null}
+              </section>
               <section className={styles.panel}>
                 <div className={styles.panelHeader}><div><strong>候選追蹤紀錄</strong><span>最新 50 筆真實資料</span></div><BarChart3 size={20} /></div>
                 {data.performanceRows.length ? <div className={styles.tableWrap}><table><thead><tr><th>股票</th><th>選出時間</th><th>選出價</th><th>現價</th><th>追蹤漲幅</th><th>狀態</th><th>選出理由</th></tr></thead><tbody>{data.performanceRows.map((row) => { const change = numeric(row['漲幅%']); return <tr key={`${row.row_number}-${row.代號}`}><td><strong>{row.名稱 || '--'}</strong><span>{row.代號 || '--'}</span></td><td>{row.選出時間 || '--'}</td><td>{money(row.選出價)}</td><td>{money(row.現價)}</td><td className={(change || 0) >= 0 ? styles.positive : styles.negative}>{percent(change)}</td><td>{row.狀態 || '--'}</td><td className={styles.reasonCell}>{row.選出理由 || '--'}</td></tr>; })}</tbody></table></div> : <EmptyState title="尚無追蹤資料" detail="不生成示意績效或假回測曲線" />}
