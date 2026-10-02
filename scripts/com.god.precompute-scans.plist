@@ -26,8 +26,8 @@
        之後這支每日排程只補最近 3 天即可維持新鮮度。
 
     ⚠ KV namespace 必須是 043f75b7beb64c8b94bafcacee2c5ee6
-       （標題 skynet-dashboard-skynet-cache，線上實際在用；新舊 Worker 共用同一個）。
-       3bfcd44de280449e9bfee6b07d07f980（標題 SKYNET_CACHE）是誘餌，非綁定。
+       （標題 god-dashboard-cache，線上實際在用；2026-10-02 由 skynet-dashboard-skynet-cache 更名）。
+       空的誘餌 3bfcd44d…（標題 SKYNET_CACHE）已刪除。
        預算腳本會呼叫 wrangler（需先 `npx wrangler login` 或設 CLOUDFLARE_API_TOKEN）。
 
     安裝（在 BOSS 本機終端機，非沙箱；沙箱會回 EIO error 5）：

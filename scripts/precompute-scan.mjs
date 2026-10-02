@@ -32,8 +32,9 @@
  *   MIN_BARS_FOR_SCAN（40 天），本工具**直接停手並回報**，絕不寫入「假裝掃過」的結果。
  *
  * ⚠ KV namespace 識別（寫錯就白做，與 backfill 工具相同）
- *     - 043f75b7beb64c8b94bafcacee2c5ee6  標題 skynet-dashboard-skynet-cache  ← 線上在用
- *     - 3bfcd44de280449e9bfee6b07d07f980  標題 SKYNET_CACHE                    ← 誘餌，非綁定
+ *     - 043f75b7beb64c8b94bafcacee2c5ee6  標題 god-dashboard-cache  ← 線上在用（唯一）
+ *   2026-10-02：標題由 skynet-dashboard-skynet-cache 更名為 god-dashboard-cache；
+ *   空的誘餌 namespace（3bfcd44d…，標題 SKYNET_CACHE）已刪除。
  *   可用 --namespace-id= 或環境變數 SKYNET_KV_NAMESPACE_ID 覆寫。
  *
  * ⚠ 所有 wrangler KV 指令都必須帶 --remote

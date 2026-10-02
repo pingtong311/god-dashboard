@@ -20,11 +20,11 @@
  *   成暫存 .mjs 再動態 import —— 抓取／正規化／壓縮／日期工具全部沿用同一份實作。
  *
  * ⚠ KV namespace 識別（極重要，寫錯就白做）
- *   本帳號下有「兩個」namespace，其中一個是誘餌：
- *     - 043f75b7beb64c8b94bafcacee2c5ee6  標題 skynet-dashboard-skynet-cache  ← 線上在用
- *     - 3bfcd44de280449e9bfee6b07d07f980  標題 SKYNET_CACHE                    ← 誘餌，非綁定
- *   wrangler.toml 只寫 binding 不寫 namespace_id，實際綁定由 wrangler 首次 deploy
- *   自動建立（標題採 `<worker>-<binding小寫>` 慣例）。已用線上 /api/skynet/god/latest-date
+ *   本帳號下只有「一個」namespace：
+ *     - 043f75b7beb64c8b94bafcacee2c5ee6  標題 god-dashboard-cache  ← 線上在用
+ *   2026-10-02：標題由 skynet-dashboard-skynet-cache 更名；空的誘餌 3bfcd44d…（SKYNET_CACHE）已刪除。
+ *   ⚠ wrangler.toml 必須寫死 `id`（**不是** `namespace_id`），否則 wrangler 會自動新建一個
+ *   空 namespace，服務便讀不到資料（2026-10-02 實際踩到）。已用線上 /api/skynet/god/latest-date
  *   讀到 `god:latest-date` 反證：線上是 043f75b7…。故本工具預設寫入 043f75b7…。
  *   可用 --namespace-id= 或環境變數 SKYNET_KV_NAMESPACE_ID 覆寫。
  *

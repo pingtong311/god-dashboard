@@ -1,4 +1,18 @@
-name = "skynet-dashboard"
+# GOD 平台 — Cloudflare Worker 部署設定
+#
+# 2026-10-02 雲端識別碼遷移（skynet → god）完成後，舊 Worker `skynet-dashboard`
+# 與舊 Vercel 專案均已下線，本檔由 `wrangler.god.toml` 收斂回標準檔名，
+# 成為**唯一**的部署設定（原本的舊 `wrangler.toml` 已刪除）。
+#
+# 用法：
+#   npm run build:cf
+#   npm run deploy:cf                    # build + deploy
+#   npx wrangler deploy                  # 只部署（需已 build）
+#
+# KV 綁定名維持 SKYNET_CACHE（程式碼 6 處引用此綁定名，且屬內部名稱、對外不可見；
+# 改名需同步改程式碼與測試，另案處理）。namespace 標題已更名為 god-dashboard-cache。
+
+name = "god-dashboard"
 main = ".open-next/worker.js"
 compatibility_date = "2026-07-01"
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
@@ -9,16 +23,18 @@ binding = "ASSETS"
 
 [[services]]
 binding = "WORKER_SELF_REFERENCE"
-service = "skynet-dashboard"
+service = "god-dashboard"
 
-# 台股期近月 EOD 跨 isolate 冷啟動快取。
-# Free plan 下 806KB 整包 JSON.parse 冷啟動有 2-3% 機率越 10ms CPU 上限，
-# 故 KV 只存 ~200 字節的精簡對像（TaifexFuturesData），不存原表。
+# 台股期近月 EOD 跨 isolate 冷啟動快取 + 每日盤後預算結果
+# （scan:pattern-screen / scan:swing-hub / scan:cb 三個 key）。
 #
-# 只寫 binding、不寫死 namespace_id：
-# 舊版 wrangler (4.107) 不認 namespace_id 欄位，寫了會被忽略並發出
-# "Unexpected fields" 警告，且會退回「自動在登入帳號下建立」邏輯。
-# 讓 wrangler 自行維護 namespace（首次 deploy 已建 043f75b7beb64c8b94bafcacee2c5ee6），
-# 後續 deploy 沿用同一個、不再漂移。
+# ⚠ 必須寫死 id：
+#   wrangler 的正確欄位名是 `id`，不是 `namespace_id`。
+#   只寫 binding、不寫 id 時，wrangler 會在登入帳號下「自動新建」一個 namespace，
+#   新 Worker 便讀不到既有資料。
+#   2026-10-02 實際踩到：首次部署 god-dashboard 時自動建了 c385d39c…（god-dashboard-skynet-cache），
+#   導致新站 /api/skynet/{pattern-screen,swing-hub,cb} 全部回 not_precomputed，
+#   而真實資料一直在舊 namespace。現已寫死指向正確的 043f75b7…。
 [[kv_namespaces]]
 binding = "SKYNET_CACHE"
+id = "043f75b7beb64c8b94bafcacee2c5ee6"
