@@ -1,0 +1,42 @@
+#!/bin/bash
+# ============================================================
+# pre-push hook — 自動記錄推送紀錄
+#
+# 每次 `git push` 會把「編號 / 分支 / commit 範圍 / 筆數 / 時間 / 訊息」
+# 追加到 GOD 專案的《雲端推送紀錄.md》。
+#
+# 安裝（本檔為版本化來源；.git/hooks/ 不受版控，換機或重新 clone 後要重裝）：
+#   cp scripts/git-hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+#
+# 2026-10-02：新增自動編號（原本第一欄留空，與既有列格式不一致）。
+# ============================================================
+LOG="/Users/sheng-feng/Project/GOD/Back-end/雲端推送紀錄.md"
+
+[ -f "$LOG" ] || exit 0
+
+# 既有最大編號（表格列形如 "| 3 | 2026-10-02 19:39 | main | ..."）
+last_no="$(grep -oE '^\| [0-9]+ \|' "$LOG" | grep -oE '[0-9]+' | sort -n | tail -1)"
+[ -z "$last_no" ] && last_no=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # 刪除分支的推送（local_sha 全 0）不記錄
+  [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+
+  branch="${remote_ref##*/}"
+
+  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    range="(新分支)"
+    count="$(git rev-list --count "$local_sha" 2>/dev/null || echo '?')"
+  else
+    range="${remote_sha:0:7}..${local_sha:0:7}"
+    count="$(git rev-list --count "$remote_sha..$local_sha" 2>/dev/null || echo '?')"
+  fi
+
+  last_no=$((last_no + 1))
+  ts="$(date '+%Y-%m-%d %H:%M')"
+  subject="$(git log -1 --format='%s' "$local_sha" 2>/dev/null)"
+  printf '| %s | %s | %s | `%s` | %s | %s |\n' \
+    "$last_no" "$ts" "$branch" "$range" "$count" "$subject" >> "$LOG"
+done
+
+exit 0
