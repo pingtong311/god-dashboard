@@ -13,7 +13,18 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const TWSE_MIS_BASE = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp';
 const TWSE_OPENAPI_BASE = 'https://openapi.twse.com.tw/v1/exchangeReport';
-const TWSE_LIVE_PROXY_BASE = process.env.SKYNET_TWSE_LIVE_PROXY_BASE || 'https://skynet-dashboard-vert.vercel.app';
+/**
+ * 第二層即時報價備援（可選）。
+ *
+ * 原本預設指向舊的 Vercel 部署 `https://skynet-dashboard-vert.vercel.app`，
+ * 該專案已於 2026-10-02 隨 skynet → god 雲端識別碼遷移一併下線，故改為空字串：
+ * 未設 `SKYNET_TWSE_LIVE_PROXY_BASE` 時 `fetchLiveProxyFallback()` 直接回 null，
+ * 不會白白等 8 秒逾時，報價直接落到第三層 OpenAPI（延遲收盤資料）。
+ *
+ * 若日後要恢復這層備援，於 Worker 設定 `SKYNET_TWSE_LIVE_PROXY_BASE`
+ * 指向一個「與本 Worker 不同出口網路」的部署即可（同 host 會被防迴圈判斷擋掉）。
+ */
+const TWSE_LIVE_PROXY_BASE = process.env.SKYNET_TWSE_LIVE_PROXY_BASE || '';
 
 export interface TWSEMISItem {
   symbol: string;       // 代號（去除 tse_/otc_ 前綴）

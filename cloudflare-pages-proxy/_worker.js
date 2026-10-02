@@ -1,4 +1,4 @@
-const TARGET_ORIGIN = 'https://skynet-dashboard.xpornky1122.workers.dev';
+const TARGET_ORIGIN = 'https://god-dashboard.xpornky1122.workers.dev';
 
 function shouldBypassBrowserCache(pathname) {
   if (pathname.startsWith('/api/')) return true;

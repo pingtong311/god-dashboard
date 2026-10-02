@@ -19,14 +19,15 @@
  *
  * 範例（正式站）
  *   node scripts/god-push.mjs \
- *     --dir /path/to/FengTeam/data/api/app \
- *     --url https://skynet-dashboard.xpornky1122.workers.dev \
+ *     --dir /path/to/GOD/data/api/app \
+ *     --url https://god-dashboard.xpornky1122.workers.dev \
  *     --token "$SKYNET_DASHBOARD_API_TOKEN"
  *
  * 參數
  *   --dir    必填。GOD 辦公室產出 JSON 的目錄（例如 data/api/app）。
  *   --url    必填。峰子 App 的網址。
- *            正式站：https://skynet-dashboard.xpornky1122.workers.dev
+ *            正式站：https://god-dashboard.xpornky1122.workers.dev
+ *            （雲端識別碼遷移 skynet → god 已完成，舊 skynet-dashboard 已下線）
  *   --token  必填。等同峰子 App 的環境變數 SKYNET_DASHBOARD_API_TOKEN。
  *            建議用環境變數傳入（--token "$SKYNET_DASHBOARD_API_TOKEN"），
  *            不要把 token 寫死在腳本或版控裡。

@@ -25,7 +25,7 @@ for arg in "$@"; do
   esac
 done
 
-WORKERS_URL="https://skynet-dashboard.xpornky1122.workers.dev"
+WORKERS_URL="https://god-dashboard.xpornky1122.workers.dev"
 
 echo "========================================================"
 echo " Plan A 部署：峰子 App Edge 預算化"
@@ -69,8 +69,8 @@ done
 
 # 6. 安裝每日盤後排程（16:35 台北時間）
 echo "安裝 launchd 每日 16:35 盤後排程..."
-PLIST_SRC="scripts/com.skynet.precompute-scans.plist"
-PLIST_DST="$HOME/Library/LaunchAgents/com.skynet.precompute-scans.plist"
+PLIST_SRC="scripts/com.god.precompute-scans.plist"
+PLIST_DST="$HOME/Library/LaunchAgents/com.god.precompute-scans.plist"
 cp "$PLIST_SRC" "$PLIST_DST"
 if launchctl load "$PLIST_DST" 2>/dev/null; then
   echo "✓ launchctl load 成功"
