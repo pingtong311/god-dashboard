@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 天網 K 線圖查看器 — CandlestickChart 元件
+ * God K 線圖查看器 — CandlestickChart 元件
  *
  * 使用 recharts ComposedChart 渲染 K 線圖、SMA 均線、Bollinger Bands、
  * 成交量子圖、MACD 子圖、KD 子圖，以及 Target / StopLoss 水平線。

@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 天網 K 線圖查看器 — KLinePanel 主元件
+ * God K 線圖查看器 — KLinePanel 主元件
  *
  * 包含：
  * - QuoteBar 子元件（現價資訊列）

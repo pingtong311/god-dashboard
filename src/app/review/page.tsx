@@ -918,7 +918,7 @@ export default function ReviewPage() {
           {!loading && view === 'decisions' ? (
             <>
               <div className={styles.sectionHeading}>
-                <div><span>SKYNET CANDIDATES</span><h1>今日飆股候選</h1><p>只看天網模型跑出的候選；自選、持倉與戰報文字不進排行。</p></div>
+                <div><span>GOD CANDIDATES</span><h1>今日飆股候選</h1><p>只看God 模型跑出的候選；自選、持倉與戰報文字不進排行。</p></div>
                 <div className={styles.asOf}><Clock3 size={16} />資料時間 {compactTime(data.snipers[0]?.quoteTime || data.snipers[0]?.anchorTime || data.sniperDate)}</div>
               </div>
               <div className={styles.metrics}>
@@ -986,7 +986,7 @@ export default function ReviewPage() {
                         <button className={styles.rejectButton} onClick={() => decide(selected, 'REJECTED')} disabled={decisionBusy === selected.ticker}><X size={17} />剔除候選</button>
                         <button className={styles.approveButton} onClick={() => decide(selected, 'APPROVED')} disabled={decisionBusy === selected.ticker}><Check size={17} />列入追蹤</button>
                       </div>
-                      <p className={styles.orderNotice}>主排行只接受天網候選；此處只記錄追蹤決策，不代表買進，也不會送出券商委託。</p>
+                      <p className={styles.orderNotice}>主排行只接受God 候選；此處只記錄追蹤決策，不代表買進，也不會送出券商委託。</p>
                     </div>
                   ) : <EmptyState title="選擇一筆提案" detail="查看觸發價、防守價與資料來源" />}
                 </section>
@@ -1195,7 +1195,7 @@ export default function ReviewPage() {
           {!loading && view === 'sniper-editor' ? (
             <>
               <div className={styles.sectionHeading}>
-                <div><span>SNIPER EDITOR</span><h1>狙擊手條件編輯器</h1><p>設定狙擊條件、管理監控清單、查看觸發記錄。所有設定即時同步至天網後端。</p></div>
+                <div><span>SNIPER EDITOR</span><h1>狙擊手條件編輯器</h1><p>設定狙擊條件、管理監控清單、查看觸發記錄。所有設定即時同步至God 後端。</p></div>
               </div>
               <div className={styles.metrics}>
                 <MetricCard label="待觸發" value={String(sniperItems.filter(s => s.status === '待觸發').length)} note="狙擊候選" />
@@ -1206,7 +1206,7 @@ export default function ReviewPage() {
 
               <div className={styles.decisionGrid}>
                 <section className={styles.panel}>
-                  <div className={styles.panelHeader}><div><strong>狙擊候選即時監控</strong><span>來自天網模型輸出</span></div>
+                  <div className={styles.panelHeader}><div><strong>狙擊候選即時監控</strong><span>來自God 模型輸出</span></div>
                     <button className={styles.smallRefresh} onClick={loadSniperData} disabled={sniperLoading}><RefreshCw size={14} className={sniperLoading ? styles.spinning : ''} /></button>
                   </div>
                   <SniperPanel
@@ -1377,7 +1377,7 @@ export default function ReviewPage() {
           {!loading && view === 'broadcast' ? (
             <>
               <div className={styles.sectionHeading}>
-                <div><span>MARKET BROADCAST</span><h1>市場廣播</h1><p>大單、異常交易、新聞事件即時流。融合雷達提供天網候選深度分析。</p></div>
+                <div><span>MARKET BROADCAST</span><h1>市場廣播</h1><p>大單、異常交易、新聞事件即時流。融合雷達提供God 候選深度分析。</p></div>
                 <div className={styles.asOf}><Clock3 size={16} />即時更新</div>
               </div>
 

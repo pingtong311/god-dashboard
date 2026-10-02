@@ -1,5 +1,5 @@
 /**
- * 天網指標計算函式 — Property-Based Tests
+ * God 指標計算函式 — Property-Based Tests
  * 使用 fast-check + Jest
  *
  * **Validates: Requirements 2.1, 2.2, 2.4, 2.7**

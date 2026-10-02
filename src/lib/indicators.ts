@@ -1,5 +1,5 @@
 /**
- * 天網 K 線圖查看器 — 技術指標計算
+ * God K 線圖查看器 — 技術指標計算
  * Phase B2：MACD / KD / Bollinger Bands
  */
 

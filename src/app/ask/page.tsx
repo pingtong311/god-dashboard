@@ -915,7 +915,7 @@ function AIPage() {
                     <div>
                       <h1 className="text-3xl font-black tracking-tight text-slate-950">情報感知矩陣</h1>
                       <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-600">
-                        這裡顯示天網對市場訊號的即時觀測日誌。介面已改成和戰情中心一致的白底工作區，方便你在同一套視覺下切換。
+                        這裡顯示God對市場訊號的即時觀測日誌。介面已改成和戰情中心一致的白底工作區，方便你在同一套視覺下切換。
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2 text-[10px] font-black tracking-[0.14em] uppercase">

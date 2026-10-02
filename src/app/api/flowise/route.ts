@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { guardMutation } from '@/lib/apiGuard';
 
 
-// Flowise 已停用，改為直接呼叫天網-03 → Omni
+// Flowise 已停用，改為直接呼叫God-03 → Omni
 const N8N_BASE = process.env.SKYNET_N8N_BASE_URL || 'https://skynet-cmd.duckdns.org';
 const TERMINAL_WEBHOOK = `${N8N_BASE}/webhook/skynet-terminal-sync-v1`;
 
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('AI Query Error:', error);
     return NextResponse.json(
-      { error: '天網 AI 分析服務暫時無法連線' },
+      { error: 'God AI 分析服務暫時無法連線' },
       { status: 500 }
     );
   }

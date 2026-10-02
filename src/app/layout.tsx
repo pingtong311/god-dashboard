@@ -33,8 +33,8 @@ const rajdhani = Rajdhani({
 });
 
 export const metadata: Metadata = {
-  title: "SKYNET OS | 戰略控制中心",
-  description: "天網系統全能極速量化交易引擎 V10 戰情室",
+  title: "God-數據分析研究室",
+  description: "God-數據分析研究室｜全能極速量化交易引擎 V10 戰情室",
 };
 
 /**

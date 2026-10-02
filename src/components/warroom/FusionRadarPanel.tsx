@@ -144,7 +144,7 @@ export default function FusionRadarPanel({
   const recentSeries = (data?.intradaySeries || []).slice(-4).reverse();
 
   const metrics = [
-    { label: '天網候選', value: fusionStocks.length },
+    { label: 'God 候選', value: fusionStocks.length },
     { label: '可執行', value: executableCount },
     { label: '雙重共振', value: resonanceCount },
     { label: '待觸發', value: pendingSnipers },
@@ -176,7 +176,7 @@ export default function FusionRadarPanel({
 
       <p className="fusion-summary">
         {marketLabel === '台股'
-          ? '只保留天網候選、狙擊觸發、真實量價與可執行風控；自選、持倉與戰報流水不進排行。'
+          ? '只保留God 候選、狙擊觸發、真實量價與可執行風控；自選、持倉與戰報流水不進排行。'
           : '目前候選雷達主攻台股飆股篩選，其他市場只保留查詢用途。'}
       </p>
 
@@ -268,7 +268,7 @@ export default function FusionRadarPanel({
                       <strong>{selected.calibratedConfidence ?? selected.confidence ?? '--'}%</strong>
                     </div>
                     <div>
-                      <span>天網建議</span>
+                      <span>God 建議</span>
                       <strong>{selected.skynetAction || '--'}</strong>
                     </div>
                     <div>

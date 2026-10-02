@@ -7,7 +7,7 @@ const TERMINAL_WEBHOOK = `${N8N_BASE}/webhook/skynet-terminal-sync-v1`;
 const TIMEOUT_MS = 8000;
 
 const ASYNC_MSG = (cmd: string) =>
-  `⏳ 天網 AI 分析中...\n\n指令「${cmd}」已送達，Omni 引擎正在處理。\n\n📱 完整戰報將同步推送至 Telegram。\n💡 約 20-30 秒後可在 Telegram 查看結果。`;
+  `⏳ God AI 分析中...\n\n指令「${cmd}」已送達，Omni 引擎正在處理。\n\n📱 完整戰報將同步推送至 Telegram。\n💡 約 20-30 秒後可在 Telegram 查看結果。`;
 
 export async function POST(request: Request) {
   const guard = guardMutation(request, { endpoint: 'terminal', maxRequests: 12 });

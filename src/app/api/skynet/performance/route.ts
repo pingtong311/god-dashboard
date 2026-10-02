@@ -1,8 +1,8 @@
 /**
- * 天網每日績效摘要 API
+ * God每日績效摘要 API
  * GET /api/skynet/performance
  *
- * 從 n8n 天網-API webhook 取得當日 BUY 訊號的實際表現摘要
+ * 從 n8n God-API webhook 取得當日 BUY 訊號的實際表現摘要
  * n8n 端需回傳格式：
  * {
  *   date: string,

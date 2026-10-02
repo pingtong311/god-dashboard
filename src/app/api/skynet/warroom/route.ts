@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 
 
-// 讀取 Google Sheets 的天網數據
-// 透過 n8n 天網-API 工作流取得資料（已有 webhook 端點）
+// 讀取 Google Sheets 的God 數據
+// 透過 n8n God-API 工作流取得資料（已有 webhook 端點）
 const N8N_BASE = process.env.SKYNET_N8N_BASE_URL || 'https://skynet-cmd.duckdns.org';
 const DASHBOARD_API = `${N8N_BASE}/webhook/skynet-dashboard`;
 const VALID_TYPES = new Set(['alpha', 'positions', 'p1_triggers', 'snipers', 'battle_reports', 'personal_performance', 'daily_performance']);

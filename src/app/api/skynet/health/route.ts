@@ -1,5 +1,5 @@
 /**
- * 天網 API 健康檢查路由
+ * God API 健康檢查路由
  * GET /api/skynet/health
  *
  * 同時探測 n8n 和 Google Sheets（透過 n8n warroom webhook）連線狀態

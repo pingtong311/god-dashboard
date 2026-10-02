@@ -1,5 +1,5 @@
 /**
- * 天網 K 線圖查看器 — Fugle MarketData API 代理路由
+ * God K 線圖查看器 — Fugle MarketData API 代理路由
  *
  * GET /api/skynet/kline?ticker={ticker}&type={daily|intraday|quote}
  *
