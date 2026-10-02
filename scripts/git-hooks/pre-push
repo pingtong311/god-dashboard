@@ -3,12 +3,15 @@
 # pre-push hook — 自動記錄推送紀錄
 #
 # 每次 `git push` 會把「編號 / 分支 / commit 範圍 / 筆數 / 時間 / 訊息」
-# 追加到 GOD 專案的《雲端推送紀錄.md》。
+# 插入到 GOD 專案《雲端推送紀錄.md》的表格最後一列之後。
 #
 # 安裝（本檔為版本化來源；.git/hooks/ 不受版控，換機或重新 clone 後要重裝）：
 #   cp scripts/git-hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
 #
-# 2026-10-02：新增自動編號（原本第一欄留空，與既有列格式不一致）。
+# 修訂紀錄：
+#   2026-10-02 初版（append 到檔尾）
+#   2026-10-02 改為自動編號，並改為「插入到最後一列表格列之後」——
+#              原本 append 到檔尾，在表格後面還有其他段落時會插錯位置。
 # ============================================================
 LOG="/Users/sheng-feng/Project/GOD/Back-end/雲端推送紀錄.md"
 
@@ -17,6 +20,21 @@ LOG="/Users/sheng-feng/Project/GOD/Back-end/雲端推送紀錄.md"
 # 既有最大編號（表格列形如 "| 3 | 2026-10-02 19:39 | main | ..."）
 last_no="$(grep -oE '^\| [0-9]+ \|' "$LOG" | grep -oE '[0-9]+' | sort -n | tail -1)"
 [ -z "$last_no" ] && last_no=0
+
+# 最後一列表格列的行號（沒有則為 0，代表直接附加）
+last_row_line="$(grep -nE '^\| [0-9]+ \|' "$LOG" | tail -1 | cut -d: -f1)"
+[ -z "$last_row_line" ] && last_row_line=0
+
+append_row() {
+  local row="$1"
+  if [ "$last_row_line" -eq 0 ]; then
+    printf '%s\n' "$row" >> "$LOG"
+  else
+    awk -v n="$last_row_line" -v r="$row" 'NR==n{print; print r; next} {print}' \
+      "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+    last_row_line=$((last_row_line + 1))
+  fi
+}
 
 while read -r local_ref local_sha remote_ref remote_sha; do
   # 刪除分支的推送（local_sha 全 0）不記錄
@@ -35,8 +53,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   last_no=$((last_no + 1))
   ts="$(date '+%Y-%m-%d %H:%M')"
   subject="$(git log -1 --format='%s' "$local_sha" 2>/dev/null)"
-  printf '| %s | %s | %s | `%s` | %s | %s |\n' \
-    "$last_no" "$ts" "$branch" "$range" "$count" "$subject" >> "$LOG"
+  append_row "$(printf '| %s | %s | %s | `%s` | %s | %s |' \
+    "$last_no" "$ts" "$branch" "$range" "$count" "$subject")"
 done
 
 exit 0
