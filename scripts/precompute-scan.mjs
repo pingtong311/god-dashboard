@@ -124,7 +124,12 @@
  *   --verify            寫入後以 `kv key get` 讀回並比對位元組數
  *   --min-gap-ms=N      上游請求最小間隔毫秒（預設 400；公家機關請勿爆打）
  *   --namespace-id=<id> 覆寫 KV namespace id
+ *   --force             跳過交易日守衛（即使今天非交易日也照常預算；供排程／除錯）
  *   --help
+ *
+ * 交易日守衛（D5，2026-10-04）：非交易日（週末／假日）不跑市場端點，避免空跑浪費
+ *  API 與 KV 配額。例外：① `--to=YYYY-MM-DD`（補跑歷史）② `--only=trump-radar`
+ * （24/7 新聞，深夜場 23:30 仍需刷新）③ `--force`（人工強制）。
  *
  * 依賴：esbuild（專案 devDependency）+ wrangler（專案 devDependency）。
  */
@@ -175,7 +180,9 @@ function printHelp() {
   --out-dir=<dir>     dry-run 的輸出目錄（預設 .scan-cache）
   --verify            寫入後讀回並比對位元組數
   --min-gap-ms=N      上游請求最小間隔毫秒（預設 400）
-  --namespace-id=<id> 覆寫 KV namespace id`);
+  --namespace-id=<id> 覆寫 KV namespace id
+  --force             跳過交易日守衛（即使今天非交易日也照常預算；供排程／除錯）
+  --help              顯示本說明`);
 }
 
 /** `--only` 的合法值。 */
@@ -190,6 +197,8 @@ const ONLY_VALUES = [
   'dividend-calendar',
   'block-trades',
   'trump-radar',
+  'etf-active',
+  'margin-maint',
 ];
 
 function parseArgs(argv) {
@@ -203,6 +212,8 @@ function parseArgs(argv) {
     verify: false,
     minGapMs: 400,
     namespaceId: '',
+    /** 強制跑：跳過交易日守衛（即使今天非交易日也照常預算，供排程／除錯用）。 */
+    force: false,
     /** 大盤總覽另外預算最近 N 個交易日的歷史回看（0 = 只做最近一日）。 */
     overviewDates: 5,
     /** 族群熱圖另外預算最近 N 個交易日的歷史回看（預設 1 = 只做最近一日）。 */
@@ -250,6 +261,7 @@ function parseArgs(argv) {
       i = next;
     } else if (name === '--dry-run') args.dryRun = true;
     else if (name === '--verify') args.verify = true;
+    else if (name === '--force') args.force = true;
     else if (name === '--help' || name === '-h') {
       printHelp();
       process.exit(0);
@@ -428,7 +440,10 @@ async function main() {
   // 2. 載入既有實作（esbuild bundle）
   const scan = await bundleAndImport('scanPayload.ts');
   const bars = await bundleAndImport('marketBars.ts');
-  console.log('✔ 已載入 src/lib/scanPayload.ts + src/lib/marketBars.ts（esbuild bundle）');
+  // 🔴 D5: 交易日守衛需要 getTradingDayStatus（取得日期與原因），單獨 bundle
+  const tradingSession = await bundleAndImport('tradingSessionUtils.ts');
+  const { getTradingDayStatus } = tradingSession.mod;
+  console.log('✔ 已載入 src/lib/scanPayload.ts + src/lib/marketBars.ts + src/lib/tradingSessionUtils.ts（esbuild bundle）');
   let cb = null;
   if (wantCb) {
     cb = await bundleAndImport('cbPremium.ts');
@@ -467,6 +482,34 @@ async function main() {
     trumpRadar = await bundleAndImport('app/trump/trump-data.ts');
     console.log('✔ 已載入 src/app/trump/trump-data.ts（esbuild bundle）');
   }
+  let etfActive = null;
+  const wantEtfActive = args.only === 'all' || args.only === 'etf-active';
+  if (wantEtfActive) {
+    etfActive = await bundleAndImport('app/etf-active/etf-active-data.ts');
+    console.log('✔ 已載入 src/app/etf-active/etf-active-data.ts（esbuild bundle）');
+  }
+  let marginMaint = null;
+  const wantMarginMaint = args.only === 'all' || args.only === 'margin-maint';
+  if (wantMarginMaint) {
+    marginMaint = await bundleAndImport('app/margin-maint/margin-maint-data.ts');
+    console.log('✔ 已載入 src/app/margin-maint/margin-maint-data.ts（esbuild bundle）');
+  }
+
+  // 🔴 B3：TDCC 鯨魚週序列（自產，取代 site-mirror WHALE_MIRROR_MAP）
+  // 需在 Back-end 目錄下執行，因為 tdcc-client 讀取 ../src/tdccLargeHolderFactor.js
+  let tdccClient = null;
+  if (wantSwing) {
+    try {
+      // 直接動態 import Back-end 的 tdcc-client（已是 ESM .mjs）
+      // 注意：GOD 專案在 /Users/sheng-feng/Project/GOD，而非 GOD-Platform 的上層
+      const tdccPath = resolve('/Users/sheng-feng/Project/GOD/Back-end/god_tools/tdcc-client/index.js');
+      await access(tdccPath);
+      tdccClient = await import(pathToFileURL(tdccPath).href);
+      console.log('✔ 已載入 Back-end/god_tools/tdcc-client/index.js（動態 import）');
+    } catch (err) {
+      console.warn(`⚠ 無法載入 tdcc-client（將退回 site-mirror）：${err?.message ?? err}`);
+    }
+  }
   console.log('');
 
   /**
@@ -477,6 +520,7 @@ async function main() {
   const loadedModules = [
     scan,
     bars,
+    tradingSession,
     cb,
     overview,
     tradingDates,
@@ -505,7 +549,7 @@ async function main() {
     fetchNameMap,
     fetchSwingUpstreams,
   } = scan.mod;
-  const { buildTradingDayWindow, marketBarKey, parseYmdToDate, todayTaipeiYmd } = bars.mod;
+  const { buildTradingDayWindow, marketBarKey, parseYmdToDate, todayTaipeiYmd, isTradingDay } = bars.mod;
   const MIN_BARS_FOR_SCAN = scan.mod.MIN_BARS_FOR_SCAN ?? 40;
 
   // 3. 決定視窗（取兩個端點需要的最大天數）
@@ -515,6 +559,34 @@ async function main() {
     console.error(`✘ --to 格式錯誤：${args.to}`);
     await cleanupAll();
     process.exit(2);
+  }
+
+  // 🔴 D5: 交易日守衛 —— 非交易日（週末／假日）直接退出，不做任何預算
+  // 原因：無新市場資料，預算結果會是空的；且浪費 KV 寫入配額與 CPU。
+  // 兩項例外：
+  //   ① `--to=YYYY-MM-DD`：補跑歷史交易日，跳過守衛（允許歷史）。
+  //   ② `--only=trump-radar`：該端點是 24/7 滾動新聞 RSS（深夜場 23:30 就是為它設的），
+  //      非交易日仍需刷新；但 `--only=all` 在週末**仍要跳過**（市場資料未變），
+  //      故例外只認「明確指定的 trump-radar」，不認 broad 的 wantTrumpRadar。
+  //   ③ `--force`：人工／排程強制，無論交易日與否都跑（除錯或補跑用）。
+  if (!args.to) {
+    const isExplicitTrumpRadar = args.only === 'trump-radar';
+    const todayStatus = getTradingDayStatus(new Date());
+    if (!todayStatus.isTradingDay && !args.force && !isExplicitTrumpRadar) {
+      console.log(`\n=== 交易日守衛觸發 ===`);
+      console.log(`今天（台北）${todayStatus.date} 非交易日：${todayStatus.reason}`);
+      console.log(`無新市場資料，跳過預算。若需補跑歷史交易日，請加 --to=YYYY-MM-DD；或加 --force 強制跑。`);
+      console.log(`=== 結束 ===`);
+      await cleanupAll();
+      process.exit(0);
+    }
+    if (!todayStatus.isTradingDay) {
+      console.log(
+        `⚠ 今天（台北）${todayStatus.date} 非交易日，但${args.force ? ' 已加 --force 強制' : ' 明確指定 --only=trump-radar（24/7 新聞）'} → 照常預算`,
+      );
+    } else {
+      console.log(`✔ 交易日守衛通過：今天（台北）${todayStatus.date} 為交易日`);
+    }
   }
   const needDays = Math.max(
     // ⚠ 至少 1 天：否則 `--only=trading-dates` / `dividend-calendar` / `block-trades`
@@ -637,7 +709,37 @@ async function main() {
         `月營收 ${upstreams.revenueRows.length} 列、除權息 ${upstreams.exRightRows.length} 列、` +
         `融資 ${upstreams.marginToday ? 'ok' : '缺'}/${upstreams.marginBaseline ? 'ok' : '缺'}`,
     );
-    const payload = buildSwingHubPayload({ days: swingDays, upstreams });
+
+    // 🔴 B3：建立自產鯨魚週序列（delta_1w/delta_4w/up_weeks/down_weeks/weeks）
+    // 以取代舊有的 WHALE_MIRROR_MAP（site-mirror，基準日 2026-09-18）
+    let weeklyFallback = null;
+    if (tdccClient) {
+      try {
+        const series = await tdccClient.buildWhaleTimeSeries();
+        if (series && series.byTicker && Object.keys(series.byTicker).length > 0) {
+          // 轉為 Map<string, WhaleWeeklyFallback> 供 computeWhale 使用
+          weeklyFallback = new Map();
+          for (const [code, v] of Object.entries(series.byTicker)) {
+            weeklyFallback.set(code, {
+              delta_1w: v.delta_1w ?? null,
+              delta_4w: v.delta_4w ?? null,
+              up_weeks: v.up_weeks ?? null,
+              down_weeks: v.down_weeks ?? null,
+              weeks: v.weeks ?? null,
+            });
+          }
+          console.log(`  ✔ 自產鯨魚週序列 ${weeklyFallback.size} 檔（dataDate: ${series.dataDate}）`);
+        } else {
+          console.log(`  ⚠ 自產鯨魚週序列為空（歷史週數不足），退回 site-mirror`);
+        }
+      } catch (err) {
+        console.warn(`  ⚠ 自產鯨魚週序列失敗（退回 site-mirror）：${err?.message ?? err}`);
+      }
+    } else {
+      console.log(`  ℹ tdcc-client 未載入，使用 site-mirror`);
+    }
+
+    const payload = buildSwingHubPayload({ days: swingDays, upstreams, weeklyFallback });
     results.push({ key: SCAN_KV_KEY_SWING_HUB, payload, label: 'swing-hub' });
     const tabSummary = (payload.tabs ?? []).map((t) => `${t.id}=${t.items.length}`).join(' ');
     console.log(`  16 頁籤命中：${tabSummary}`);
@@ -994,6 +1096,80 @@ async function main() {
       console.log(
         `  ✔ 美國原文 ${result.payload.items.length} 則、台媒 ${result.payload.tw_items.length} 則` +
           `（days=${DEFAULT_DAYS}；主題聲量 ${themeNote}）`,
+      );
+    }
+  }
+
+  // 6i. 主動式 ETF（etf-active）
+  //
+  // 抓證交所兩條免費 OpenAPI：t187ap47_L（主動式 ETF 清單，271 檔）＋
+  // STOCK_DAY_AVG_ALL（全市場收盤均價，約 3 萬筆），解析後組出 items[]。
+  // 端點無查詢參數 → 只寫 base key `scan:etf-active`。
+  //
+  // ⚠ 回應形狀必須與 route 逐字一致（攤平 data，含 provenance）；
+  //   data 模組已內建 provenance，直接 JSON.stringify 即可（不需再包 {ok,data}）。
+  if (wantEtfActive && etfActive) {
+    const { getEtfActive } = etfActive.mod;
+    console.log('\n— etf-active：抓取主動式 ETF 清單 ＋ 全市場收盤均價…');
+    await throttle();
+
+    let result = null;
+    try {
+      result = await getEtfActive();
+    } catch (err) {
+      console.error(`  ✘ 預算拋錯（上游異常）：${err?.message ?? err}`);
+      result = null;
+    }
+
+    if (!result) {
+      // 誠實底線：清單上游（t187ap47_L）失敗就**不寫**，避免空殼覆蓋既有結果。
+      console.error('✘ etf-active：清單上游失敗，本次不寫入 scan:etf-active。');
+    } else {
+      const body = JSON.stringify(result.data);
+      results.push({
+        key: 'scan:etf-active',
+        payload: body,
+        label: 'etf-active',
+        raw: true,
+      });
+      console.log(
+        `  ✔ 主動式 ETF ${result.data.items.length} 檔（date=${result.data.date || '—'}）`,
+      );
+    }
+  }
+
+  // 6j. 融資維持率（margin-maint）
+  //
+  // 抓證交所 rwd MI_MARGN（融資餘額，含市場融資金額仟元）＋ STOCK_DAY_AVG_ALL（收盤價），
+  // 自算大盤融資維持率。端點無查詢參數 → 只寫 base key `scan:margin-maint`。
+  //
+  // ⚠ 回應形狀必須與 route 逐字一致（攤平 data，含 provenance）。
+  if (wantMarginMaint && marginMaint) {
+    const { getMarginMaint } = marginMaint.mod;
+    console.log('\n— margin-maint：抓取融資餘額 ＋ 全市場收盤價，自算大盤維持率…');
+    await throttle();
+
+    let result = null;
+    try {
+      result = await getMarginMaint();
+    } catch (err) {
+      console.error(`  ✘ 預算拋錯（上游異常）：${err?.message ?? err}`);
+      result = null;
+    }
+
+    if (!result) {
+      // 誠實底線：融資餘額上游（MI_MARGN）失敗就**不寫**。
+      console.error('✘ margin-maint：上游失敗，本次不寫入 scan:margin-maint。');
+    } else {
+      const body = JSON.stringify(result.data);
+      results.push({
+        key: 'scan:margin-maint',
+        payload: body,
+        label: 'margin-maint',
+        raw: true,
+      });
+      console.log(
+        `  ✔ 大盤維持率 ${result.data.market_maintenance ?? '—'}%（date=${result.data.date || '—'}）`,
       );
     }
   }
