@@ -8,21 +8,53 @@
     （2026-10-02 由 com.skynet.precompute-scans 更名為 com.god.precompute-scans，
       與其餘 24 支 com.god.* 服務命名一致；功能與參數完全不變。）
 
-    幹嘛用：
-      把 /api/skynet/pattern-screen、/swing-hub、/cb 三個端點的「重計算」從
-      Cloudflare Workers（Free plan CPU 上限 10ms，線上會 503/1102、/cb 會 502）
-      搬到本機每日盤後跑，結果寫進 KV，Worker 只讀不重算。
+    ⚠ 註解書寫慣例（2026-10-04 新增）：
+      XML 註解**不可**包含連續兩個連字號（XML 1.0 規範明文禁止），
+      因此本註解區塊中的命令列旗標一律**省略前置連字號**（例：only=all、days=3）。
+      逐字的實際指令請見下方 ProgramArguments 的 <string>（元素內容不受此限）。
+      （修正紀錄：本檔原本的註解含雙連字號 → 嚴格 XML 解析器會拒收；
+        plutil 與 launchd 較寬容，所以一直能載入，但屬潛在缺陷。）
 
-    每日做的事（順序很重要）：
-      1) backfill-market-bars --days=3 --force
+    幹嘛用：
+      把 /api/skynet/* 端點的「重計算」從 Cloudflare Workers（Free plan CPU 上限
+      10ms，線上會 503/1102）搬到本機每日盤後跑，結果寫進 KV，Worker 只讀不重算。
+
+    🔴 兩場次（2026-10-04 新增深夜場）
+      盤後場 16:35：日 K 回填 ＋ 全部端點預算（only=all）
+      深夜場 23:30：block-trades（only=block-trades）＋ trump-radar（only=trump-radar）
+
+      為什麼 block-trades 需要深夜場：
+        TWSE 鉅額交易**含盤後時段（交易至 17:00）**，且該頁自述更新時間為
+        「下一交易日 23:08」。⇒ 16:35 跑時 TWSE 當日資料**尚未定稿**
+        （可能為空、也可能只有部分），寫進 KV 後會被凍結到隔天 16:35。
+        → 深夜場 23:30 覆寫為當日最終版。
+        兩場合起來：隔一交易日 09:00 看到的是「前一日已定稿」的完整資料。
+
+      為什麼 trump-radar 也掛深夜場：
+        它是滾動新聞 RSS，預算產出的是「產出當下的快照」。只跑 16:35 的話
+        最大延遲約 24 小時；掛上 23:30 後壓到約 7 小時。
+        （本端點在邊緣端**三條上游全不可達**：實測 8.48s 逾時後回 upstream_error，
+          同一時間本機三條全數 HTTP 200 → 不做離線預算就永遠沒有資料。）
+
+      ⚠ 兩場皆執行同一支 /bin/sh 指令，靠 `date +%H` 分流（=23 → 深夜場）。
+
+    盤後場（16:35）做的事（順序很重要）：
+      1) backfill-market-bars days=3 force
          把最近 3 個交易日的全市場日 K 回填/刷新進 KV（mkt:bars:<date>）。
-         --force 確保「今天收盤後最終版」會覆寫早先半殘的盤中資料。
-      2) precompute-scan --only=all
-         讀 KV 日 K → 算型態掃描 / 16 波段條件 / CB 溢價率 → 寫 scan:* 三 key。
+         force 確保「今天收盤後最終版」會覆寫早先半殘的盤中資料。
+      2) precompute-scan only=all
+         讀 KV 日 K → 算型態掃描 / 16 波段條件 / CB 溢價率 → 寫 scan:* 三 key；
+         另抓 TWSE MI_INDEX(4.8MB)+T86(2.17MB) 產出大盤總覽，寫
+         scan:market-overview（+ :sl5，及最近 5 個交易日的 d<YYYYMMDD> 變體）。
+         ⚠ market-overview 必須離線預算：該端點原本在請求時解析約 7MB JSON，
+           在 Free plan 的 10ms CPU 上限下必然 503 error code: 1102。
          日 K 不足 MIN_BARS_FOR_SCAN(40) 時會主動停手，不寫假資料。
+         同一輪另含 trading-dates、treemap（+ 近 1 日歷史）、dividend-calendar、
+         block-trades（16:35 為暫定版，23:30 深夜場覆寫為最終版）、
+         trump-radar（16:35 與 23:30 各產一次）。
 
     ⚠ 首次（或 KV 被清空後）須先手動回填一次長視窗，預算腳本才有足夠日 K：
-         node scripts/backfill-market-bars.mjs --days=120
+         node scripts/backfill-market-bars.mjs days=120
        之後這支每日排程只補最近 3 天即可維持新鮮度。
 
     ⚠ KV namespace 必須是 043f75b7beb64c8b94bafcacee2c5ee6
@@ -49,20 +81,35 @@
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>cd /Users/sheng-feng/Project/GOD-Platform &amp;&amp; /usr/bin/env node scripts/backfill-market-bars.mjs --days=3 --force &gt;&gt; /tmp/god-precompute.log 2&gt;&amp;1 &amp;&amp; /usr/bin/env node scripts/precompute-scan.mjs --only=all &gt;&gt; /tmp/god-precompute.log 2&gt;&amp;1</string>
+    <string>cd /Users/sheng-feng/Project/GOD-Platform; if [ "$(date +%H)" = "23" ]; then /usr/bin/env node scripts/precompute-scan.mjs --only=block-trades &gt;&gt; /tmp/god-precompute.log 2&gt;&amp;1; /usr/bin/env node scripts/precompute-scan.mjs --only=trump-radar &gt;&gt; /tmp/god-precompute.log 2&gt;&amp;1; else /usr/bin/env node scripts/backfill-market-bars.mjs --days=3 --force &gt;&gt; /tmp/god-precompute.log 2&gt;&amp;1 &amp;&amp; /usr/bin/env node scripts/precompute-scan.mjs --only=all &gt;&gt; /tmp/god-precompute.log 2&gt;&amp;1; fi</string>
   </array>
 
   <key>WorkingDirectory</key>
   <string>/Users/sheng-feng/Project/GOD-Platform</string>
 
-  <!-- 每日 16:35 台北時間（台股 13:30 收盤，TWSE/TPEX 資料約 15:00–16:00 定稿） -->
+  <!--
+    兩個觸發時點（台北時間）：
+      16:35 —— 盤後場。台股 13:30 收盤，TWSE/TPEX 多數資料約 15:00–16:00 定稿。
+      23:30 —— 深夜場。兩支端點需要它（由上方指令的 date +%H 分流）：
+               (a) block-trades：TWSE 鉅額交易含盤後時段（至 17:00）且約 23:08 才定稿。
+               (b) trump-radar：滾動新聞 RSS，需較高頻率刷新以降低延遲。
+    ⚠ launchd 支援 StartCalendarInterval 為「陣列」＝多個觸發時點。
+  -->
   <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key>
-    <integer>16</integer>
-    <key>Minute</key>
-    <integer>35</integer>
-  </dict>
+  <array>
+    <dict>
+      <key>Hour</key>
+      <integer>16</integer>
+      <key>Minute</key>
+      <integer>35</integer>
+    </dict>
+    <dict>
+      <key>Hour</key>
+      <integer>23</integer>
+      <key>Minute</key>
+      <integer>30</integer>
+    </dict>
+  </array>
 
   <key>EnvironmentVariables</key>
   <dict>

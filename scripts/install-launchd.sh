@@ -103,8 +103,13 @@ install() {
   # 4) 載入
   if try_load "${LABEL}" "${PLIST}"; then
     echo
-    echo "  ✓ 安裝完成。每日 16:35（台北時間）自動執行："
-    echo "      backfill-market-bars --days=3 --force → precompute-scan --only=all"
+    echo "  ✓ 安裝完成。每日兩個時點（台北時間）自動執行："
+    echo "      16:35 盤後場 → backfill-market-bars --days=3 --force"
+    echo "                      → precompute-scan --only=all"
+    echo "      23:30 深夜場 → precompute-scan --only=block-trades"
+    echo "                      → precompute-scan --only=trump-radar"
+    echo "        （block-trades：TWSE 鉅額交易含盤後時段至 17:00、約 23:08 才定稿，需深夜覆寫）"
+    echo "        （trump-radar ：滾動新聞 RSS，加跑一次把最大延遲從約 24h 壓到約 7h）"
     echo
     echo "  立即試跑一次（可選）："
     echo "      launchctl start ${LABEL}"
