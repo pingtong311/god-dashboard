@@ -20,6 +20,9 @@
 # SkyNet runtime cache
 /.skynet-cache/
 
+# precompute-scan.mjs 的 --dry-run 輸出目錄（產物為真實資料，不應入 git）
+/.scan-cache/
+
 # production
 /build
 
