@@ -27,228 +27,79 @@
  *   - 清單上游失敗 → 502 { ok:false, error:'etf_active_upstream_error' }。
  *   - 收盤價上游失敗 → 仍回 200，但所有收盤價欄位為 null（不影響清單；前端顯示「—」）。
  *
- * 架構照抄 src/app/api/skynet/t86/route.ts：8s timeout、AbortController、try/catch。
+ * ## 2026-10-04 架構變更：改為「離線預算 ＋ 邊緣零解析直送」
+ *
+ * **為什麼非改不可**：
+ *   本端點原本在請求時並行抓 2 個上游、解析約 3 萬筆資料，CPU 實測中位數 ~45ms，
+ *   超過 Free plan 10ms 上限 → 間歇性 503 error code: 1102。
+ *   → 解法：把計算搬到本機（scripts/precompute-scan.mjs），結果寫進 KV；
+ *     邊緣端只做 `kv.get(key)` → `new Response(text)`，**不解析、不序列化**。
+ *
+ * **變體（variant）設計**：本端點**沒有查詢參數** → 不需要 variant，
+ *   只讀 base key `scan:etf-active`。
+ *
+ * **模式選擇：寬鬆模式**（同 dividend-calendar / block-trades）
+ *   - 消費者需 `available` + `items[]` → 嚴格模式會讓可用頁面變錯誤狀態。
+ *   - 即時計算仍回 200（尚未被砍）⇒ 降級即時計算 = 維持現況。
+ *   - ⇒ 只在 KV 未綁定 / 未命中才走即時計算；命中時永遠零解析直送。
  */
 
 import { NextResponse } from 'next/server';
-
-/** 主動式 ETF 清單上游（證交所 opendata）。 */
-const TWSE_ACTIVE_ETF_URL = 'https://openapi.twse.com.tw/v1/opendata/t187ap47_L';
-/** ETF 收盤均價上游（證交所 exchangeReport）。 */
-const TWSE_STOCK_AVG_URL = 'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_AVG_ALL';
-/** 上游 fetch 超時（毫秒）。 */
-const FETCH_TIMEOUT_MS = 8_000;
-/** 主動式 ETF 的「基金類型」判別關鍵字。 */
-const ACTIVE_ETF_KEYWORD = '主動式';
-/** 誠實註記（固定文案，對齊實站 note）。 */
-const HONEST_NOTE = '主動式 ETF 持股與異動，盤後客觀表。';
-/** 下一交易日更新時間（對齊實站文案）。 */
-const NEXT_UPDATE = '下一交易日 23:08';
-
-/** 主動式 ETF 清單單筆（t187ap47_L 的原始欄位，值皆字串）。 */
-interface RawActiveEtf {
-  基金代號?: string;
-  基金簡稱?: string;
-  基金類型?: string;
-  基金中文名稱?: string;
-  基金英文名稱?: string;
-  上市日期?: string;
-  [key: string]: string | undefined;
-}
-
-/** ETF 收盤均價單筆（STOCK_DAY_AVG_ALL 的原始欄位，值皆字串）。 */
-interface RawStockAvg {
-  Date?: string;
-  Code?: string;
-  Name?: string;
-  ClosingPrice?: string;
-  MonthlyAveragePrice?: string;
-  [key: string]: string | undefined;
-}
-
-/** 持股明細列（對齊實站 schema；本站無資料源 → 恆為空陣列）。 */
-export interface EtfHolding {
-  stock_id: string;
-  shares: number;
-  weight: number;
-}
-
-/** 當日異動列（對齊實站 schema；本站無資料源 → 恆為空陣列）。 */
-export interface EtfChange {
-  stock_id: string;
-  buy: number;
-  sell: number;
-}
-
-/** 主動式 ETF 單筆（對齊實站 items[]，另加自產的收盤價欄位）。 */
-export interface EtfActiveItem {
-  etf_id: string;
-  name: string;
-  /** 盤後收盤價（自產；無資料為 null）。 */
-  closing_price: number | null;
-  /** 月均價（自產；無資料為 null）。 */
-  monthly_avg_price: number | null;
-  /** 持股明細：本站無資料源，恆為空陣列。 */
-  holdings: EtfHolding[];
-  /** 當日異動：本站無資料源，恆為空陣列。 */
-  changes: EtfChange[];
-}
-
-/** /api/skynet/etf-active 回應形狀。 */
-export interface EtfActiveResponse {
-  available: boolean;
-  date: string;
-  data_scope: string;
-  next_update: string;
-  note: string;
-  items: EtfActiveItem[];
-  provenance: { source: 'self-produced'; upstream: string; upstreams: string[] };
-  fetchedAt: string;
-}
-
-/** 帶 timeout 的 fetch（AbortController，逾時丟 AbortError）。 */
-async function fetchWithTimeout(url: string): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        Accept: 'application/json, text/plain, */*',
-        'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      },
-      cache: 'no-store',
-    });
-    clearTimeout(timer);
-    return res;
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
-  }
-}
+import { precomputedHitResponse, readPrecomputedDetailed } from '@/lib/precomputed';
+import { getEtfActive, type EtfActiveData } from '@/app/etf-active/etf-active-data';
 
 /**
- * 把上游日期字串正規化為 `YYYY-MM-DD`。
- * - 8 碼（例：20260928）→ 視為西元 YYYYMMDD。
- * - 7 碼（例：1150924）→ 視為民國 YYYMMDD，年 + 1911。
- * - 其他 → 原樣回傳（不猜測）。
+ * ⚠ 必須強制 dynamic。
+ *
+ * 本 route 的 GET **不接收任何參數**（端點沒有查詢參數），且命中預算時整條路徑
+ * 不含 `fetch`。Next.js 對「無參數、無動態 API」的 GET route handler 會嘗試
+ * **在建置期靜態求值**——那會在 `next build` 時就去讀一次 KV 並把結果烘進產物，
+ * 之後永遠回同一份（且建置環境通常沒有 KV 綁定）。
+ * 顯式宣告 `force-dynamic` 可完全排除這個風險（market-bars 亦同）。
  */
-function normalizeDate(raw: string | undefined): string {
-  const s = String(raw ?? '').trim();
-  if (/^\d{8}$/.test(s)) {
-    return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-  }
-  if (/^\d{7}$/.test(s)) {
-    const year = Number(s.slice(0, 3)) + 1911;
-    return `${year}-${s.slice(3, 5)}-${s.slice(5, 7)}`;
-  }
-  return s;
-}
+export const dynamic = 'force-dynamic';
 
-/** 解析數字字串（去除千分位逗號）；'---' / '-' / '' / 非數字 → null（絕不當 0）。 */
-function toNumOrNull(raw: unknown): number | null {
-  const s = String(raw ?? '').replace(/,/g, '').trim();
-  if (s === '' || s === '-' || s === '---' || s.toUpperCase() === 'NULL' || s.toUpperCase() === 'NAN') {
-    return null;
-  }
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-
-/** 取字串欄位並 trim。 */
-function str(raw: unknown): string {
-  return String(raw ?? '').trim();
-}
+/** 即時計算（降級路徑）的回應標頭：不進邊緣快取，避免把慢路徑快取起來。 */
+const LIVE_HEADERS: Record<string, string> = {
+  'Cache-Control': 'no-store, max-age=0',
+  'X-Skynet-Data-Source': 'live-compute',
+};
 
 export async function GET() {
-  // 1) 先抓主動式 ETF 清單（核心；失敗即 502）。
-  let listRaw: unknown;
-  try {
-    const res = await fetchWithTimeout(TWSE_ACTIVE_ETF_URL);
-    if (!res.ok) {
-      return NextResponse.json(
-        { ok: false, error: 'etf_active_upstream_error' },
-        { status: 502 },
-      );
-    }
-    listRaw = await res.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, error: 'etf_active_upstream_error' },
-      { status: 502 },
-    );
+  // ── 盤後預算直送：零解析、零序列化、零上游抓取 ──
+  const read = await readPrecomputedDetailed('etf-active');
+  if (read.status === 'ok') {
+    return precomputedHitResponse(read.text);
   }
 
-  if (!Array.isArray(listRaw)) {
-    return NextResponse.json(
-      { ok: false, error: 'etf_active_upstream_error' },
-      { status: 502 },
-    );
-  }
-
-  const activeEtfs = (listRaw as RawActiveEtf[])
-    .filter((row) => str(row['基金類型']).includes(ACTIVE_ETF_KEYWORD))
-    .map((row) => ({
-      etf_id: str(row['基金代號']),
-      name: str(row['基金簡稱']),
-    }))
-    .filter((row) => row.etf_id.length > 0);
-
-  // 2) 再抓收盤價（次要；失敗降級為 null，不影響清單）。
-  const priceByCode = new Map<string, { close: number | null; avg: number | null }>();
-  let priceDate = '';
-  try {
-    const res = await fetchWithTimeout(TWSE_STOCK_AVG_URL);
-    if (res.ok) {
-      const priceRaw = (await res.json()) as RawStockAvg[];
-      if (Array.isArray(priceRaw)) {
-        for (const row of priceRaw) {
-          const code = str(row.Code);
-          if (code.length === 0) continue;
-          // 同日同代號可能重複，後者覆蓋前者即可。
-          if (!priceDate) priceDate = normalizeDate(row.Date);
-          priceByCode.set(code, {
-            close: toNumOrNull(row.ClosingPrice),
-            avg: toNumOrNull(row.MonthlyAveragePrice),
-          });
-        }
+  // 尚未產出／內容損壞／KV 讀取失敗 → 走即時計算（寬鬆模式）。
+  if (read.status !== 'unbound') {
+    // 嘗試即時計算
+    try {
+      const result = await getEtfActive();
+      if (result) {
+        return NextResponse.json(
+          { ...result.data, provenance: { source: 'self-produced', upstream: result.upstream[0], upstreams: result.upstream } },
+          { headers: LIVE_HEADERS },
+        );
       }
+    } catch {
+      // 即時計算也失敗 → 回 502
     }
-  } catch {
-    // 收盤價上游失敗：保留空 Map，價格顯示「—」。
+    return NextResponse.json({ ok: false, error: 'etf_active_upstream_error' }, { status: 502 });
   }
 
-  const items: EtfActiveItem[] = activeEtfs.map((etf) => {
-    const price = priceByCode.get(etf.etf_id);
-    return {
-      etf_id: etf.etf_id,
-      name: etf.name,
-      closing_price: price?.close ?? null,
-      monthly_avg_price: price?.avg ?? null,
-      // 持股明細與當日異動：證交所 openapi 無此資料，誠實留空。
-      holdings: [],
-      changes: [],
-    };
-  });
-
-  const body: EtfActiveResponse = {
-    available: true,
-    date: priceDate,
-    data_scope: '盤後',
-    next_update: NEXT_UPDATE,
-    note: HONEST_NOTE,
-    items,
-    provenance: {
-      source: 'self-produced',
-      upstream: TWSE_ACTIVE_ETF_URL,
-      upstreams: [TWSE_ACTIVE_ETF_URL, TWSE_STOCK_AVG_URL],
-    },
-    fetchedAt: new Date().toISOString(),
-  };
-
-  return NextResponse.json(body, {
-    headers: { 'Cache-Control': 'public, max-age=300' },
-  });
+  // ── KV 未綁定（本地 dev／尚未部署）→ 走即時計算，維持本機可開發性 ──
+  try {
+    const result = await getEtfActive();
+    if (!result) {
+      return NextResponse.json({ ok: false, error: 'etf_active_upstream_error' }, { status: 502 });
+    }
+    return NextResponse.json(
+      { ...result.data, provenance: { source: 'self-produced', upstream: result.upstream[0], upstreams: result.upstream } },
+      { headers: LIVE_HEADERS },
+    );
+  } catch {
+    return NextResponse.json({ ok: false, error: 'etf_active_fetch_error' }, { status: 500 });
+  }
 }

@@ -15,16 +15,28 @@
  */
 
 import { NextRequest } from 'next/server';
+import { GET } from '@/app/api/skynet/margin-maint/route';
+import { parseNumeric, twseDateToIso } from '@/lib/twseFormat';
 import {
-  GET,
-  parseNumeric,
-  twseDateToIso,
   computeMarketMaintenance,
   parseMiMargn,
   type MarginBalanceRow,
-} from '@/app/api/skynet/margin-maint/route';
+} from '@/app/margin-maint/margin-maint-data';
+
+// ── mock @opennextjs/cloudflare（ESM，CJS jest 無法直接載入）────────────
+// 讓 route → precomputed → kvReadCache → godBridge 導入鏈在 jest 下不爆 ESM 錯誤。
+// env:{} 使 readPrecomputedDetailed 回 'unbound'，route 走即時計算降級路徑。
+const mockGetCloudflareContext = jest.fn();
+jest.mock('@opennextjs/cloudflare', () => ({
+  getCloudflareContext: (...args: unknown[]) => mockGetCloudflareContext(...args),
+}));
 
 const ORIGINAL_FETCH = globalThis.fetch;
+
+beforeEach(() => {
+  mockGetCloudflareContext.mockReset();
+  mockGetCloudflareContext.mockResolvedValue({ env: {} }); // KV 未綁定 → 走 live-compute
+});
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
@@ -180,7 +192,7 @@ describe('GET /api/skynet/margin-maint', () => {
     mockUpstream({ margn, prices });
     const res = await GET(req());
     expect(res.status).toBe(200);
-    expect(res.headers.get('Cache-Control')).toBe('public, max-age=300');
+    expect(res.headers.get('Cache-Control')).toBe('no-store, max-age=0');
     const body = (await res.json()) as {
       ok: boolean;
       market_maintenance: number;

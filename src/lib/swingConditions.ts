@@ -1175,3 +1175,31 @@ export function parseExRightRows(raw: unknown): ExRightRow[] {
   }
   return out;
 }
+
+/**
+ * 解析 TWSE 公司基本資料 t187ap03_L（含所有上市公司產業別代碼）。
+ * 欄位：公司代號、公司名稱、產業別(代碼)、公司簡稱等。
+ * 配合月營收 API (t187ap05_L) 的產業別名稱，建立 代碼→名稱 映射。
+ */
+export function parseCompanyBasicRows(raw: unknown): CompanyBasicRow[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CompanyBasicRow[] = [];
+  for (const row of raw) {
+    if (row === null || typeof row !== 'object' || Array.isArray(row)) continue;
+    const r = normalizeKeys(row as Record<string, unknown>);
+    const code = String(r['公司代號'] ?? '').trim();
+    if (!code) continue;
+    out.push({
+      code,
+      name: String(r['公司名稱'] ?? '').trim(),
+      industryCode: String(r['產業別'] ?? '').trim(),
+    });
+  }
+  return out;
+}
+
+export type CompanyBasicRow = {
+  code: string;
+  name: string;
+  industryCode: string;
+};

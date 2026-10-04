@@ -14,7 +14,19 @@
  */
 
 import { GET } from '@/app/api/skynet/etf-active/route';
-import type { EtfActiveResponse } from '@/app/api/skynet/etf-active/route';
+import type { EtfActiveData } from '@/app/etf-active/etf-active-data';
+
+// ── mock @opennextjs/cloudflare（ESM，CJS jest 無法直接載入）────────────
+// 讓 route → precomputed → kvReadCache → godBridge 的導入鏈在 jest 下不爆 ESM 錯誤。
+// 同時設定 env:{} 使 readPrecomputedDetailed 回 'unbound'，route 走即時計算降級路徑。
+const mockGetCloudflareContext = jest.fn();
+jest.mock('@opennextjs/cloudflare', () => ({
+  getCloudflareContext: (...args: unknown[]) => mockGetCloudflareContext(...args),
+}));
+beforeEach(() => {
+  mockGetCloudflareContext.mockReset();
+  mockGetCloudflareContext.mockResolvedValue({ env: {} }); // KV 未綁定 → 走 live-compute
+});
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const LIST_URL = 't187ap47_L';
@@ -70,7 +82,7 @@ describe('GET /api/skynet/etf-active', () => {
 
     const res = await GET();
     expect(res.status).toBe(200);
-    const body = (await res.json()) as EtfActiveResponse;
+    const body = (await res.json()) as EtfActiveData;
 
     // 只有 2 檔主動式（0050 被剔除）
     expect(body.items.map((i) => i.etf_id)).toEqual(['00400A', '00402A']);
@@ -118,7 +130,7 @@ describe('GET /api/skynet/etf-active', () => {
 
     const res = await GET();
     expect(res.status).toBe(200);
-    const body = (await res.json()) as EtfActiveResponse;
+    const body = (await res.json()) as EtfActiveData;
     expect(body.items).toHaveLength(1);
     expect(body.items[0].closing_price).toBeNull();
     expect(body.items[0].monthly_avg_price).toBeNull();
@@ -142,7 +154,7 @@ describe('GET /api/skynet/etf-active', () => {
     });
 
     const res = await GET();
-    const body = (await res.json()) as EtfActiveResponse;
+    const body = (await res.json()) as EtfActiveData;
     expect(body.items[0].closing_price).toBe(1234.5);
     expect(body.items[0].monthly_avg_price).toBeNull();
     expect(body.items[1].closing_price).toBeNull();

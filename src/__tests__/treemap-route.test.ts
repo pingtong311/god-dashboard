@@ -92,9 +92,9 @@ afterEach(() => {
 
 describe('treemap：buildTreemapFromMiIndex（純函式）', () => {
   it('stat 非 OK → null（絕不捏造）', () => {
-    expect(buildTreemapFromMiIndex({ stat: '很抱歉，沒有符合條件的資料!', tables: [] }, '20261004')).toBeNull();
-    expect(buildTreemapFromMiIndex(null, '20261004')).toBeNull();
-    expect(buildTreemapFromMiIndex({ stat: 'OK' }, '20261004')).toBeNull();
+    expect(buildTreemapFromMiIndex({ stat: '很抱歉，沒有符合條件的資料!', tables: [] }, new Map(), '20261004')).toBeNull();
+    expect(buildTreemapFromMiIndex(null, new Map(), '20261004')).toBeNull();
+    expect(buildTreemapFromMiIndex({ stat: 'OK' }, new Map(), '20261004')).toBeNull();
   });
 
   it('只收 4 碼普通股；價 <= 0 或漲跌無法解析者剔除', () => {
@@ -105,6 +105,7 @@ describe('treemap：buildTreemapFromMiIndex（純函式）', () => {
         row('2317', '鴻海', '12000', '--', '<p>+</p>', '5'), // ✗ 價無法解析
         row('2454', '聯發科', '8000', '0', '<p>+</p>', '5'), // ✗ 價 <= 0
       ]),
+      new Map(),
       '20261002',
       '2026-10-02T00:00:00.000Z',
     );
@@ -120,6 +121,7 @@ describe('treemap：buildTreemapFromMiIndex（純函式）', () => {
     // price=1005, change=+5 → prevClose=1000 → +0.5%
     const payload = buildTreemapFromMiIndex(
       miIndex([row('2330', '台積電', '30000', '1005', '<p>+</p>', '5')]),
+      new Map(),
       '20261002',
     )!;
     const item = payload.sectors[0].items[0];
@@ -129,6 +131,7 @@ describe('treemap：buildTreemapFromMiIndex（純函式）', () => {
     // 跌：sign 為 '-' → change 為負
     const down = buildTreemapFromMiIndex(
       miIndex([row('2317', '鴻海', '30000', '995', '<p>-</p>', '5')]),
+      new Map(),
       '20261002',
     )!;
     expect(down.sectors[0].items[0].change).toBe(-5);
@@ -139,7 +142,7 @@ describe('treemap：buildTreemapFromMiIndex（純函式）', () => {
     const rows = Array.from({ length: 25 }, (_, i) =>
       row(`23${String(i).padStart(2, '0')}`, '半導體測試', String(1000 + i), '1005', '<p>+</p>', '5'),
     );
-    const payload = buildTreemapFromMiIndex(miIndex(rows), '20261002')!;
+    const payload = buildTreemapFromMiIndex(miIndex(rows), new Map(), '20261002')!;
 
     expect(payload.totalStocks).toBe(25);
     const semi = payload.sectors.find((s) => s.sector === '半導體')!;
@@ -152,9 +155,22 @@ describe('treemap：buildTreemapFromMiIndex（純函式）', () => {
     expect(semi.changePercent).toBeCloseTo(0.5, 6);
   });
 
+  it('正式產業別：industryMap 命中時優先於關鍵字', () => {
+    // 代號 2330 在 industryMap 中為「半導體業」→ 即便名稱無關鍵字也應歸「半導體業」
+    const industryMap = new Map([['2330', '半導體業']]);
+    const payload = buildTreemapFromMiIndex(
+      miIndex([row('2330', '台積電', '30000', '1005', '<p>+</p>', '5')]),
+      industryMap,
+      '20261002',
+    )!;
+    const sector = payload.sectors.find((s) => s.items.some((i) => i.symbol === '2330'))!;
+    expect(sector.sector).toBe('半導體業');
+  });
+
   it('回應形狀與既有 route 完全一致', () => {
     const payload = buildTreemapFromMiIndex(
       miIndex([row('2330', '半導體測試', '30000', '1005', '<p>+</p>', '5')]),
+      new Map(),
       '20261002',
     )!;
     expect(Object.keys(payload).sort()).toEqual(
@@ -165,14 +181,22 @@ describe('treemap：buildTreemapFromMiIndex（純函式）', () => {
   });
 
   it('classifySector：依名稱關鍵字分類；未命中回「其他」', () => {
-    expect(classifySector('半導體測試')).toBe('半導體');
-    expect(classifySector('晶圓製造')).toBe('半導體');
-    expect(classifySector('LED光電')).toBe('光電');
+    const empty = new Map<string, string>();
+    expect(classifySector('2330', '半導體測試', empty)).toBe('半導體');
+    expect(classifySector('2330', '晶圓製造', empty)).toBe('半導體');
+    expect(classifySector('2330', 'LED光電', empty)).toBe('光電');
     // ⚠ 已知限制（沿用既有行為，見 lib 檔首說明第 2 點）：
     //    關鍵字表比對不到「台積電」「鴻海」這類簡稱 → 一律歸「其他」。
     //    正式版應改用 TWSE/TPEX 類股對照表，此處先把現況釘住以免無意間改變。
-    expect(classifySector('台積電')).toBe('其他');
-    expect(classifySector('鴻海')).toBe('其他');
+    expect(classifySector('2330', '台積電', empty)).toBe('其他');
+    expect(classifySector('2330', '鴻海', empty)).toBe('其他');
+  });
+
+  it('classifySector：industryMap 命中時優先回正式產業別', () => {
+    const industryMap = new Map([['2330', '半導體業']]);
+    expect(classifySector('2330', '台積電', industryMap)).toBe('半導體業');
+    // 未命中代號 → 落回關鍵字 / 其他
+    expect(classifySector('9999', '台積電', industryMap)).toBe('其他');
   });
 });
 

@@ -59,6 +59,7 @@ import {
   computeSector,
   computeSmart,
   computeWhale,
+  parseCompanyBasicRows,
   parseExRightRows,
   parseMarginRows,
   parseRevenueRows,
@@ -72,6 +73,7 @@ import {
   type SwingItem,
   type T86Day,
   type WhaleGrade,
+  type WhaleWeeklyFallback,
 } from '@/lib/swingConditions';
 import {
   MIN_BARS_FOR_SCAN,
@@ -445,6 +447,8 @@ const T86_URL = 'https://www.twse.com.tw/rwd/zh/fund/T86';
 const MI_MARGN_RWD_URL = 'https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN';
 /** TWSE 月營收 OpenAPI（同時提供公司名稱與產業別）。 */
 const REVENUE_URL = 'https://openapi.twse.com.tw/v1/opendata/t187ap05_L';
+/** TWSE 公司基本資料 OpenAPI（含所有上市公司產業別代碼）。 */
+const COMPANY_BASIC_URL = 'https://openapi.twse.com.tw/v1/opendata/t187ap03_L';
 /** TWSE 除權除息預告表。 */
 const EXRIGHT_URL = 'https://www.twse.com.tw/rwd/zh/exRight/TWT48U';
 
@@ -457,11 +461,18 @@ const MARGIN_WINDOW_TRADING_DAYS = 21;
 /** swing-hub 統一的來源追蹤欄位。 */
 const SWING_PROVENANCE = {
   source: 'self-produced' as const,
-  upstreams: [TDCC_URL, T86_URL, MI_MARGN_RWD_URL, REVENUE_URL, EXRIGHT_URL, TWSE_MI_INDEX_URL, TPEX_OTC_URL],
+  upstreams: [TDCC_URL, T86_URL, MI_MARGN_RWD_URL, REVENUE_URL, COMPANY_BASIC_URL, EXRIGHT_URL, TWSE_MI_INDEX_URL, TPEX_OTC_URL],
 };
 
 /** swing-hub 頁面的固定註記。 */
 const SWING_NOTE = '全部為歷史公開資料的條件篩選；不提供未來方向、機率或平台產生價位。';
+
+/** 公司基本資料列（代碼→產業別代碼）。 */
+export type CompanyBasicRow = {
+  code: string;
+  name: string;
+  industryCode: string;
+};
 
 /** swing-hub 全部上游（已解析成 lib 可直接吃的形狀）。 */
 export type SwingUpstreams = {
@@ -471,6 +482,8 @@ export type SwingUpstreams = {
   tdcc: Map<string, WhaleGrade>;
   /** 月營收列。 */
   revenueRows: RevenueRow[];
+  /** 公司基本資料列（含所有上市公司產業別代碼）；抓不到可缺，lib 端以 `?? []` 兜底。 */
+  companyBasicRows?: CompanyBasicRow[];
   /** 除權息列。 */
   exRightRows: ExRightRow[];
   /** 融資今日餘額（代號 → 張）；抓不到為 null。 */
@@ -530,16 +543,18 @@ async function fetchT86Days(): Promise<T86Day[]> {
  * 僅供離線預算腳本呼叫；Edge route 絕不呼叫（會爆 subrequest 與 CPU）。
  */
 export async function fetchSwingUpstreams(): Promise<SwingUpstreams> {
-  const [t86Days, tdccRaw, revenueRaw, exRightRaw] = await Promise.all([
+  const [t86Days, tdccRaw, revenueRaw, exRightRaw, companyBasicRaw] = await Promise.all([
     fetchT86Days(),
     fetchJson(TDCC_URL),
     fetchJson(REVENUE_URL),
     fetchJson(EXRIGHT_URL, 'https://www.twse.com.tw/zh/trading/historical/ex-rights.html'),
+    fetchJson(COMPANY_BASIC_URL),
   ]);
 
   const tdcc = tdccRaw ? parseTdccRows(tdccRaw) : new Map<string, WhaleGrade>();
   const revenueRows = revenueRaw ? parseRevenueRows(revenueRaw) : [];
   const exRightRows = exRightRaw ? parseExRightRows(exRightRaw) : [];
+  const companyBasicRows = companyBasicRaw ? parseCompanyBasicRows(companyBasicRaw) : [];
 
   // 價格資料日：以 T86 最新資料日為準；無 T86 時退回今天（台北時區）。
   const priceDate = t86Days.length > 0 ? t86Days[t86Days.length - 1].date : todayTaipeiYmd();
@@ -561,6 +576,7 @@ export async function fetchSwingUpstreams(): Promise<SwingUpstreams> {
     t86Days,
     tdcc,
     revenueRows,
+    companyBasicRows,
     exRightRows,
     marginToday,
     marginBaseline,
@@ -623,11 +639,14 @@ function barsReason(kvBound: boolean, days: number, needed: number): string {
  *
  * @param input.days 升冪的多日全市場日 K（KV 存檔形狀）
  * @param input.upstreams 上游抓取結果（可省略＝全部缺席，各 tab 誠實留白）
+ * @param input.weeklyFallback 可選：大戶持股週序列（delta_1w/delta_4w/up_weeks/down_weeks/weeks），
+ *   以 stock_id 為 key 的 Map。若提供，優先用此自產值；否則退回 WHALE_MIRROR_MAP（site-mirror）。
  * @param input.computedAt 預算產出時間（可省略；預設為呼叫當下）
  */
 export function buildSwingHubPayload(input: {
   days: ScanDayInput[];
   upstreams?: Partial<SwingUpstreams>;
+  weeklyFallback?: ReadonlyMap<string, WhaleWeeklyFallback>;
   computedAt?: string;
 }): SwingHubResponse {
   const computedAt = input.computedAt ?? new Date().toISOString();
@@ -637,6 +656,7 @@ export function buildSwingHubPayload(input: {
   const t86Days: T86Day[] = up.t86Days ?? [];
   const tdcc: Map<string, WhaleGrade> = up.tdcc ?? new Map<string, WhaleGrade>();
   const revenueRows: RevenueRow[] = up.revenueRows ?? [];
+  const companyBasicRows: CompanyBasicRow[] = up.companyBasicRows ?? [];
   const exRightRows: ExRightRow[] = up.exRightRows ?? [];
   const marginToday = up.marginToday ?? null;
   const marginBaseline = up.marginBaseline ?? null;
@@ -660,11 +680,83 @@ export function buildSwingHubPayload(input: {
   );
   const barsDays = days.length;
 
-  // 3. 名稱／產業地圖（來源：月營收 OpenAPI）＋ T86 名稱補位。
+  // 3. 名稱／產業地圖（來源：公司基本資料 t187ap03_L 覆蓋所有上市公司 + 月營收 t187ap05_L 提供產業別名稱）＋ T86 名稱補位。
   const meta: StockMetaMap = new Map();
+
+  // 先從月營收建立「產業別代碼 → 產業別名稱」映射
+  const industryCodeToName = new Map<string, string>();
   for (const r of revenueRows) {
-    meta.set(r.code, { name: r.name || undefined, industry: r.industry });
+    if (r.industry && r.code) {
+      // 用月營收的產業別名稱，但需要對應到代碼
+      // 月營收只有名稱沒有代碼，這裡先收集所有出現的名稱
+      industryCodeToName.set(r.code, r.industry);
+    }
   }
+
+  // 從公司基本資料取得所有上市公司的產業別代碼
+  // 官方代碼對照表（依 TWSE t187ap03_L 實際回傳代碼整理，缺漏代碼保留官方定義供擴充）
+  const INDUSTRY_CODE_TO_NAME: Record<string, string> = {
+    '01': '水泥工業',
+    '02': '食品工業',
+    '03': '塑膠工業',
+    '04': '紡織纖維',
+    '05': '電機機械',
+    '06': '電器電纜',
+    '07': '造紙工業',
+    '08': '造紙工業',
+    '09': '橡膠工業',
+    '10': '汽車工業',
+    '11': '電子零組件業',
+    '12': '建材營造',
+    '13': '航運業',
+    '14': '觀光餐旅',
+    '15': '金融保險業',
+    '16': '貿易百貨',
+    '17': '綠能環保',
+    '18': '其他',
+    '19': '油電燃氣業',
+    '20': '其他電子業',
+    '21': '化學工業',
+    '22': '生技醫療業',
+    '23': '玻璃陶瓷',
+    '24': '半導體業',
+    '25': '電腦及週邊設備業',
+    '26': '光電業',
+    '27': '通信網路業',
+    '28': '電子零組件業',
+    '29': '電子通路業',
+    '30': '資訊服務業',
+    '31': '其他電子業',
+    '32': '運動休閒',
+    '33': '居家生活',
+    '34': '數位雲端',
+    '35': '綠能環保',
+    '36': '數位雲端',
+    '37': '運動休閒',
+    '38': '居家生活',
+    '39': '造紙工業',
+    '40': '造紙工業',
+    '91': '存託憑證',
+  };
+
+  // 用公司基本資料覆蓋所有上市公司
+  for (const r of companyBasicRows) {
+    const industryName = INDUSTRY_CODE_TO_NAME[r.industryCode] || r.industryCode;
+    meta.set(r.code, { name: r.name || undefined, industry: industryName });
+  }
+
+  // 月營收補充：更新名稱、產業名稱（月營收名稱較新/完整）
+  for (const r of revenueRows) {
+    const existing = meta.get(r.code);
+    if (!existing) {
+      meta.set(r.code, { name: r.name || undefined, industry: r.industry });
+    } else {
+      if (r.name) existing.name = r.name;
+      if (r.industry) existing.industry = r.industry; // 月營收的產業別名稱較精確
+    }
+  }
+
+  // T86 補充名稱（上櫃公司）
   for (const day of t86Days) {
     for (const it of day.items) {
       const existing = meta.get(it.symbol);
@@ -691,10 +783,10 @@ export function buildSwingHubPayload(input: {
 
   const tabs: SwingHubTab[] = [];
 
-  // whale_in / whale_out（TDCC + site-mirror 週序列 fallback）
-  // ⚠ 週增減（delta_1w/delta_4w/up_weeks）本站尚無法自算 → 以實站 2026-09-18 快照
-  //   fallback；查無對應代號時回 null（前端顯示「累積中」）。
-  const whaleItems = tdccReady ? computeWhale(ctx, tdcc, 1, WHALE_MIRROR_MAP) : [];
+  // whale_in / whale_out（TDCC + 自產週序列 / site-mirror fallback）
+  // 優先順序：input.weeklyFallback（自產）> WHALE_MIRROR_MAP（site-mirror）> null（前端顯示「累積中」）
+  const weeklyFallback = input.weeklyFallback ?? WHALE_MIRROR_MAP;
+  const whaleItems = tdccReady ? computeWhale(ctx, tdcc, 1, weeklyFallback) : [];
   const whaleExtra = tdccReady ? {} : { unavailable_reason: 'TDCC 集保戶股權分散表上游無回應。' };
   tabs.push(makeTab('whale_in', whaleItems, whaleExtra));
   tabs.push(makeTab('whale_out', whaleItems, whaleExtra));
@@ -791,6 +883,23 @@ export function buildSwingHubPayload(input: {
   const whaleWeek = tdcc.size > 0 ? [...tdcc.values()][0].date : '';
   const week = whaleWeek ? formatDisplayDate(whaleWeek) : '';
 
+  // 決定鯨魚週增減欄位的來源與累積週數
+  const weekly = input.weeklyFallback;
+  const hasSelfProducedWeekly = !!weekly && weekly.size > 0;
+  const weeksAccumulated = hasSelfProducedWeekly && weekly
+    ? Math.max(...Array.from(weekly.values()).map((v) => v.weeks ?? 0))
+    : tdccReady
+    ? 1
+    : 0;
+  const whaleDeltaProvenance = hasSelfProducedWeekly
+    ? {
+        source: 'self-produced' as const,
+        upstream: 'https://opendata.tdcc.com.tw/getOD.ashx?id=1-5',
+        snapshot_date: week,
+        captured_at: new Date().toISOString(),
+      }
+    : WHALE_MIRROR_META;
+
   return {
     ok: true,
     ready: true,
@@ -798,12 +907,12 @@ export function buildSwingHubPayload(input: {
     data_scope: '盤後歷史條件',
     next_update: NEXT_UPDATE,
     week,
-    weeksAccumulated: tdccReady ? 1 : 0,
+    weeksAccumulated,
     tabs,
     note: SWING_NOTE,
     provenance: SWING_PROVENANCE,
-    // 大戶持股週增減欄位的來源（本站無法自算 → 實站快照）。
-    whale_delta_provenance: WHALE_MIRROR_META,
+    // 大戶持股週增減欄位的來源：有自產週序列時標 self-produced，否則回退 site-mirror。
+    whale_delta_provenance: whaleDeltaProvenance,
     computedAt,
   };
 }

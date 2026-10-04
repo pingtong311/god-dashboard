@@ -14,11 +14,11 @@
  */
 
 import { useEffect, useState, type ReactElement } from 'react';
-import type { EtfActiveItem, EtfActiveResponse } from '@/app/api/skynet/etf-active/route';
+import type { EtfActiveItem, EtfActiveData } from '@/app/etf-active/etf-active-data';
 
 type LoadState =
   | { status: 'loading' }
-  | { status: 'ready'; data: EtfActiveResponse }
+  | { status: 'ready'; data: EtfActiveData }
   | { status: 'error' };
 
 /** 收盤價格式：有值顯示兩位小數，無值顯示破折號（誠實留白）。 */
@@ -50,7 +50,7 @@ export default function EtfActiveClient(): ReactElement {
     let cancelled = false;
     fetch('/api/skynet/etf-active')
       .then((res) => res.json())
-      .then((json: EtfActiveResponse) => {
+      .then((json: EtfActiveData) => {
         if (cancelled) return;
         if (json && json.available === true && Array.isArray(json.items)) {
           setState({ status: 'ready', data: json });

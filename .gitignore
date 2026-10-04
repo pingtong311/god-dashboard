@@ -22,6 +22,8 @@
 
 # precompute-scan.mjs 的 --dry-run 輸出目錄（產物為真實資料，不應入 git）
 /.scan-cache/
+/.scan-test/
+/.scan-test-swing.log
 
 # production
 /build
