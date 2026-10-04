@@ -21,6 +21,7 @@
  */
 
 import { SCAN_KV_KEY_SWING_HUB, type SwingHubTab } from '@/lib/scanPayload';
+import { clearKvReadCache } from '@/lib/kvReadCache';
 
 const mockGetKv = jest.fn();
 jest.mock('@/lib/godBridge', () => ({ getKv: () => mockGetKv() }));
@@ -97,6 +98,9 @@ afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   mockGetKv.mockReset();
   jest.restoreAllMocks();
+  // ⚠ 必清：kvReadCache 的 L1 是**模組層級變數**，會跨 `it()` 存活。
+  //    不清的話，「KV 有值」測試塞進去的值會被後面「KV 無值」測試讀到 → 假失敗。
+  clearKvReadCache();
 });
 
 describe('swing-hub route：KV 有預算結果', () => {

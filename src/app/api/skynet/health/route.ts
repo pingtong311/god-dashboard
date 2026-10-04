@@ -9,7 +9,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-const N8N_BASE = process.env.SKYNET_N8N_BASE_URL || 'https://skynet-cmd.duckdns.org';
+/**
+ * 上游 base URL（2026-10-04 調整）。
+ * 原本 fallback 到 `https://skynet-cmd.duckdns.org`（n8n），該服務已於 2026-10-03 退役、
+ * 連線必定失敗。現改為「未設定即視為未配置」：本端點會誠實地把 n8n 相關項目回報為
+ * 不可用（error），而不是去打一個已退役的主機。
+ */
+const N8N_BASE = (process.env.SKYNET_N8N_BASE_URL ?? '').trim();
+const N8N_CONFIGURED = N8N_BASE.length > 0;
 const N8N_API_KEY = process.env.SKYNET_N8N_API_KEY || '';
 
 type ServiceStatus = 'ok' | 'error' | 'timeout';
@@ -99,7 +106,10 @@ export async function GET(request: NextRequest) {
 
   const origin = new URL(request.url).origin;
   const [n8nProbe, alphaProbe, reportsProbe, snipersProbe] = await Promise.all([
-    fetchJsonWithTimeout(`${N8N_BASE}/api/v1/workflows?limit=1`, timeoutMs, n8nHeaders),
+    // 上游未配置（n8n 已退役）→ 不發出探測請求，直接誠實回報不可用。
+    N8N_CONFIGURED
+      ? fetchJsonWithTimeout(`${N8N_BASE}/api/v1/workflows?limit=1`, timeoutMs, n8nHeaders)
+      : Promise.resolve({ status: 'error' as ServiceStatus, httpStatus: 0, error: 'upstream_not_configured' }),
     fetchJsonWithTimeout(`${origin}/api/skynet/n8n-proxy?type=alpha&_ts=${Date.now()}`, timeoutMs),
     fetchJsonWithTimeout(`${origin}/api/skynet/n8n-proxy?type=battle_reports&_ts=${Date.now()}`, timeoutMs),
     fetchJsonWithTimeout(`${origin}/api/skynet/n8n-proxy?type=snipers&_ts=${Date.now()}`, timeoutMs),

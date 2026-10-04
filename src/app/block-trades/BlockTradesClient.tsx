@@ -28,7 +28,7 @@ export default function BlockTradesClient(): React.ReactElement {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/skynet/block-trades', { cache: 'no-store' });
+        const res = await fetch('/api/skynet/block-trades');
         if (!res.ok) throw new Error(`bad status ${res.status}`);
         const json = (await res.json()) as BlockTradeData;
         if (cancelled) return;

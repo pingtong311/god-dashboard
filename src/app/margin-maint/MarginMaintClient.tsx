@@ -42,7 +42,7 @@ export default function MarginMaintClient(): ReactElement {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/skynet/margin-maint', { cache: 'no-store' })
+    fetch('/api/skynet/margin-maint')
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error('bad status'))))
       .then((body) => {
         if (cancelled) return;

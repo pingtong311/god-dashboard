@@ -11,6 +11,14 @@
  *   - 「待公告」現金股利（非數字）→ 整列剔除
  *   - 上游失敗 → 502 dividend_calendar_upstream_error（不回假資料）
  *
+ * 2026-10-04 追加（P1-B1 離線預算遷移）：
+ *   - 有預算 → **零解析直送**（位元組與 KV 內字串完全一致）
+ *   - **KV 已綁定但無預算 → 降級即時計算**（寬鬆模式；**絕不回 `ready:false`**）
+ *     ⚠ 這是本端點與 treemap / trading-dates 嚴格模式最關鍵的差異：
+ *       `/dividend` 頁要求 `available === true` 且 `items` 為陣列，
+ *       回 `ready:false` 會讓「原本可用的頁面」變成錯誤狀態。
+ *   - KV 讀取拋錯 → 同樣降級，不把錯誤鎖在快取裡
+ *
  * 全程 mock 上游 fetch，不打真實證交所。
  */
 
@@ -25,6 +33,16 @@ import {
   parseRocDate,
   stockDividendToYuan,
 } from '@/app/dividend/dividend-data';
+
+/**
+ * KV 綁定以 `@opennextjs/cloudflare` 的 `getCloudflareContext` 為唯一入口
+ * （見 src/lib/godBridge.ts 的說明）。這裡把它換成可注入的替身，
+ * 讓「KV 已綁定 / 未綁定」兩種情境都能測。
+ */
+const mockGetCloudflareContext = jest.fn();
+jest.mock('@opennextjs/cloudflare', () => ({
+  getCloudflareContext: (...args: unknown[]) => mockGetCloudflareContext(...args),
+}));
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -52,6 +70,8 @@ function exRow(over: Partial<Record<number, string>> & { 0: string; 1: string; 2
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
+  // ⚠ 一定要重置：否則前一個測試殘留的 KV 綁定會被下一個測試讀到。
+  mockGetCloudflareContext.mockReset();
   jest.restoreAllMocks();
 });
 
@@ -242,5 +262,189 @@ describe('GET /api/skynet/dividend-calendar', () => {
     expect(body.items[0].close).toBeNull();
     expect(body.items[0].cash_yield_pct).toBeNull(); // 不填 0
     expect(body.items[0].industry).toBe(''); // 誠實留空
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// C. route：離線預算（P1-B1，2026-10-04）
+// ─────────────────────────────────────────────────────────────
+
+type Res = {
+  status: number;
+  json: () => Promise<unknown>;
+  text: () => Promise<string>;
+  headers: Headers;
+};
+type RouteModule = { GET: () => Promise<Res> };
+
+/**
+ * 取一份「全新 registry」的 GET。
+ *
+ * ⚠ 為什麼不能用檔首 import 的那個 `GET`：`src/lib/kvReadCache.ts` 的 L1 是
+ *   **模組層級 Map**，會在同一測試檔的 `it()` 之間存活 → 前一個測試塞進去的
+ *   預算結果會被下一個測試讀到，造成「明明 KV 無值卻回命中」這類**假失敗**。
+ *   `jest.isolateModules` 每次給一份新的模組 registry（連帶新的空 Map）。
+ */
+function freshGet(): () => Promise<Res> {
+  let GET: (() => Promise<Res>) | null = null;
+  jest.isolateModules(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('@/app/api/skynet/dividend-calendar/route') as RouteModule;
+    GET = mod.GET;
+  });
+  return GET!;
+}
+
+/** 造一個最小可用的 KV 替身（`getThrows` 用來模擬 KV 讀取拋錯）。 */
+function makeKvStore(entries: Record<string, string> = {}, opts: { getThrows?: boolean } = {}) {
+  const map = new Map<string, string>(Object.entries(entries));
+  return {
+    map,
+    kv: {
+      get: jest.fn(async (key: string) => {
+        if (opts.getThrows) throw new Error('kv read failed');
+        return map.get(key) ?? null;
+      }),
+      put: jest.fn(async (key: string, value: string) => {
+        map.set(key, value);
+      }),
+      list: jest.fn(async () => ({ keys: [], list_complete: true })),
+    },
+  };
+}
+
+/** 讓「降級即時計算」可用的上游替身（今日＋5 天後各一列除權息）。 */
+function mockLiveUpstream(): jest.Mock {
+  const today = new Date();
+  const in5 = new Date(today.getTime() + 5 * 86_400_000);
+  const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes('TWT48U')) {
+      return jsonRes({
+        stat: 'OK',
+        data: [
+          exRow({ 0: rocDate(today), 1: '1235', 2: '興泰', 3: '權息', 4: '0.04999999', 7: '0.50000000' }),
+          exRow({ 0: rocDate(in5), 1: '2109', 2: '華豐', 3: '息', 7: '0.50000000' }),
+        ],
+      });
+    }
+    if (url.includes('STOCK_DAY_AVG_ALL')) {
+      return jsonRes([
+        { Date: '1150924', Code: '1235', Name: '興泰', ClosingPrice: '35.50', MonthlyAveragePrice: '37.94' },
+        { Date: '1150924', Code: '2109', Name: '華豐', ClosingPrice: '15.00', MonthlyAveragePrice: '15.20' },
+      ]);
+    }
+    if (url.includes('t187ap03_L')) {
+      return jsonRes([
+        { 公司代號: '1235', 產業別: '02' },
+        { 公司代號: '2109', 產業別: '11' },
+      ]);
+    }
+    return new Response('not found', { status: 404 });
+  });
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  return fetchMock;
+}
+
+describe('dividend-calendar route：離線預算直送（P1-B1）', () => {
+  /** 一份「形狀與線上 route 完全一致」的預算結果（攤平，非 { ok, data } 包裝）。 */
+  const PRECOMPUTED_BODY = JSON.stringify({
+    available: true,
+    items: [
+      {
+        stock_id: '1235',
+        label: '1235 興泰',
+        industry: '食品工業',
+        ex_date: '2026-10-08',
+        days_left: 4,
+        cash_dividend: 0.5,
+        stock_dividend: 0.5,
+        close: 35.5,
+        cash_yield_pct: 1.41,
+      },
+    ],
+    note: '除息＝發現金、除權＝發股票…非投資建議。',
+    provenance: {
+      source: 'self-produced',
+      upstream: 'https://www.twse.com.tw/rwd/zh/exRight/TWT48U?response=json',
+    },
+    fetchedAt: '2026-10-04T08:35:00.000Z',
+  });
+
+  it('有預算 → 零解析直送，位元組與 KV 內字串完全一致', async () => {
+    const { kv } = makeKvStore({ 'scan:dividend-calendar': PRECOMPUTED_BODY });
+    mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: kv } });
+
+    const fetchMock = jest.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const res = await freshGet()();
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(PRECOMPUTED_BODY); // 未經 parse/stringify
+    expect(res.headers.get('X-Skynet-Data-Source')).toBe('precomputed-kv');
+    // ⚠ 關鍵：命中時**絕不**打上游（那正是 cpuTime 中位數 76ms 的成因）
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('KV 已綁定但無預算（missing）→ 降級即時計算，不回 ready:false', async () => {
+    const { kv } = makeKvStore(); // 空 KV
+    mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: kv } });
+    const fetchMock = mockLiveUpstream();
+
+    const res = await freshGet()();
+    const body = (await res.json()) as {
+      available?: boolean;
+      items?: unknown[];
+      ready?: boolean;
+    };
+
+    expect(res.status).toBe(200);
+    // 🔴 本端點的核心契約：**不可以**回 ready:false
+    //    （DividendClient 要求 available===true 且 items 為陣列，否則整頁進錯誤狀態）
+    expect(body.ready).toBeUndefined();
+    expect(body.available).toBe(true);
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items).toHaveLength(2);
+    expect(res.headers.get('X-Skynet-Data-Source')).toBe('live-compute');
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('KV 讀取拋錯（error）→ 同樣降級即時計算，不把錯誤鎖進快取', async () => {
+    const { kv } = makeKvStore({}, { getThrows: true });
+    mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: kv } });
+    mockLiveUpstream();
+
+    const res = await freshGet()();
+    const body = (await res.json()) as { available?: boolean; ready?: boolean };
+
+    expect(res.status).toBe(200);
+    expect(body.ready).toBeUndefined();
+    expect(body.available).toBe(true);
+  });
+
+  it('KV 未綁定（本地 dev）→ 走即時計算，維持本機可開發性', async () => {
+    mockGetCloudflareContext.mockResolvedValue({ env: {} });
+    mockLiveUpstream();
+
+    const res = await freshGet()();
+    const body = (await res.json()) as { available?: boolean; items?: unknown[] };
+
+    expect(res.status).toBe(200);
+    expect(body.available).toBe(true);
+    expect(body.items).toHaveLength(2);
+    expect(res.headers.get('X-Skynet-Data-Source')).toBe('live-compute');
+  });
+
+  it('降級路徑的上游失敗仍誠實回 502（不因降級就放寬誠實原則）', async () => {
+    const { kv } = makeKvStore();
+    mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: kv } });
+    globalThis.fetch = jest.fn(
+      async () => new Response('nope', { status: 500 }),
+    ) as unknown as typeof fetch;
+
+    const res = await freshGet()();
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ ok: false, error: 'dividend_calendar_upstream_error' });
   });
 });

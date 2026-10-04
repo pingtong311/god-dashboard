@@ -265,7 +265,7 @@ export default function RiskClient(): ReactElement {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/skynet/risk', { cache: 'no-store' })
+    fetch('/api/skynet/risk')
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error('bad status'))))
       .then((body) => {
         if (cancelled) return;

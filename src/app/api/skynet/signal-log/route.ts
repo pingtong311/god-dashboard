@@ -72,10 +72,19 @@ import type { StoredSignal } from '@/lib/signalLog';
 /** 寫入權杖：專用環境變數（只對本端點有效）。 */
 const SIGNAL_LOG_TOKEN = process.env.SIGNAL_LOG_TOKEN ?? '';
 
-/** 只帶 ASCII 的回應標頭（HTTP header 不接受 CJK，非 ASCII 會讓 route 500）。 */
+/**
+ * 只帶 ASCII 的回應標頭（HTTP header 不接受 CJK，非 ASCII 會讓 route 500）。
+ *
+ * 2026-10-04 調整：原為一律 no-store，使每次瀏覽都重讀 KV。
+ * 本端點為 KV 對帳結果（讀 5 個 key），改為短快取以降低 KV 讀取量
+ * （Cloudflare 已發出「KV 每日操作數達免費方案 50%」告警）。
+ * stale 資料只快取 30 秒，避免舊值被長期沿用。
+ */
 function readHeaders(stale: boolean): Record<string, string> {
   return {
-    'Cache-Control': 'no-store',
+    'Cache-Control': stale
+      ? 'public, max-age=30'
+      : 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600',
     'X-Skynet-Data-Source': 'kv',
     ...(stale ? { 'X-Skynet-Stale': 'true' } : {}),
   };

@@ -292,7 +292,7 @@ export default function HomePage() {
         return body.data;
       }),
       // 台股期近月（TAIFEX OpenAPI EOD 來源；route 端已做 1 小時快取，盤中會顯示前一日收盤日期）
-      fetch('/api/skynet/futures', { cache: 'no-store' }).then(async (res) => {
+      fetch('/api/skynet/futures').then(async (res) => {
         const body = (await res.json()) as { ok?: boolean; data?: TaifexFuturesQuote; message?: string };
         if (!res.ok || !body?.ok || !body.data) {
           throw new Error(body?.message || 'taifex futures unavailable');

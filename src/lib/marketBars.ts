@@ -244,14 +244,24 @@ export function isTradingDay(date: Date): boolean {
   return getTradingDayStatus(date).isTradingDay;
 }
 
+/**
+ * 台北日期 formatter（`en-CA` 直出 `YYYY-MM-DD`）。
+ *
+ * ⚠ 模組層級單例：`Intl.DateTimeFormat` 的**建構**成本遠高於 `format()`，
+ *   而本函式會被每個 read 請求呼叫。詳見 `tradingSessionUtils.ts` 的長註解
+ *   （2026-10-04 實測：`buildTradingDayWindow` 內每次 new formatter 造成
+ *   `market-bars` 端點 CPU 25–43ms）。
+ */
+const TAIPEI_YMD_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Taipei',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 /** 當前台北日期 'YYYY-MM-DD'（read 預設 to 用）。 */
 export function todayTaipeiYmd(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
+  return TAIPEI_YMD_FORMATTER.format(new Date());
 }
 
 /**
@@ -533,17 +543,34 @@ export async function storeDay(kv: SkynetKv, date: string, payload: StoredMarket
 }
 
 /**
- * 讀取單日全市場資料；不存在或格式異常回 null。
+ * 解析單日全市場資料的**原始字串**；格式異常回 null。
+ *
+ * 從 `loadDay` 抽出來，讓呼叫端（route）能搭配 `@/lib/kvReadCache` 的三層快取
+ * 自行取得文字後再解析，不必再走一次未快取的 `kv.get`。
  */
-export async function loadDay(kv: SkynetKv, date: string): Promise<StoredMarketDay | null> {
+export function parseStoredMarketDay(raw: string | null | undefined): StoredMarketDay | null {
+  if (!raw) return null;
   try {
-    const raw = await kv.get(marketBarKey(date));
-    if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredMarketDay;
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.twse) || !Array.isArray(parsed.tpex)) {
       return null;
     }
     return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 讀取單日全市場資料；不存在或格式異常回 null。
+ *
+ * ⚠ 此函式**不經快取層**（直接 `kv.get`）。需要快取請改用
+ *   `readKvTextDetailed(marketBarKey(date))` ＋ `parseStoredMarketDay(text)`。
+ */
+export async function loadDay(kv: SkynetKv, date: string): Promise<StoredMarketDay | null> {
+  try {
+    const raw = await kv.get(marketBarKey(date));
+    return parseStoredMarketDay(raw);
   } catch {
     return null;
   }

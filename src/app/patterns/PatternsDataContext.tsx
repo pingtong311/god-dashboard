@@ -52,7 +52,7 @@ export default function PatternsDataProvider({ children }: { children: ReactNode
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/skynet/pattern-screen', { cache: 'no-store' })
+    fetch('/api/skynet/pattern-screen')
       .then((res) => res.json())
       .then((json: PatternScreenResponse) => {
         if (cancelled) return;

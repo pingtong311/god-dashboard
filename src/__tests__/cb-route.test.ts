@@ -20,6 +20,7 @@
 
 import { GET } from '@/app/api/skynet/cb/route';
 import { CB_KV_KEY, buildCbKvValue, type CbResponse } from '@/lib/cbPremium';
+import { clearKvReadCache } from '@/lib/kvReadCache';
 
 // ⚠ @opennextjs/cloudflare 為 ESM-only，Jest（CJS）無法直接載入 → 以 mock 模組取代。
 // 委派到 module-scope 的 jest.fn（見 futures-route.kv.qa.test.ts 同款寫法）。
@@ -98,6 +99,9 @@ function mockKvUnbound() {
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   jest.restoreAllMocks();
+  // ⚠ 必清：kvReadCache 的 L1 是**模組層級變數**，會跨 `it()` 存活。
+  //    不清的話，「KV 有值」測試塞進去的值會被後面「KV 無值」測試讀到 → 假失敗。
+  clearKvReadCache();
 });
 
 describe('GET /api/skynet/cb（只讀 KV）', () => {

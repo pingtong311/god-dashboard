@@ -48,7 +48,7 @@ export default function EtfActiveClient(): ReactElement {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/skynet/etf-active', { cache: 'no-store' })
+    fetch('/api/skynet/etf-active')
       .then((res) => res.json())
       .then((json: EtfActiveResponse) => {
         if (cancelled) return;

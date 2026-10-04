@@ -13,6 +13,13 @@
  *   - 日期不一致 → 不併入並記 gaps；TPEX 失敗 → 記 gaps（不回假資料）
  *   - 證交所上游全數失敗 → 502 block_trades_upstream_error
  *
+ * 2026-10-04 追加（P1-B1d 離線預算遷移）：
+ *   - 有預算 → **零解析直送**（位元組與 KV 內字串完全一致）
+ *   - **KV 已綁定但無預算 → 降級即時計算**（寬鬆模式；**絕不回 `ready:false`**）
+ *     ⚠ 與 dividend-calendar 同因：`/block-trades` 頁要求 `available === true`
+ *       且 `items` 為陣列，回 `ready:false` 會讓「原本可用的頁面」變成錯誤狀態。
+ *   - KV 讀取拋錯 → 同樣降級，不把錯誤鎖在快取裡
+ *
  * 全程 mock 上游 fetch，不打真實證交所／櫃買中心。
  */
 
@@ -27,6 +34,16 @@ import {
   parseRocCompactDate,
   type TpexBlockRow,
 } from '@/app/block-trades/block-trades-data';
+
+/**
+ * KV 綁定以 `@opennextjs/cloudflare` 的 `getCloudflareContext` 為唯一入口
+ * （見 src/lib/godBridge.ts 的說明）。這裡把它換成可注入的替身，
+ * 讓「KV 已綁定 / 未綁定」兩種情境都能測。
+ */
+const mockGetCloudflareContext = jest.fn();
+jest.mock('@opennextjs/cloudflare', () => ({
+  getCloudflareContext: (...args: unknown[]) => mockGetCloudflareContext(...args),
+}));
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -69,6 +86,8 @@ const TPEX_20260924: TpexBlockRow[] = [
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
+  // ⚠ 一定要重置：否則前一個測試殘留的 KV 綁定會被下一個測試讀到。
+  mockGetCloudflareContext.mockReset();
   jest.restoreAllMocks();
 });
 
@@ -253,6 +272,160 @@ describe('GET /api/skynet/block-trades', () => {
     );
 
     const res = await GET();
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ ok: false, error: 'block_trades_upstream_error' });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// C. route：離線預算（P1-B1d，2026-10-04）
+// ─────────────────────────────────────────────────────────────
+
+type Res = {
+  status: number;
+  json: () => Promise<unknown>;
+  text: () => Promise<string>;
+  headers: Headers;
+};
+type RouteModule = { GET: () => Promise<Res> };
+
+/**
+ * 取一份「全新 registry」的 GET。
+ *
+ * ⚠ 為什麼不能用檔首 import 的那個 `GET`：`src/lib/kvReadCache.ts` 的 L1 是
+ *   **模組層級 Map**，會在同一測試檔的 `it()` 之間存活 → 前一個測試塞進去的
+ *   預算結果會被下一個測試讀到，造成「明明 KV 無值卻回命中」這類**假失敗**。
+ *   `jest.isolateModules` 每次給一份新的模組 registry（連帶新的空 Map）。
+ */
+function freshGet(): () => Promise<Res> {
+  let GET: (() => Promise<Res>) | null = null;
+  jest.isolateModules(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('@/app/api/skynet/block-trades/route') as RouteModule;
+    GET = mod.GET;
+  });
+  return GET!;
+}
+
+/** 造一個最小可用的 KV 替身（`getThrows` 用來模擬 KV 讀取拋錯）。 */
+function makeKvStore(entries: Record<string, string> = {}, opts: { getThrows?: boolean } = {}) {
+  const map = new Map<string, string>(Object.entries(entries));
+  return {
+    map,
+    kv: {
+      get: jest.fn(async (key: string) => {
+        if (opts.getThrows) throw new Error('kv read failed');
+        return map.get(key) ?? null;
+      }),
+      put: jest.fn(async (key: string, value: string) => {
+        map.set(key, value);
+      }),
+      list: jest.fn(async () => ({ keys: [], list_complete: true })),
+    },
+  };
+}
+
+describe('block-trades route：離線預算直送（P1-B1d）', () => {
+  /** 一份「形狀與線上 route 完全一致」的預算結果（攤平，且 upstream 為物件）。 */
+  const PRECOMPUTED_BODY = JSON.stringify({
+    available: true,
+    date: '2026-10-02',
+    data_scope: '盤後',
+    next_update: '下一交易日 23:08',
+    note: '盤後鉅額成交金額加總，不是進出場。',
+    items: [{ stock_id: '2330', label: '2330 台積電', n: 12, money_yi: 12.96 }],
+    gaps: [],
+    provenance: {
+      source: 'self-produced',
+      upstream: {
+        twse: 'https://www.twse.com.tw/rwd/zh/block/BFIAUU?response=json&date=20261002',
+        tpex: 'https://www.tpex.org.tw/openapi/v1/tpex_daily_qutoes_block',
+      },
+    },
+    fetchedAt: '2026-10-04T08:35:00.000Z',
+  });
+
+  it('有預算 → 零解析直送，位元組與 KV 內字串完全一致', async () => {
+    const { kv } = makeKvStore({ 'scan:block-trades': PRECOMPUTED_BODY });
+    mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: kv } });
+
+    const fetchMock = jest.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const res = await freshGet()();
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(PRECOMPUTED_BODY); // 未經 parse/stringify
+    expect(res.headers.get('X-Skynet-Data-Source')).toBe('precomputed-kv');
+    // ⚠ 關鍵：命中時**絕不**打上游（那正是 cpuTime 中位 18ms 的成因）
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('KV 已綁定但無預算（missing）→ 降級即時計算，不回 ready:false', async () => {
+    const { kv } = makeKvStore(); // 空 KV
+    mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: kv } });
+    mockUpstreams(
+      { stat: 'OK', date: '20260924', data: [['2330', '台積電', '逐筆交易', '500', '1,000', '2,000,000,000']] },
+      TPEX_20260924,
+    );
+
+    const res = await freshGet()();
+    const body = (await res.json()) as {
+      available?: boolean;
+      items?: unknown[];
+      ready?: boolean;
+    };
+
+    expect(res.status).toBe(200);
+    // 🔴 本端點的核心契約：**不可以**回 ready:false
+    //    （BlockTradesClient 要求 available===true 且 items 為陣列，否則整頁進錯誤狀態）
+    expect(body.ready).toBeUndefined();
+    expect(body.available).toBe(true);
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items).toHaveLength(4);
+    expect(res.headers.get('X-Skynet-Data-Source')).toBe('live-compute');
+  });
+
+  it('KV 讀取拋錯（error）→ 同樣降級即時計算，不把錯誤鎖進快取', async () => {
+    const { kv } = makeKvStore({}, { getThrows: true });
+    mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: kv } });
+    mockUpstreams(
+      { stat: 'OK', date: '20260924', data: [['2330', '台積電', '逐筆交易', '500', '1,000', '2,000,000,000']] },
+      TPEX_20260924,
+    );
+
+    const res = await freshGet()();
+    const body = (await res.json()) as { available?: boolean; ready?: boolean };
+
+    expect(res.status).toBe(200);
+    expect(body.ready).toBeUndefined();
+    expect(body.available).toBe(true);
+  });
+
+  it('KV 未綁定（本地 dev）→ 走即時計算，維持本機可開發性', async () => {
+    mockGetCloudflareContext.mockResolvedValue({ env: {} });
+    mockUpstreams(
+      { stat: 'OK', date: '20260924', data: [['2330', '台積電', '逐筆交易', '500', '1,000', '2,000,000,000']] },
+      TPEX_20260924,
+    );
+
+    const res = await freshGet()();
+    const body = (await res.json()) as { available?: boolean; items?: unknown[] };
+
+    expect(res.status).toBe(200);
+    expect(body.available).toBe(true);
+    expect(body.items).toHaveLength(4);
+    expect(res.headers.get('X-Skynet-Data-Source')).toBe('live-compute');
+  });
+
+  it('降級路徑的上游失敗仍誠實回 502（不因降級就放寬誠實原則）', async () => {
+    const { kv } = makeKvStore();
+    mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: kv } });
+    globalThis.fetch = jest.fn(
+      async () => new Response('nope', { status: 500 }),
+    ) as unknown as typeof fetch;
+
+    const res = await freshGet()();
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ ok: false, error: 'block_trades_upstream_error' });
   });

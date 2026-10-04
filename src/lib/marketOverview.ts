@@ -65,6 +65,14 @@ const LEGACY_SECTOR_INDEX_NAMES: ReadonlySet<string> = new Set([
 /** 類股指數名稱的固定後綴。 */
 const SECTOR_INDEX_SUFFIX = '類指數';
 
+/**
+ * `sectorFocus` 的預設筆數（全類股，去重後 37 → 32）。
+ *
+ * 匯出原因：呼叫端（route / 離線預算腳本 / 快取 key 組裝）必須用**同一個**預設值，
+ * 否則 `undefined` 與 `32` 會被當成兩個不同變體，快取永遠不命中。
+ */
+export const DEFAULT_SECTOR_LIMIT = 32;
+
 /** rwd 回應中的單張 table：真實格式為 { title, fields, data }，但容忍直接是 rows 陣列。 */
 type RawTable = { data?: string[][] } | string[][] | null | undefined;
 
@@ -179,7 +187,7 @@ export function extractIndex(tables: RawTable[]): MarketIndexQuote {
  * @param limit  最多回傳幾筆（依漲跌百分比由大到小），預設 32（全類股）
  * @returns 已去掉「類指數」後綴的類股名稱，加上指數、漲跌點數與漲跌百分比
  */
-export function extractSectorFocus(tables: RawTable[], limit = 32): SectorFocus[] {
+export function extractSectorFocus(tables: RawTable[], limit = DEFAULT_SECTOR_LIMIT): SectorFocus[] {
   const rows = rowsOf(tables?.[0]);
   const result: SectorFocus[] = [];
   for (const row of rows) {
@@ -319,15 +327,22 @@ export function parseMarketOverview(
 
 // ── 日期解析 ──────────────────────────────────────────────────
 
+/**
+ * 台北日期 formatter（`en-CA` 直出 `YYYY-MM-DD`）。
+ * ⚠ 模組層級單例：`Intl.DateTimeFormat` 建構成本遠高於 `format()`，
+ *   而 `resolveLatestTradingDate()` 會在每次請求呼叫本函式。
+ *   詳見 `tradingSessionUtils.ts` 的長註解。
+ */
+const TAIPEI_YMD_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Taipei',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 /** 以台北時區取得今天（'YYYYMMDD'）。Worker 跑在 UTC，必須指定時區。 */
 function taipeiTodayYmd(): string {
-  const formatted = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Taipei',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-  return formatted.replace(/-/g, '');
+  return TAIPEI_YMD_FORMATTER.format(new Date()).replace(/-/g, '');
 }
 
 /** 將 'YYYYMMDD' 位移 deltaDays 天（負數為往前）。 */
@@ -446,7 +461,14 @@ export async function loadMarketOverview(date?: string, fetchImpl?: FetchLike, s
   const resolved = requested ?? (await resolveLatestTradingDate(doFetch));
   if (!resolved) throw new MarketOverviewError('no_trading_date');
 
-  const cached = overviewCache.get(resolved);
+  // ⚠ 快取 key **必須**含 sectorLimit：parseMarketOverview 會依 sectorLimit 裁切
+  //   `sectorFocus` 的長度，只以日期當 key 會讓不同 sectorLimit 的回應互相污染
+  //   （2026-10-04 實測踩到：先算預設 32 再算 5，5 會拿到 32 筆的內容）。
+  //   `undefined` 等同預設 32，正規化後才能命中同一格。
+  const limit = sectorLimit === undefined ? DEFAULT_SECTOR_LIMIT : sectorLimit;
+  const cacheKey = `${resolved}:sl${limit}`;
+
+  const cached = overviewCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
 
   const [miRes, t86Res] = await Promise.all([
@@ -464,7 +486,7 @@ export async function loadMarketOverview(date?: string, fetchImpl?: FetchLike, s
   }
 
   const overview = parseMarketOverview(miJson, t86Json, resolved, sectorLimit);
-  overviewCache.set(resolved, { data: overview, expiresAt: Date.now() + cacheTtlMs() });
+  overviewCache.set(cacheKey, { data: overview, expiresAt: Date.now() + cacheTtlMs() });
   return overview;
 }
 

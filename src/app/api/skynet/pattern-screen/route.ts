@@ -45,9 +45,25 @@ export const dynamic = 'force-dynamic';
 /** 為維持既有外部 import（`import type { PatternScreenResponse } from '.../route'`）而 re-export。 */
 export type { PatternScreenResponse } from '@/lib/scanPayload';
 
-/** 統一的 no-store 回應（預算結果每日更新，且尚未預算時不可被快取成「有資料」）。 */
+/**
+ * 回應標頭：**維持 no-store**（2026-10-04 實測後決定）。
+ *
+ * 曾經試著改成 `public, max-age=60, s-maxage=600` 以降低 KV 讀取，但實測失敗：
+ * 本端點回應約 **403KB**，Cloudflare 為了快取必須先把完整回應緩衝起來，
+ * 該成本計入 Worker CPU（Free plan 上限 **10ms**）→ 快取**未命中**時直接
+ * **503 error code: 1102**（命中時不執行 Worker 反而正常）。
+ * 連打 4 次實測：`503 503 200 503`。
+ *
+ * 因此維持 no-store，讓回應以串流送出、不觸發快取緩衝 —— 實測穩定 200。
+ * 效能問題改由「盤後預算」解決（回應本身已預算好，但**不做邊緣快取**）。
+ */
+const CACHE_NOT_READY = 'no-store, max-age=0';
+
 function json(body: PatternScreenResponse): NextResponse {
-  return NextResponse.json(body, { status: 200, headers: { 'Cache-Control': 'no-store' } });
+  return NextResponse.json(body, {
+    status: 200,
+    headers: { 'Cache-Control': CACHE_NOT_READY },
+  });
 }
 
 export async function GET(_req: NextRequest): Promise<NextResponse> {

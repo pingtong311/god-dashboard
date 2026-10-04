@@ -426,10 +426,20 @@ async function fetchJson(url: string): Promise<Record<string, unknown>> {
   }
 }
 
+/**
+ * 取得指定資料型別的來源 URL。
+ *
+ * 2026-10-04 修正：原本在非 localhost 時**直打** `https://skynet-cmd.duckdns.org`
+ * （n8n webhook），並帶 `_ts=${Date.now()}` 破快取。但 n8n 已於 2026-10-03 退役、
+ * Caddy 的 :443 站點已移除 → App 開場頁（/review）每次載入都發出注定失敗的跨域請求，
+ * 面板因此壞掉。
+ *
+ * 現一律改走**站內**代理 `/api/skynet/n8n-proxy`：
+ *   - 同源，無跨域／CORS 問題
+ *   - 上游未設定時由代理「快速且誠實」回報不可用，不再讓瀏覽器空等逾時
+ */
 function dataUrl(type: string): string {
-  const local = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  if (local || type === 'decision_reviews') return `/api/skynet/n8n-proxy?type=${encodeURIComponent(type)}`;
-  return `https://skynet-cmd.duckdns.org/webhook/skynet-dashboard?type=${encodeURIComponent(type)}&_ts=${Date.now()}`;
+  return `/api/skynet/n8n-proxy?type=${encodeURIComponent(type)}`;
 }
 
 /** 把 /api/skynet/signal-log 的對帳結果映射到 SignalReviewPanel 的資料型別。

@@ -41,7 +41,7 @@ export default function DividendClient(): React.ReactElement {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/skynet/dividend-calendar', { cache: 'no-store' });
+        const res = await fetch('/api/skynet/dividend-calendar');
         if (!res.ok) throw new Error(`bad status ${res.status}`);
         const json = (await res.json()) as DividendData;
         if (cancelled) return;

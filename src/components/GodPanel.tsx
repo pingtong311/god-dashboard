@@ -295,7 +295,7 @@ export default function GodPanel({ endpoint, title = DEFAULT_TITLE }: GodPanelPr
         return;
       }
       try {
-        const res = await fetch(`/api/skynet/god/${endpoint}`, { cache: 'no-store' });
+        const res = await fetch(`/api/skynet/god/${endpoint}`);
         const body = (await res.json()) as GodEnvelope | null;
         if (cancelled) return;
         if (res.ok === false || !body || body.ok !== true) {

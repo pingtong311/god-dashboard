@@ -145,9 +145,7 @@ function StockPageInner() {
     setError('');
     (async () => {
       try {
-        const res = await fetch(`/api/skynet/stock-research?ticker=${encodeURIComponent(id)}`, {
-          cache: 'no-store',
-        });
+        const res = await fetch(`/api/skynet/stock-research?ticker=${encodeURIComponent(id)}`);
         const body = await res.json().catch(() => null);
         if (cancelled) return;
         if (res.ok && body?.ok === true && body.data) {

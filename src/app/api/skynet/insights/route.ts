@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 
 
-const N8N_BASE = process.env.SKYNET_N8N_BASE_URL || 'https://skynet-cmd.duckdns.org';
+/**
+ * 上游 base URL（2026-10-04 調整）。
+ * 原本 fallback 到 `https://skynet-cmd.duckdns.org`（n8n），該服務已於 2026-10-03 退役、
+ * 連線必定失敗。現改為「未設定即視為未配置」，直接快速回報不可用，不再打已退役的主機。
+ */
+const N8N_BASE = (process.env.SKYNET_N8N_BASE_URL ?? '').trim();
+const N8N_CONFIGURED = N8N_BASE.length > 0;
 const DASHBOARD_WEBHOOK = `${N8N_BASE}/webhook/skynet-dashboard`;
 
 type InsightSignal = {
@@ -14,6 +20,13 @@ type InsightSignal = {
 };
 
 export async function GET() {
+  // 上游未配置（n8n 已退役）→ 誠實回報，不做無謂的連線嘗試。
+  if (!N8N_CONFIGURED) {
+    return NextResponse.json([
+      { time: '--:--:--', type: 'INIT', msg: '雲端情報服務未設定（n8n 已退役），目前無即時分析信號。', isAlert: false },
+    ]);
+  }
+
   try {
     const response = await fetch(DASHBOARD_WEBHOOK, {
       method: 'GET',

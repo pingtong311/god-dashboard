@@ -193,7 +193,7 @@ export default function SwingClient(): ReactElement {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/skynet/swing-hub', { cache: 'no-store' })
+    fetch('/api/skynet/swing-hub')
       .then((res) => res.json())
       .then((json: SwingHubResponse) => {
         if (cancelled) return;

@@ -285,7 +285,7 @@ export default function RadarPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/skynet/radar?sort=${sort}`, { cache: 'no-store' });
+      const res = await fetch(`/api/skynet/radar?sort=${sort}`);
       const body = (await res.json()) as {
         rows?: RadarRow[];
         tradeDate?: string;

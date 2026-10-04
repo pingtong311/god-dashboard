@@ -237,7 +237,7 @@ export default function InstitutionalTop3(): ReactElement {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/skynet/t86', { cache: 'no-store' })
+    fetch('/api/skynet/t86')
       .then((res) => res.json())
       .then((body) => {
         if (cancelled) return;

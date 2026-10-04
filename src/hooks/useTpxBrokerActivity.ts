@@ -28,7 +28,7 @@ export function useTpxBrokerActivity(): ChannelBrokerData | null {
     (async () => {
       try {
         // 端點不分 ticker（全上櫃市場當日彙總），無 query 參數。
-        const res = await fetch('/api/skynet/channel-broker', { cache: 'no-store' });
+        const res = await fetch('/api/skynet/channel-broker');
         const body = (await res.json()) as ChannelBrokerResponse;
         if (cancelled) return;
         // ok:true → 回 data（含 hasBrokerActivity flag）；ok:false / 異常 → null（未入庫分支）

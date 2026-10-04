@@ -209,7 +209,7 @@ export default function TodayMarketBrief(): ReactElement {
     let cancelled = false;
     Promise.allSettled([
       fetch('/api/skynet/market-overview', { cache: 'no-store' }).then((res) => res.json()),
-      fetch('/api/skynet/futures', { cache: 'no-store' }).then((res) => res.json()),
+      fetch('/api/skynet/futures').then((res) => res.json()),
     ]).then(([overviewResult, futuresResult]) => {
       if (cancelled) return;
 

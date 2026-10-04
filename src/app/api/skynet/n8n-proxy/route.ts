@@ -13,7 +13,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guardMutation, sanitizeUpstreamError } from '@/lib/apiGuard';
 
-const N8N_BASE = process.env.SKYNET_N8N_BASE_URL || 'https://skynet-cmd.duckdns.org';
+/**
+ * 上游 base URL（2026-10-04 調整）。
+ *
+ * 原本 fallback 到 `https://skynet-cmd.duckdns.org`（n8n）。該服務已於 2026-10-03 退役、
+ * Caddy 的 :443 站點已移除 → 連線必定失敗，且會讓呼叫端等滿 N8N_PROXY_TIMEOUT_MS（75 秒）。
+ *
+ * 現改為：**未設定即視為未配置**，直接快速回報不可用，絕不再打已退役的主機。
+ * 若日後要接回上游，設 `SKYNET_N8N_BASE_URL` 即可，不需改程式。
+ */
+const N8N_BASE = (process.env.SKYNET_N8N_BASE_URL ?? '').trim();
+const N8N_CONFIGURED = N8N_BASE.length > 0;
 const DASHBOARD_WEBHOOK = `${N8N_BASE}/webhook/skynet-dashboard`;
 const N8N_PROXY_TIMEOUT_MS = Number(process.env.SKYNET_N8N_PROXY_TIMEOUT_MS || 75_000);
 
@@ -39,6 +49,18 @@ export async function GET(req: NextRequest) {
     );
   }
   const safeType = type;
+
+  // 上游未配置（n8n 已退役）→ 快速、誠實地回報不可用。
+  // 重點：**不要**再讓呼叫端空等 75 秒逾時（App 開場頁的面板會因此卡住）。
+  if (!N8N_CONFIGURED) {
+    return NextResponse.json(
+      {
+        error: 'upstream_not_configured',
+        message: 'n8n 上游未設定（該服務已於 2026-10-03 退役），此資料來源目前不可用。',
+      },
+      { status: 503 },
+    );
+  }
 
   async function fetchUpstream() {
     const controller = new AbortController();

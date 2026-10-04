@@ -185,6 +185,69 @@ describe('market-bars route：read', () => {
     expect(body.days[0].twse).toEqual([['2330', 1000, 1010, 990, 1005, 30000]]); // 已被 codes 過濾
     expect(body.provenance.source).toBe('self-produced');
   });
+
+  it('不需序列（未指定 codes 且天數 > 30）→ 用單次 KV list 回答，不逐日讀取', async () => {
+    const { kv, map } = makeKvStore();
+    map.set('mkt:bars:2026-09-24', '{"date":"2026-09-24","twse":[],"tpex":[]}');
+    map.set('mkt:bars:2026-09-23', '{"date":"2026-09-23","twse":[],"tpex":[]}');
+    mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: kv } });
+
+    const GET = freshGet();
+    const res = await GET(req(`${BASE}?action=read&days=120&to=20260924`));
+    const body = (await res.json()) as {
+      ok: boolean;
+      available: string[];
+      missing: string[];
+      seriesIncluded: boolean;
+      days: unknown[];
+      counts: { available: number; missing: number };
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.seriesIncluded).toBe(false);
+    expect(body.days).toEqual([]);
+    expect(body.available).toEqual(['2026-09-23', '2026-09-24']);
+
+    // ⚠ 關鍵：只讀「key 清單」，**完全沒有**逐日讀取 mkt:bars:<date> 的內容。
+    //   原本這條路徑會讀 120 天 × 約 660KB ≈ 79MB 並全部 JSON.parse → 必然 503。
+    expect(kv.list).toHaveBeenCalled();
+    const dayGets = (kv.get as jest.Mock).mock.calls.filter((c) => String(c[0]).startsWith('mkt:bars:'));
+    expect(dayGets).toEqual([]);
+  });
+
+  it('序列超過邊緣可解析上限 → 200 + series_too_large_for_edge（不 503、不硬幹）', async () => {
+    const { kv, map } = makeKvStore();
+    // 造一個遠大於 MAX_INLINE_SERIES_BYTES（256KB）的單日值（比照線上真實的 ~660KB）
+    const hugeRow = ['2330', 1000, 1010, 990, 1005, 30000];
+    map.set(
+      'mkt:bars:2026-09-24',
+      JSON.stringify({
+        date: '2026-09-24',
+        twse: Array.from({ length: 20000 }, () => hugeRow),
+        tpex: [],
+      }),
+    );
+    mockGetCloudflareContext.mockResolvedValue({ env: { SKYNET_CACHE: kv } });
+
+    const GET = freshGet();
+    const res = await GET(req(`${BASE}?action=read&days=1&to=20260924`));
+    const body = (await res.json()) as {
+      ok: boolean;
+      ready: boolean;
+      error: string;
+      maxInlineBytes: number;
+      readBytes: number;
+      alternatives: string[];
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.ready).toBe(false);
+    expect(body.error).toBe('series_too_large_for_edge');
+    expect(body.readBytes).toBeGreaterThan(body.maxInlineBytes);
+    expect(body.alternatives.length).toBeGreaterThan(0);
+  });
 });
 
 describe('market-bars route：status', () => {

@@ -40,11 +40,11 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getKv } from '@/lib/godBridge';
+import { readKvJsonCached } from '@/lib/kvReadCache';
 import {
   CB_KV_KEY,
   buildNotReadyPayload,
-  parseCbKvValue,
+  parseCbKvObject,
   type CbNotReadyResponse,
   type CbPrecomputedResponse,
 } from '@/lib/cbPremium';
@@ -65,20 +65,18 @@ const CACHE_OK = 'public, max-age=300';
 const CACHE_NOT_READY = 'public, max-age=60';
 
 export async function GET() {
-  // ── 只讀 KV；KV 缺席或讀取拋錯一律視為「尚無預算結果」，不拋 5xx ──
-  let raw: string | null = null;
-  try {
-    const kv = await getKv();
-    if (kv) {
-      raw = await kv.get(CB_KV_KEY);
-    }
-  } catch {
-    // KV 讀取失敗（未綁定／權限／逾時）→ 走 not-ready，誠實說明，不捏造資料。
-    raw = null;
-  }
-
-  if (raw !== null && raw !== '') {
-    const parsed = parseCbKvValue(raw);
+  // ── 讀預算結果（三層快取：L1 isolate in-memory → L2 Cache API → L3 KV）──
+  //
+  // 為什麼不直接 `kv.get(CB_KV_KEY)`：`scan:cb` 的 payload 約 **261KB**，
+  // 每個請求都要付一次 KV 讀取（計入免費方案每日 100,000 次上限）＋ 一次
+  // 261KB 的 `JSON.parse`；而本端點 CPU 實測**已達 Free plan 的 10ms 上限**。
+  // 走快取層後，L1 命中時**零 KV 讀取、零解析**。
+  //
+  // ⚠ KV 缺席／無值／內容損壞一律走「誠實 not-ready」，不拋 5xx、不捏造資料
+  //   （與原本行為一致：cb 不區分「未綁定」與「損壞」）。
+  const cached = await readKvJsonCached<Record<string, unknown>>(CB_KV_KEY);
+  if (cached !== null) {
+    const parsed = parseCbKvObject(cached);
     if (parsed !== null) {
       const body: CbPrecomputedResponse = {
         ...parsed.payload,

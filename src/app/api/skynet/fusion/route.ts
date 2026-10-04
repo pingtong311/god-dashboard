@@ -13,7 +13,14 @@ import {
   type FugleAttempt,
 } from '@/lib/fugleCache';
 
-const N8N_BASE = process.env.SKYNET_N8N_BASE_URL || 'https://skynet-cmd.duckdns.org';
+/**
+ * 上游 base URL（2026-10-04 調整）。
+ * 原本 fallback 到 `https://skynet-cmd.duckdns.org`（n8n），該服務已於 2026-10-03 退役、
+ * 連線必定失敗。現改為「未設定即視為未配置」，直接走既有 fallback，不再打已退役的主機、
+ * 也不再為此空等 N8N_FETCH_TIMEOUT_MS（75 秒）。
+ */
+const N8N_BASE = (process.env.SKYNET_N8N_BASE_URL ?? '').trim();
+const N8N_CONFIGURED = N8N_BASE.length > 0;
 const DASHBOARD_WEBHOOK = `${N8N_BASE}/webhook/skynet-dashboard`;
 const FUSION_STORE_PREFIX = process.env.SKYNET_FUSION_STORE_PREFIX || 'skynet:fusion';
 const OBSERVATION_INTERVAL_MS = 10 * 60 * 1000;
@@ -166,6 +173,11 @@ async function fetchN8nType<T>(type: string, fallback: T): Promise<{ data: T; ok
   }
 
   async function attempt(): Promise<{ data: T; ok: boolean; error?: string }> {
+    // 上游未配置（n8n 已退役）→ 直接回 fallback，不做無謂的連線與重試。
+    if (!N8N_CONFIGURED) {
+      return { data: fallback, ok: false, error: `n8n_${type}_not_configured` };
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), N8N_FETCH_TIMEOUT_MS);
     try {

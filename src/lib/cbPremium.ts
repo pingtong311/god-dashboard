@@ -600,13 +600,21 @@ export function buildCbKvValue(payload: CbResponse, computedAt: string = new Dat
  * 任何無法辨識的情形（非 JSON、JSON 但不是物件、缺 items）→ null，
  * 由 route 轉成誠實的 not-ready，**不拋例外、不回 5xx**。
  */
-export function parseCbKvValue(raw: string): CbKvReadResult | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
+/**
+ * 驗證「已解析」的 KV 物件並取出 payload。
+ *
+ * 為什麼要拆出物件版（2026-10-04 新增）：
+ *   `scan:cb` 的 payload 約 **261KB**，在 Workers 裡 `JSON.parse` 它會吃掉數毫秒，
+ *   而本端點 CPU 實測已達 Free plan 的 **10ms 上限**。
+ *   透過 `readKvJsonCached()` 讓 isolate 內 in-memory 快取**直接存已解析物件**後，
+ *   命中時連 `JSON.parse` 都省下 —— 這是唯一能騰出 CPU 餘裕的方法。
+ *   （`parseCbKvValue` 保留給「拿到原始字串」的呼叫端與既有測試使用。）
+ *
+ * 接受兩種形狀：
+ *   1. 信封 `{ computedAt, payload: { items: [...] } }`
+ *   2. 裸 `CbResponse`（本身就有 `items` 陣列）
+ */
+export function parseCbKvObject(parsed: unknown): CbKvReadResult | null {
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
 
   const record = parsed as Record<string, unknown>;
@@ -632,6 +640,16 @@ export function parseCbKvValue(raw: string): CbKvReadResult | null {
   }
 
   return null;
+}
+
+export function parseCbKvValue(raw: string): CbKvReadResult | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  return parseCbKvObject(parsed);
 }
 
 /**

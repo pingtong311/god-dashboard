@@ -226,9 +226,7 @@ export default function ChipsPage() {
       setError('');
 
       const [chipsResult, quoteResult] = await Promise.allSettled([
-        fetch(`/api/skynet/chips?ticker=${encodeURIComponent(ticker)}&days=${days}`, {
-          cache: 'no-store',
-        }).then(async (res) => {
+        fetch(`/api/skynet/chips?ticker=${encodeURIComponent(ticker)}&days=${days}`).then(async (res) => {
           const body = await res.json();
           if (!res.ok || body?.error) throw new Error(body?.error || 'chips_unavailable');
           return body as ChipsData;

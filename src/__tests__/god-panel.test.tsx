@@ -140,7 +140,7 @@ describe('GodPanel — 有資料（ready:true）', () => {
     expect(text).toContain('資料來源：GOD 辦公室');
     expect(text).toContain('產出時間');
     expect(text).toContain('2026-09-26 16:08:04');
-    expect(fetchMock).toHaveBeenCalledWith('/api/skynet/god/radar', { cache: 'no-store' });
+    expect(fetchMock).toHaveBeenCalledWith('/api/skynet/god/radar');
   });
 
   it('防禦性呈現已知重點（交易日／異動標的），且紅漲綠跌', async () => {

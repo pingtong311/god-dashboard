@@ -20,7 +20,7 @@ export default function CbHeroStatus(): ReactElement {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/skynet/cb', { cache: 'no-store' })
+    fetch('/api/skynet/cb')
       .then((res) => res.json())
       .then((json: CbResponse) => {
         if (cancelled) return;

@@ -276,9 +276,7 @@ export default function WatchlistPage() {
           const body = (await res.json()) as { items?: QuoteItem[] };
           return Array.isArray(body?.items) ? body.items : [];
         }),
-        fetch(`/api/skynet/t86?tickers=${encodeURIComponent(bareSymbols.join(','))}`, {
-          cache: 'no-store',
-        }).then(async (res) => {
+        fetch(`/api/skynet/t86?tickers=${encodeURIComponent(bareSymbols.join(','))}`).then(async (res) => {
           if (!res.ok) return [] as T86Item[];
           const body = (await res.json()) as { items?: T86Item[] };
           return Array.isArray(body?.items) ? body.items : [];

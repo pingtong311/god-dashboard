@@ -24,11 +24,23 @@
 
 import { NextResponse } from 'next/server';
 
-const N8N_BASE = process.env.SKYNET_N8N_BASE_URL || 'https://skynet-cmd.duckdns.org';
+/**
+ * 2026-10-04：n8n 已於 2026-10-03 退役，原本 fallback 到 skynet-cmd.duckdns.org 必定失敗
+ * 且會讓呼叫端空等 75 秒。改為「未設定即視為未配置」，快速誠實回報。
+ */
+const N8N_BASE = (process.env.SKYNET_N8N_BASE_URL ?? '').trim();
+const N8N_CONFIGURED = N8N_BASE.length > 0;
 const DASHBOARD_API = `${N8N_BASE}/webhook/skynet-dashboard`;
 const PERFORMANCE_TIMEOUT_MS = Number(process.env.SKYNET_PERFORMANCE_TIMEOUT_MS || 75_000);
 
 export async function GET() {
+  if (!N8N_CONFIGURED) {
+    return NextResponse.json(
+      { error: 'upstream_not_configured', message: '績效資料上游未設定（n8n 已於 2026-10-03 退役）。' },
+      { status: 503 },
+    );
+  }
+
   async function fetchPerformance() {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PERFORMANCE_TIMEOUT_MS);

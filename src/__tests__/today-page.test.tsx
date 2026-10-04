@@ -417,7 +417,7 @@ describe('法人買超 Top3', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
     render(<RealInstitutionalTop3 />);
     await screen.findByText('2026-09-24 · 法人約 21:00 入庫');
-    expect(fetchMock).toHaveBeenCalledWith('/api/skynet/t86', { cache: 'no-store' });
+    expect(fetchMock).toHaveBeenCalledWith('/api/skynet/t86');
     expect(screen.getByText('20,586 張')).toBeTruthy();
     delete (globalThis as Record<string, unknown>).fetch;
   });

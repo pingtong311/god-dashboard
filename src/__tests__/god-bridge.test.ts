@@ -35,6 +35,7 @@ import {
 // 真正走新的取值路徑（有鑑別力：若 getKv 仍用 globalThis，此 mock 不會被呼叫）。
 jest.mock('@opennextjs/cloudflare', () => ({ getCloudflareContext: jest.fn() }));
 import { getCloudflareContext } from '@opennextjs/cloudflare';
+import { clearKvReadCache } from '@/lib/kvReadCache';
 
 const ORIGINAL_TOKEN = process.env.SKYNET_DASHBOARD_API_TOKEN;
 const ORIGINAL_ALT_TOKEN = process.env.SKYNET_API_WRITE_TOKEN;
@@ -49,9 +50,16 @@ function installKv(stored: unknown, getThrows = false) {
       _options?: { expirationTtl?: number },
     ): Promise<void> => undefined,
   );
-  const get = jest.fn(async (_key: string, _type?: string): Promise<unknown> => {
+  const get = jest.fn(async (_key: string, type?: string): Promise<unknown> => {
     if (getThrows) throw new Error('KV unavailable');
-    return stored;
+    if (stored === null || stored === undefined) return null;
+    // ⚠ 忠實模擬 Cloudflare KV 的兩條呼叫路徑（2026-10-04 修正）：
+    //    - `get(key)`（文字模式）→ 回**字串**
+    //    - `get(key, 'json')`   → 回**已解析物件**
+    //    原本的 mock 一律回物件，是為舊寫法 `get(key,'json')` 量身打造的；
+    //    改用 kvReadCache（文字模式）後，回物件會讓 JSON.parse 收到 "[object Object]"
+    //    而拋錯，造成「明明有資料卻 ready:false」的假失敗。
+    return type === 'json' ? stored : JSON.stringify(stored);
   });
   (getCloudflareContext as jest.Mock).mockResolvedValue({ env: { SKYNET_CACHE: { get, put } } });
   return { get, put };
@@ -108,6 +116,10 @@ beforeEach(() => {
   process.env.SKYNET_DASHBOARD_API_TOKEN = TOKEN;
   delete process.env.SKYNET_API_WRITE_TOKEN;
   clearKv();
+  // ⚠ 必清：kvReadCache 的 L1 是**模組層級變數**，會跨 `it()` 存活。
+  //    不清的話，「有資料」測試塞進去的信封會被後面「無資料」測試讀到 → 假失敗。
+  //    注意：這與上方 `clearKv()`（模擬「KV 尚未綁定」）是**兩件不同的事**。
+  clearKvReadCache();
 });
 
 afterAll(() => {

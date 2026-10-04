@@ -112,7 +112,7 @@ export default function TrumpData(): ReactElement {
     let cancelled = false;
     const run = async (): Promise<void> => {
       try {
-        const res = await fetch(`/api/skynet/trump-radar?days=${DAYS}`, { cache: 'no-store' });
+        const res = await fetch(`/api/skynet/trump-radar?days=${DAYS}`);
         const json = (await res.json()) as TrumpRadarResponse | { ok: false };
         if (cancelled) return;
         const candidate = json as TrumpRadarResponse;

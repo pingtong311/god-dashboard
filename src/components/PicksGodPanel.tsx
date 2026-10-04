@@ -246,7 +246,7 @@ export default function PicksGodPanel(): ReactElement {
         return;
       }
       try {
-        const res = await fetch('/api/skynet/god/sector-sniper', { cache: 'no-store' });
+        const res = await fetch('/api/skynet/god/sector-sniper');
         const body = (await res.json()) as SniperEnvelope | null;
         if (cancelled) return;
         if (res.ok === false || !body || body.ok !== true) {

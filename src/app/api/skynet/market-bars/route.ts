@@ -26,6 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { guardMutation } from '@/lib/apiGuard';
 import { getKv } from '@/lib/godBridge';
+import { readKvTextDetailed } from '@/lib/kvReadCache';
 import {
   MAX_FULL_SERIES_DAYS,
   MAX_INGEST_DAYS,
@@ -41,15 +42,41 @@ import {
   fetchTwseDay,
   isTradingDay,
   listStoredDates,
-  loadRange,
+  marketBarKey,
+  parseStoredMarketDay,
   parseYmdToDate,
   storeDay,
   todayTaipeiYmd,
   type Provenance,
   type SkynetKvWithList,
+  type StoredMarketDay,
 } from '@/lib/marketBars';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * 邊緣端可安全解析的「序列原始位元組」上限。
+ *
+ * 算術（2026-10-04 實測）：
+ *   - Cloudflare Free plan CPU 上限 **10ms**；地板值（OpenNext 執行期初始化
+ *     ＋ 一次 KV 讀取）**7ms** → 剩餘預算約 **3ms**。
+ *   - V8 `JSON.parse` 對本專案這種扁平陣列吞吐約 200MB/s → 3ms ≈ 600KB；
+ *     但序列還需要 `JSON.stringify` 回寫（再一份成本）＋ 組裝配置，
+ *     故取 **1/2 安全邊界 ≈ 256KB**。
+ *   - ⚠ 實測單日 `mkt:bars:<date>` 值約 **660KB**（2026-10-02 = 675,459 bytes）
+ *     → **只要附帶任何一天的全市場序列就已超過這個上限**。
+ *
+ * ⇒ 這是**刻意的誠實拒絕**，不是缺陷：與其讓請求在邊緣端爆 CPU 回
+ *   503 `error code: 1102`（使用者看到的是「系統壞了」），不如明確回
+ *   「此查詢在本方案下無法服務」＋可行替代路徑。
+ *   付費方案（CPU 上限 30s）或把日 payload 瘦身後，同一段程式碼即可正常服務。
+ */
+const MAX_INLINE_SERIES_BYTES = 256 * 1024;
+
+/** `action=read` 的共享快取標頭。 */
+const READ_HEADERS: Record<string, string> = {
+  'Cache-Control': 'public, max-age=300',
+};
 
 /** 統一的來源追蹤欄位（本端點自產，非代理第三方）。 */
 const PROVENANCE: Provenance = {
@@ -82,6 +109,96 @@ function parseQueryDate(raw: string | null): Date | null {
 // ---------------------------------------------------------------------------
 // action=read：從 KV 組裝序列（純讀取）
 // ---------------------------------------------------------------------------
+
+/**
+ * 「僅中繼資料」回應：不附帶序列，只回日期清單與命中／缺漏統計。
+ *
+ * 為什麼需要獨立一條路徑（2026-10-04 修）：
+ *   原本無論需不需要序列，都會呼叫 `loadRange()` 把**整個視窗**逐日讀進記憶體
+ *   並 `JSON.parse`。而文件記載的預設呼叫正是 `?action=read&days=120`——
+ *   那會讀 **120 天 × 約 660KB ≈ 79MB** 並全部解析，在 Free plan 的 10ms CPU
+ *   上限下必然 503（實測 days=1 就已 503）。
+ *   但 `seriesIncluded === false` 時（未指定 codes 且視窗 > MAX_FULL_SERIES_DAYS）
+ *   回應**根本不含序列**，只需要「哪些日期有資料」——那用**一次 KV `list`** 就能回答，
+ *   不必讀任何一天的內容。
+ */
+function metadataOnlyResponse(params: {
+  from: string | null;
+  to: string | null;
+  requestedDays: number;
+  window: string[];
+  storedDates: string[];
+  codes: string[];
+}): NextResponse {
+  const have = new Set(params.storedDates);
+  const available = params.window.filter((d) => have.has(d));
+  const missing = params.window.filter((d) => !have.has(d));
+
+  return NextResponse.json(
+    {
+      ok: true,
+      ready: true,
+      action: 'read',
+      from: params.from,
+      to: params.to,
+      requestedDays: params.requestedDays,
+      available,
+      missing,
+      counts: { available: available.length, missing: missing.length },
+      seriesIncluded: false,
+      seriesNote:
+        `未附帶全市場序列（天數 ${params.window.length} 超過 ${MAX_FULL_SERIES_DAYS} 天上限）；` +
+        '請改用 codes= 指定個股，或縮小 days。',
+      ...(params.codes.length > 0 ? { codes: params.codes } : {}),
+      days: [],
+      provenance: PROVENANCE,
+    },
+    { status: 200, headers: { ...READ_HEADERS, 'X-Skynet-Series-Mode': 'metadata-only' } },
+  );
+}
+
+/**
+ * 「序列過大，邊緣端無法服務」的誠實回應（200，不 5xx）。
+ * 明確說明原因並給出可行替代，而不是讓使用者看到 503。
+ */
+function seriesTooLargeResponse(params: {
+  from: string | null;
+  to: string | null;
+  requestedDays: number;
+  window: string[];
+  totalBytes: number;
+  hasCodes: boolean;
+}): NextResponse {
+  return NextResponse.json(
+    {
+      ok: true,
+      ready: false,
+      action: 'read',
+      from: params.from,
+      to: params.to,
+      requestedDays: params.requestedDays,
+      windowDays: params.window.length,
+      seriesIncluded: false,
+      error: 'series_too_large_for_edge',
+      maxInlineBytes: MAX_INLINE_SERIES_BYTES,
+      readBytes: params.totalBytes,
+      message:
+        '全市場日 K 序列在此方案（Cloudflare Free plan，Worker CPU 上限 10ms）下無法於邊緣端組裝。' +
+        `單日 payload 約 660KB，解析成本已超過可用 CPU 預算（上限 ${MAX_INLINE_SERIES_BYTES} bytes）。`,
+      alternatives: [
+        '改用 ?action=status 取得已累積的日期清單（單次 KV list，極低成本）',
+        '直接讀 KV：key 為 mkt:bars:<YYYY-MM-DD>（由 backfill-market-bars.mjs 回填）',
+        'pattern-screen / swing-hub 已在離線預算中直接讀 KV，不需經過本端點',
+        ...(params.hasCodes
+          ? []
+          : ['付費方案（CPU 上限 30s）即可正常服務本查詢']),
+      ],
+      provenance: PROVENANCE,
+    },
+    { status: 200, headers: { ...READ_HEADERS, 'X-Skynet-Series-Mode': 'too-large' } },
+  );
+}
+
 async function handleRead(searchParams: URLSearchParams): Promise<NextResponse> {
   const daysRaw = Number.parseInt(searchParams.get('days') ?? '120', 10);
   const requestedDays = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, MAX_READ_DAYS) : 120;
@@ -108,29 +225,72 @@ async function handleRead(searchParams: URLSearchParams): Promise<NextResponse> 
   const kv = (await getKv()) as SkynetKvWithList | undefined;
   if (!kv) return kvUnavailable('read');
 
-  const { days: found, missing } = await loadRange(kv, window);
-  const available = found.map((d) => d.date);
-
   // 序列是否隨回應附帶：
   //   - 有指定 codes → 過濾後體積小，一律附帶。
   //   - 未指定 codes 且天數 ≤ MAX_FULL_SERIES_DAYS → 附帶全市場序列。
-  //   - 否則僅回日期清單（避免 120 天 × ~0.76MB ≈ 91MB 的回應）。
+  //   - 否則僅回日期清單（避免 120 天 × ~660KB ≈ 79MB 的回應）。
   const seriesIncluded = codeSet.size > 0 || window.length <= MAX_FULL_SERIES_DAYS;
-  const series = seriesIncluded
-    ? found.map((d) =>
-        codeSet.size === 0
-          ? d
-          : {
-              ...d,
-              twse: d.twse.filter((b) => codeSet.has(b[0])),
-              tpex: d.tpex.filter((b) => codeSet.has(b[0])),
-              counts: {
-                twse: d.twse.filter((b) => codeSet.has(b[0])).length,
-                tpex: d.tpex.filter((b) => codeSet.has(b[0])).length,
-              },
-            },
-      )
-    : [];
+
+  // ── A. 不需序列 → 一次 KV `list` 回答「哪些日期有資料」（原本是 N 次 get + N 次 parse）──
+  if (!seriesIncluded) {
+    const storedDates = await listStoredDates(kv);
+    if (storedDates !== null) {
+      return metadataOnlyResponse({ from, to, requestedDays, window, storedDates, codes });
+    }
+    // `list` 不可用（罕見：綁定不支援 list）→ 落到 B 逐日讀，誠實降級。
+  }
+
+  // ── B. 需要序列 → 逐日讀（走三層快取），並在解析前先擋住過大序列 ──
+  //
+  // ⚠ 關鍵順序：**先累計位元組、超過上限就立刻停手**，絕不先 parse 再判斷。
+  //    `mkt:bars:<date>` 是**不可變的歷史資料**（收盤後就不會再變），
+  //    因此快取層的 TTL 對它特別划算——同一 isolate ／同一 colo 的重複查詢
+  //    不會再打 KV（這是免費方案壓低 KV 每日讀取量的關鍵）。
+  const found: StoredMarketDay[] = [];
+  const missing: string[] = [];
+  let totalBytes = 0;
+
+  for (const date of window) {
+    const read = await readKvTextDetailed(marketBarKey(date));
+    if (read.status !== 'ok') {
+      // 缺值／讀取失敗 → 誠實列為缺漏（不假裝成功）。
+      missing.push(date);
+      continue;
+    }
+    totalBytes += read.text.length;
+    if (totalBytes > MAX_INLINE_SERIES_BYTES) {
+      return seriesTooLargeResponse({
+        from,
+        to,
+        requestedDays,
+        window,
+        totalBytes,
+        hasCodes: codeSet.size > 0,
+      });
+    }
+    const day = parseStoredMarketDay(read.text);
+    if (!day) {
+      missing.push(date);
+      continue;
+    }
+    found.push(day);
+  }
+
+  const available = found.map((d) => d.date);
+
+  const series = found.map((d) =>
+    codeSet.size === 0
+      ? d
+      : {
+          ...d,
+          twse: d.twse.filter((b) => codeSet.has(b[0])),
+          tpex: d.tpex.filter((b) => codeSet.has(b[0])),
+          counts: {
+            twse: d.twse.filter((b) => codeSet.has(b[0])).length,
+            tpex: d.tpex.filter((b) => codeSet.has(b[0])).length,
+          },
+        },
+  );
 
   return NextResponse.json(
     {
@@ -143,17 +303,12 @@ async function handleRead(searchParams: URLSearchParams): Promise<NextResponse> 
       available,
       missing,
       counts: { available: available.length, missing: missing.length },
-      seriesIncluded,
-      ...(seriesIncluded
-        ? {}
-        : {
-            seriesNote: `未附帶全市場序列（天數 ${window.length} 超過 ${MAX_FULL_SERIES_DAYS} 天上限）；請改用 codes= 指定個股，或縮小 days。`,
-          }),
+      seriesIncluded: true,
       ...(codes.length > 0 ? { codes } : {}),
       days: series,
       provenance: PROVENANCE,
     },
-    { status: 200, headers: { 'Cache-Control': 'public, max-age=300' } },
+    { status: 200, headers: { ...READ_HEADERS, 'X-Skynet-Series-Mode': 'inline' } },
   );
 }
 
