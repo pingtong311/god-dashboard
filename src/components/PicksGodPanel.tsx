@@ -8,8 +8,11 @@
  *
  * 與 GodPanel 共用的最高原則 —— 資料誠實：
  *   - ready:false → 誠實顯示「GOD 辦公室資料尚未產出」，絕不顯示 0 或假數據。
- *   - sector-sniper 信封內 provenance.internal_status 可能為 "DATA_INVALID"，
- *     這是 GOD 辦公室的誠實標示，必須顯眼呈現，不可隱藏或淡化。
+ *   - sector-sniper 信封內 provenance.internal_status 可能為 "DATA_INVALID"
+ *     或 "DATA_NOT_READY"，這是 GOD 辦公室的誠實標示，必須顯眼呈現，不可隱藏或淡化。
+ *   - 🔴 「有信封」不等於「有資料」。payload 若沒有任何可用數值（空殼），
+ *     一律顯示「沒有資料」，不顯示任何數字（2026-10-04 修：sector-sniper 曾
+ *     以 items:[] + score:null 卻標 PASS 上架，形成偽陽性就緒）。
  *   - 所有欄位層層守衛（Array.isArray / optional chaining / null → 「—」）。
  *
  * Client component：需在瀏覽器 fetch，mount 後（useEffect）才抓資料。
@@ -85,6 +88,7 @@ type SniperEnvelope = {
 type LoadState =
   | { status: 'loading' }
   | { status: 'notReady' }
+  | { status: 'noData'; reason: string }
   | { status: 'ready'; envelope: SniperEnvelope }
   | { status: 'error' };
 
@@ -257,6 +261,33 @@ export default function PicksGodPanel(): ReactElement {
           setState({ status: 'notReady' });
           return;
         }
+
+        // 🔴 空殼守門（2026-10-04）：「KV 有信封」≠「有資料」。
+        // 實測 sector-sniper 曾被產出為 `items: []` + `score: null`（只有 scope/note/
+        // missing_components 等說明文字），provenance 卻標 PASS → 前端會顯示一副
+        // 「資料已就緒」的空面板（偽陽性就緒）。
+        // 因此前端**自己也判一次**：沒有任何可用數值就誠實說「沒有資料」，
+        // 不論後端標註是什麼。後端的 DATA_NOT_READY 標註只是第二道保險
+        // （KV 可能還留著改版前的 PASS 版本）。
+        const payload = isRecord(body.payload) ? (body.payload as SniperPayload) : null;
+        const items = payload && Array.isArray(payload.items) ? payload.items : [];
+        const bs = payload && isRecord(payload.black_score) ? (payload.black_score as BlackScore) : null;
+        const hasUsableData =
+          items.length > 0 || (typeof bs?.score === 'number' && Number.isFinite(bs.score));
+
+        if (hasUsableData === false) {
+          const prov = isRecord(body.provenance) ? (body.provenance as SniperProvenance) : null;
+          const st = prov?.internal_status;
+          setState({
+            status: 'noData',
+            reason:
+              st === 'DATA_NOT_READY'
+                ? 'GOD 辦公室回報本批產出沒有任何有效內容（DATA_NOT_READY）。'
+                : '本批產出的產業清單與狙擊評分皆為空，沒有可呈現的內容。',
+          });
+          return;
+        }
+
         setState({ status: 'ready', envelope: body });
       } catch {
         if (!cancelled) setState({ status: 'error' });
@@ -297,6 +328,13 @@ export default function PicksGodPanel(): ReactElement {
             GOD 辦公室在交易日收盤後產出，請稍後再查看。
           </p>
         </div>
+      ) : state.status === 'noData' ? (
+        <div role="status" aria-live="polite">
+          <p className="text-[14px] font-bold text-ink">GOD 辦公室本批產出沒有資料</p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+            {state.reason}為避免誤導，此處不顯示任何數字或排序。
+          </p>
+        </div>
       ) : state.status === 'error' ? (
         <div role="status" aria-live="polite">
           <p className="text-[13px] font-bold text-ink">GOD 辦公室資料暫時無法取得</p>
@@ -321,7 +359,10 @@ function ReadyView({ envelope }: { envelope: SniperEnvelope }): ReactElement {
   const items = payload && Array.isArray(payload.items) ? (payload.items as SniperItem[]) : [];
   const blackScore = payload && isRecord(payload.black_score) ? (payload.black_score as BlackScore) : null;
 
-  const isInvalid = provenance?.internal_status === 'DATA_INVALID';
+  // 前端空殼守門已在資料載入時擋下（noData 狀態），這裡是第二道保險：
+  // 若後端標了 PASS 以外的狀態，仍要顯眼提示，不可淡化。
+  const status = provenance?.internal_status;
+  const isInvalid = status === 'DATA_INVALID' || status === 'DATA_NOT_READY';
 
   return (
     <div role="status" aria-live="polite" className="space-y-3">
@@ -335,7 +376,7 @@ function ReadyView({ envelope }: { envelope: SniperEnvelope }): ReactElement {
         </p>
         {isInvalid ? (
           <p className="mt-1 rounded-md bg-line/40 px-2 py-1 text-[11.5px] font-bold leading-relaxed text-ink">
-            ⚠ 資料完整性：未驗證（DATA_INVALID）— GOD 辦公室回報此批資料不完整，僅供參考，不代表買賣建議。
+            ⚠ 資料完整性：未驗證（{status}）— GOD 辦公室回報此批資料不完整，僅供參考，不代表買賣建議。
           </p>
         ) : null}
       </div>
