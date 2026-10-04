@@ -388,6 +388,40 @@
   color: var(--bg);
 }
 
+/* 交易模式切換（一般現股／現股當沖）——刻意用中性強調色，不用買賣的紅／綠，
+   避免被誤讀成「買」或「賣」。 */
+.modeToggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.modeButton {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-bold);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 0.2s var(--ease-premium), color 0.2s var(--ease-premium);
+}
+
+.modeActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+.modeHint {
+  margin-top: 6px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .fieldGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

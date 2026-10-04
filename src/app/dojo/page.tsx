@@ -8,9 +8,15 @@
  *   - 行情一律即時抓 `/api/skynet/twse`，頁面本身不產生任何假報價
  *
  * 費用規則（台股實際規則）：
- *   - 手續費 = 成交金額 × 0.1425%，無條件捨去至整數元
- *   - 證交稅 = 成交金額 × 0.3%，僅賣出收取，無條件捨去至整數元
  *   - 成交金額 = 價格 × 張數 × 1000
+ *   - 手續費 = 成交金額 × 0.1425%，無條件捨去至整數元，每筆最低 20 元
+ *   - 證交稅 = 成交金額 × 稅率，僅賣出收取，無條件捨去至整數元
+ *       一般現股 0.3%／現股當沖 0.15%（減半，現行至 2027-12-31）
+ *   - 來回總成本：一般現股 0.585%、現股當沖 0.435%
+ *     → 模擬績效要看有沒有打平，漲幅必須先跨過這條線
+ *
+ * ⚠ 2026-10-04 修正：舊版不論交易模式一律課 0.3%，對當沖情境高估成本
+ *   0.15 個百分點（50 萬部位來回約多算 750 元），會低估當沖策略的可行性。
  */
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -54,6 +60,18 @@ type Position = {
   note: string;
 };
 
+/**
+ * 交易模式 —— 決定證交稅率。
+ *   'general'  一般現股：證交稅 0.3%
+ *   'dayTrade' 現股當沖：證交稅 0.15%（減半，現行至 2027-12-31）
+ *
+ * ⚠ 為什麼不做自動判定：當沖減半只適用「同一交易日買進並賣出同一標的」。
+ * 本模擬器的持股採「加權平均成本」彙總（無分批進場日期），無從判斷
+ * 賣出的張數中哪些是當日買的。因此交由使用者自行選擇並明示，
+ * 比程式猜錯還誠實。
+ */
+type TradeMode = 'general' | 'dayTrade';
+
 /** 交易紀錄。`realizedPnl` 僅在賣出時有值。 */
 type TradeRecord = {
   id: string;
@@ -62,6 +80,8 @@ type TradeRecord = {
   name: string;
   side: 'buy' | 'sell';
   orderType: 'market' | 'limit';
+  /** 該筆適用的交易模式（決定證交稅率），供事後追溯。 */
+  mode: TradeMode;
   price: number;
   lots: number;
   fee: number;
@@ -100,6 +120,8 @@ type OrderInput = {
   name: string;
   side: OrderSide;
   orderType: OrderType;
+  /** 交易模式，決定賣出時的證交稅率。 */
+  mode: TradeMode;
   price: number;
   lots: number;
 };
@@ -115,11 +137,29 @@ const INITIAL_CASH = 1_000_000;
 /** 台股一張＝1000 股。 */
 const LOT_SIZE = 1000;
 
-/** 手續費率 0.1425%。 */
+/** 手續費率 0.1425%（券商法定上限；實務多再有折扣，此處採最保守值）。 */
 const FEE_RATE = 0.001425;
 
-/** 證交稅率 0.3%（僅賣出）。 */
-const TAX_RATE = 0.003;
+/** 券商最低手續費（元）。多數券商每筆最低 20 元。 */
+const FEE_MIN = 20;
+
+/** 證交稅率：一般現股 0.3%（僅賣出收取）。 */
+const TAX_RATE_GENERAL = 0.003;
+
+/**
+ * 證交稅率：現股當沖 0.15%（僅賣出收取）。
+ * 依《證券交易稅條例》現股當沖交易稅減半，現行施行期間至 2027-12-31。
+ */
+const TAX_RATE_DAY_TRADE = 0.0015;
+
+/** 交易模式的中文標籤。 */
+const MODE_LABEL: Record<TradeMode, string> = {
+  general: '一般現股',
+  dayTrade: '現股當沖',
+};
+
+/** 交易模式 localStorage 鍵名（與帳戶分開存，避免動到既有帳戶結構）。 */
+const MODE_STORAGE_KEY = 'skynet_sim_trade_mode_v1';
 
 /** 盤中輪詢 10 秒、盤後 60 秒。 */
 const POLL_MARKET_MS = 10_000;
@@ -209,14 +249,31 @@ function calcAmount(price: number, lots: number): number {
   return price * lots * LOT_SIZE;
 }
 
-/** 手續費＝成交金額 × 0.1425%，無條件捨去。 */
+/** 手續費＝成交金額 × 0.1425%，無條件捨去；低於最低手續費則以最低手續費計。 */
 function calcFee(amount: number): number {
-  return Math.floor(amount * FEE_RATE);
+  return Math.max(Math.floor(amount * FEE_RATE), FEE_MIN);
 }
 
-/** 證交稅＝成交金額 × 0.3%，無條件捨去（僅賣出）。 */
-function calcTax(amount: number): number {
-  return Math.floor(amount * TAX_RATE);
+/** 取某交易模式的證交稅率。 */
+function taxRateOf(mode: TradeMode): number {
+  return mode === 'dayTrade' ? TAX_RATE_DAY_TRADE : TAX_RATE_GENERAL;
+}
+
+/**
+ * 證交稅＝成交金額 × 稅率，無條件捨去（僅賣出收取，買進免收）。
+ * 稅率依交易模式：一般現股 0.3%、現股當沖 0.15%。
+ */
+function calcTax(amount: number, mode: TradeMode = 'general'): number {
+  return Math.floor(amount * taxRateOf(mode));
+}
+
+/**
+ * 一次完整來回（買＋賣）的總成本率，供介面顯示「這套規則下要賺多少才打平」。
+ * 一般現股：0.1425%×2 ＋ 0.3% ＝ 0.585%
+ * 現股當沖：0.1425%×2 ＋ 0.15% ＝ 0.435%
+ */
+function roundTripCostRate(mode: TradeMode): number {
+  return FEE_RATE * 2 + taxRateOf(mode);
 }
 
 /* ─────────────────────── localStorage 讀寫 ─────────────────────── */
@@ -268,7 +325,12 @@ function loadAccount(): SimAccount {
       cash:
         typeof parsed.cash === 'number' && Number.isFinite(parsed.cash) ? parsed.cash : INITIAL_CASH,
       positions: Array.isArray(parsed.positions) ? parsed.positions.filter(isPosition) : [],
-      trades: Array.isArray(parsed.trades) ? parsed.trades.filter(isTrade) : [],
+      // 舊版紀錄沒有 mode 欄位；舊版一律以 0.3% 計稅，故補 'general' 才符合史實。
+      trades: Array.isArray(parsed.trades)
+        ? parsed.trades
+            .filter(isTrade)
+            .map((trade) => ({ ...trade, mode: trade.mode === 'dayTrade' ? 'dayTrade' : 'general' }))
+        : [],
       equityCurve: Array.isArray(parsed.equityCurve) ? parsed.equityCurve.filter(isEquityPoint) : [],
       resetAt: typeof parsed.resetAt === 'string' ? parsed.resetAt : null,
     };
@@ -283,6 +345,25 @@ function saveAccount(account: SimAccount): void {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(account));
   } catch {
     // 忽略寫入失敗（不影響本次操作）
+  }
+}
+
+/** 讀取交易模式；無值或值不合法時退回預設（現股當沖 —— 本模擬器的主要情境）。 */
+function loadTradeMode(): TradeMode {
+  try {
+    const raw = window.localStorage.getItem(MODE_STORAGE_KEY);
+    return raw === 'general' || raw === 'dayTrade' ? raw : 'dayTrade';
+  } catch {
+    return 'dayTrade';
+  }
+}
+
+/** 寫入交易模式；失敗靜默（下次開頁面會回到預設，不影響帳戶資料）。 */
+function saveTradeMode(mode: TradeMode): void {
+  try {
+    window.localStorage.setItem(MODE_STORAGE_KEY, mode);
+  } catch {
+    // 忽略寫入失敗
   }
 }
 
@@ -343,7 +424,7 @@ type ExecuteResult =
  * 「已實現損益 + 未實現損益」會恰等於「總資產 − 初始資金」，帳目自洽。
  */
 function executeOrder(account: SimAccount, order: OrderInput, nowIso: string): ExecuteResult {
-  const { symbol, name, side, orderType, price, lots } = order;
+  const { symbol, name, side, orderType, mode, price, lots } = order;
 
   if (!Number.isInteger(lots) || lots <= 0) {
     return { ok: false, error: '張數必須是大於 0 的整數。' };
@@ -393,6 +474,7 @@ function executeOrder(account: SimAccount, order: OrderInput, nowIso: string): E
       name,
       side: 'buy',
       orderType,
+      mode,
       price,
       lots,
       fee,
@@ -426,7 +508,7 @@ function executeOrder(account: SimAccount, order: OrderInput, nowIso: string): E
     };
   }
 
-  const tax = calcTax(amount);
+  const tax = calcTax(amount, mode);
   const netProceeds = amount - fee - tax;
   const costBasis = position.avgCost * lots * LOT_SIZE;
   const realizedPnl = netProceeds - costBasis;
@@ -446,6 +528,7 @@ function executeOrder(account: SimAccount, order: OrderInput, nowIso: string): E
     name: position.name || name,
     side: 'sell',
     orderType,
+    mode,
     price,
     lots,
     fee,
@@ -486,6 +569,9 @@ export default function SimPage() {
   // 交易面板
   const [side, setSide] = useState<OrderSide>('buy');
   const [orderType, setOrderType] = useState<OrderType>('market');
+  // 交易模式（決定證交稅率）。初始值先用預設，mount 後再由 localStorage 讀回
+  // —— 直接放進 useState 初始化函式會在 SSR 時碰 localStorage 而報錯。
+  const [tradeMode, setTradeMode] = useState<TradeMode>('dayTrade');
   const [symbolInput, setSymbolInput] = useState('');
   const [quoteName, setQuoteName] = useState('');
   const [quotePrice, setQuotePrice] = useState(0);
@@ -515,6 +601,7 @@ export default function SimPage() {
       loaded.equityCurve = [{ date: todayKey(), equity: loaded.cash }];
     }
     setAccount(loaded);
+    setTradeMode(loadTradeMode());
     setHydrated(true);
   }, []);
 
@@ -523,6 +610,11 @@ export default function SimPage() {
     if (!hydrated) return;
     saveAccount(account);
   }, [account, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveTradeMode(tradeMode);
+  }, [tradeMode, hydrated]);
 
   /* ── 清理計時器 ── */
   useEffect(() => {
@@ -655,7 +747,7 @@ export default function SimPage() {
 
   const previewAmount = calcAmount(effectivePrice, validLots);
   const previewFee = calcFee(previewAmount);
-  const previewTax = side === 'sell' ? calcTax(previewAmount) : 0;
+  const previewTax = side === 'sell' ? calcTax(previewAmount, tradeMode) : 0;
   const previewTotal = side === 'buy' ? previewAmount + previewFee : previewAmount - previewFee - previewTax;
 
   const heldLots = useMemo(() => {
@@ -736,6 +828,7 @@ export default function SimPage() {
       name: quoteName || symbol,
       side,
       orderType,
+      mode: tradeMode,
       price: effectivePrice,
       lots: lotsNumber,
     });
@@ -750,6 +843,7 @@ export default function SimPage() {
     quoteName,
     side,
     symbolInput,
+    tradeMode,
   ]);
 
   /* ── 確認成交 ── */
@@ -1065,6 +1159,32 @@ export default function SimPage() {
             </button>
           </div>
 
+          {/* 交易模式：決定賣出時的證交稅率（一般 0.3%／當沖 0.15%） */}
+          <div className={styles.modeToggle} role="group" aria-label="交易模式">
+            <button
+              type="button"
+              className={`${styles.modeButton} ${tradeMode === 'dayTrade' ? styles.modeActive : ''}`}
+              aria-pressed={tradeMode === 'dayTrade'}
+              onClick={() => setTradeMode('dayTrade')}
+            >
+              現股當沖（稅 0.15%）
+            </button>
+            <button
+              type="button"
+              className={`${styles.modeButton} ${tradeMode === 'general' ? styles.modeActive : ''}`}
+              aria-pressed={tradeMode === 'general'}
+              onClick={() => setTradeMode('general')}
+            >
+              一般現股（稅 0.3%）
+            </button>
+          </div>
+          <p className={styles.modeHint}>
+            當沖減半只適用「同一交易日買進並賣出同一標的」；留倉請切回一般現股。
+            來回總成本約 {(roundTripCostRate(tradeMode) * 100).toFixed(3)}%
+            （手續費 0.1425%×2 ＋ 證交稅 {(taxRateOf(tradeMode) * 100).toFixed(2)}%），
+            也就是漲幅要超過這個數字才打平。
+          </p>
+
           <div className={styles.fieldGrid}>
             <label className={styles.field}>
               <span className={styles.fieldLabel}>股票代號</span>
@@ -1162,7 +1282,10 @@ export default function SimPage() {
               <b>{fmtMoney(previewFee)}</b>
             </div>
             <div className={styles.previewRow}>
-              <span>證交稅 0.3%{side === 'buy' ? '（買進免收）' : ''}</span>
+              <span>
+                證交稅 {(taxRateOf(tradeMode) * 100).toFixed(2)}%（{MODE_LABEL[tradeMode]}
+                ）{side === 'buy' ? '（買進免收）' : ''}
+              </span>
               <b>{fmtMoney(previewTax)}</b>
             </div>
             <div className={`${styles.previewRow} ${styles.previewTotal}`}>
@@ -1411,6 +1534,10 @@ export default function SimPage() {
                 <dd>{pendingOrder.orderType === 'market' ? '市價' : '限價'}</dd>
               </div>
               <div>
+                <dt>交易模式</dt>
+                <dd>{MODE_LABEL[pendingOrder.mode]}</dd>
+              </div>
+              <div>
                 <dt>價格</dt>
                 <dd>{fmtPrice(pendingOrder.price)}</dd>
               </div>
@@ -1423,15 +1550,15 @@ export default function SimPage() {
                 <dd>{fmtMoney(calcAmount(pendingOrder.price, pendingOrder.lots))}</dd>
               </div>
               <div>
-                <dt>手續費 0.1425%</dt>
+                <dt>手續費 0.1425%（最低 {FEE_MIN} 元）</dt>
                 <dd>{fmtMoney(calcFee(calcAmount(pendingOrder.price, pendingOrder.lots)))}</dd>
               </div>
               <div>
-                <dt>證交稅 0.3%</dt>
+                <dt>證交稅 {(taxRateOf(pendingOrder.mode) * 100).toFixed(2)}%</dt>
                 <dd>
                   {fmtMoney(
                     pendingOrder.side === 'sell'
-                      ? calcTax(calcAmount(pendingOrder.price, pendingOrder.lots))
+                      ? calcTax(calcAmount(pendingOrder.price, pendingOrder.lots), pendingOrder.mode)
                       : 0
                   )}
                 </dd>
@@ -1445,7 +1572,7 @@ export default function SimPage() {
                           calcFee(calcAmount(pendingOrder.price, pendingOrder.lots))
                       : calcAmount(pendingOrder.price, pendingOrder.lots) -
                           calcFee(calcAmount(pendingOrder.price, pendingOrder.lots)) -
-                          calcTax(calcAmount(pendingOrder.price, pendingOrder.lots))
+                          calcTax(calcAmount(pendingOrder.price, pendingOrder.lots), pendingOrder.mode)
                   )}
                 </dd>
               </div>
